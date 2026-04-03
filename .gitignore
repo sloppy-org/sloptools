@@ -1,0 +1,4 @@
+.sloppy/
+/sloppy
+build/
+dist/
