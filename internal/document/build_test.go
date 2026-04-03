@@ -25,8 +25,8 @@ echo "bibtex $*" >> "$TEST_LOG"
 	t.Setenv("TEST_LOG", logPath)
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	if err := os.MkdirAll(filepath.Join(sourceDir, ".sloppy"), 0o755); err != nil {
-		t.Fatalf("mkdir .sloppy: %v", err)
+	if err := os.MkdirAll(filepath.Join(sourceDir, ".sloptools"), 0o755); err != nil {
+		t.Fatalf("mkdir .sloptools: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(sourceDir, buildConfigRelPath), []byte(`{"builder":"latex","main_file":"paper.tex","engine":"xelatex"}`), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
@@ -48,7 +48,7 @@ echo "bibtex $*" >> "$TEST_LOG"
 	if result.MainFile != "paper.tex" {
 		t.Fatalf("main file = %q, want paper.tex", result.MainFile)
 	}
-	if !strings.Contains(filepath.ToSlash(result.PDFPath), "/.sloppy/artifacts/documents/") {
+	if !strings.Contains(filepath.ToSlash(result.PDFPath), "/.sloptools/artifacts/documents/") {
 		t.Fatalf("pdf path = %q", result.PDFPath)
 	}
 	bytes, err := os.ReadFile(result.PDFPath)

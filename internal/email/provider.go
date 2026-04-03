@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/krystophny/sloppy/internal/providerdata"
+	"github.com/sloppy-org/sloptools/internal/providerdata"
 )
 
 type EmailProvider interface {

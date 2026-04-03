@@ -9,7 +9,7 @@ import (
 func TestNoKnownGPLSidecarDependenciesAreLinkedIntoGoBinary(t *testing.T) {
 	t.Parallel()
 
-	cmd := exec.Command("go", "list", "-deps", "-f", "{{if .Module}}{{.Module.Path}}{{end}}", "./cmd/sloppy")
+	cmd := exec.Command("go", "list", "-deps", "-f", "{{if .Module}}{{.Module.Path}}{{end}}", "./cmd/sloptools")
 	cmd.Dir = repoRoot(t)
 	out, err := cmd.CombinedOutput()
 	if err != nil {

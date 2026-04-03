@@ -6,7 +6,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/krystophny/sloppy/internal/store"
+	"github.com/sloppy-org/sloptools/internal/store"
 )
 
 type StoreSink struct {

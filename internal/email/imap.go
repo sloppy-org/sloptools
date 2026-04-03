@@ -17,7 +17,7 @@ import (
 	"github.com/emersion/go-imap/v2/imapclient"
 	_ "github.com/emersion/go-message/charset"
 	gomessage "github.com/emersion/go-message/mail"
-	"github.com/krystophny/sloppy/internal/providerdata"
+	"github.com/sloppy-org/sloptools/internal/providerdata"
 )
 
 // searchResult holds a message reference with its date for sorting.

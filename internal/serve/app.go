@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/krystophny/sloppy/internal/mcp"
-	"github.com/krystophny/sloppy/internal/store"
+	"github.com/sloppy-org/sloptools/internal/mcp"
+	"github.com/sloppy-org/sloptools/internal/store"
 )
 
 const (
@@ -38,7 +38,7 @@ func NewApp(projectDir, dataDir string) *App {
 		shutdownDone: make(chan struct{}),
 	}
 	if strings.TrimSpace(dataDir) != "" {
-		dbPath := filepath.Join(dataDir, "sloppy.db")
+		dbPath := filepath.Join(dataDir, "sloptools.db")
 		if st, err := store.New(dbPath); err == nil {
 			a.Store = st
 		} else {
@@ -145,7 +145,7 @@ func (a *App) Start(host string, port int) error {
 		WriteTimeout:      60 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
-	fmt.Println("sloppy mcp listener listening on:")
+	fmt.Println("sloptools mcp listener listening on:")
 	for _, u := range ListenURLs(host, port) {
 		fmt.Printf("  %s\n", u)
 	}

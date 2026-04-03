@@ -612,9 +612,9 @@ func sleepContext(ctx context.Context, d time.Duration) error {
 func defaultSlopshellConfigDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil || strings.TrimSpace(home) == "" {
-		return ".sloppy"
+		return ".sloptools"
 	}
-	return filepath.Join(home, ".config", "sloppy")
+	return filepath.Join(home, ".config", "sloptools")
 }
 
 func sanitizeExchangeEnvSegment(raw string) string {

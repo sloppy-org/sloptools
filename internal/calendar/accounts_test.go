@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/krystophny/sloppy/internal/store"
+	"github.com/sloppy-org/sloptools/internal/store"
 )
 
 func TestGoogleCalendarAccountsFallsBackToGmail(t *testing.T) {

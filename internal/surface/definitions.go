@@ -87,7 +87,7 @@ var MCPTools = []Tool{
 	},
 	{
 		Name:        "temp_file_create",
-		Description: "Create a temporary file under .sloppy/artifacts/tmp for file-backed artifact usage.",
+		Description: "Create a temporary file under .sloptools/artifacts/tmp for file-backed artifact usage.",
 		Properties: map[string]ToolProperty{
 			"cwd": {
 				Type:        "string",
@@ -109,7 +109,7 @@ var MCPTools = []Tool{
 	},
 	{
 		Name:        "temp_file_remove",
-		Description: "Remove a temporary file previously created under .sloppy/artifacts/tmp.",
+		Description: "Remove a temporary file previously created under .sloptools/artifacts/tmp.",
 		Required:    []string{"path"},
 		Properties: map[string]ToolProperty{
 			"path": {

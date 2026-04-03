@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/krystophny/sloppy/internal/providerdata"
+	"github.com/sloppy-org/sloptools/internal/providerdata"
 )
 
 // ICSEvent represents an event from an ICS feed.
@@ -267,7 +267,7 @@ func parseICSDateTime(dtStr string) (time.Time, bool) {
 func defaultConfigDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil || strings.TrimSpace(home) == "" {
-		return ".sloppy"
+		return ".sloptools"
 	}
-	return filepath.Join(home, ".config", "sloppy")
+	return filepath.Join(home, ".config", "sloptools")
 }

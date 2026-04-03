@@ -27,7 +27,7 @@ func TestRunReturnsUpToDateWithoutDownloadingAssets(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	exePath := filepath.Join(t.TempDir(), "sloppy")
+	exePath := filepath.Join(t.TempDir(), "sloptools")
 	if err := os.WriteFile(exePath, []byte("old"), 0o755); err != nil {
 		t.Fatalf("write executable fixture: %v", err)
 	}
@@ -59,9 +59,9 @@ func TestRunReturnsUpToDateWithoutDownloadingAssets(t *testing.T) {
 func TestRunUpdatesExecutableFromTarGzWithChecksumVerification(t *testing.T) {
 	t.Parallel()
 
-	archiveName := "sloppy_1.2.4_linux_amd64.tar.gz"
+	archiveName := "sloptools_1.2.4_linux_amd64.tar.gz"
 	binaryPayload := []byte("new-binary-payload")
-	archivePayload := mustTarGzBinary(t, "sloppy", binaryPayload)
+	archivePayload := mustTarGzBinary(t, "sloptools", binaryPayload)
 	archiveChecksum := sha256Hex(archivePayload)
 	checksumPayload := []byte(fmt.Sprintf("%s  %s\n", archiveChecksum, archiveName))
 
@@ -85,7 +85,7 @@ func TestRunUpdatesExecutableFromTarGzWithChecksumVerification(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	exePath := filepath.Join(t.TempDir(), "sloppy")
+	exePath := filepath.Join(t.TempDir(), "sloptools")
 	if err := os.WriteFile(exePath, []byte("old-binary-payload"), 0o755); err != nil {
 		t.Fatalf("write executable fixture: %v", err)
 	}
@@ -124,9 +124,9 @@ func TestRunUpdatesExecutableFromTarGzWithChecksumVerification(t *testing.T) {
 func TestRunUpdatesExecutableFromZipOnWindowsAndRemovesBackup(t *testing.T) {
 	t.Parallel()
 
-	archiveName := "sloppy_1.2.4_windows_amd64.zip"
+	archiveName := "sloptools_1.2.4_windows_amd64.zip"
 	binaryPayload := []byte("new-windows-binary-payload")
-	archivePayload := mustZipBinary(t, "sloppy.exe", binaryPayload)
+	archivePayload := mustZipBinary(t, "sloptools.exe", binaryPayload)
 	archiveChecksum := sha256Hex(archivePayload)
 	checksumPayload := []byte(fmt.Sprintf("%s  %s\n", archiveChecksum, archiveName))
 
@@ -150,7 +150,7 @@ func TestRunUpdatesExecutableFromZipOnWindowsAndRemovesBackup(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	exePath := filepath.Join(t.TempDir(), "sloppy.exe")
+	exePath := filepath.Join(t.TempDir(), "sloptools.exe")
 	if err := os.WriteFile(exePath, []byte("old-binary-payload"), 0o755); err != nil {
 		t.Fatalf("write executable fixture: %v", err)
 	}
@@ -186,8 +186,8 @@ func TestRunUpdatesExecutableFromZipOnWindowsAndRemovesBackup(t *testing.T) {
 func TestRunRejectsChecksumMismatchAndKeepsOriginalExecutable(t *testing.T) {
 	t.Parallel()
 
-	archiveName := "sloppy_1.2.4_linux_amd64.tar.gz"
-	archivePayload := mustTarGzBinary(t, "sloppy", []byte("new-binary-payload"))
+	archiveName := "sloptools_1.2.4_linux_amd64.tar.gz"
+	archivePayload := mustTarGzBinary(t, "sloptools", []byte("new-binary-payload"))
 	checksumPayload := []byte(strings.Repeat("0", 64) + "  " + archiveName + "\n")
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -210,7 +210,7 @@ func TestRunRejectsChecksumMismatchAndKeepsOriginalExecutable(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	exePath := filepath.Join(t.TempDir(), "sloppy")
+	exePath := filepath.Join(t.TempDir(), "sloptools")
 	originalPayload := []byte("old-binary-payload")
 	if err := os.WriteFile(exePath, originalPayload, 0o755); err != nil {
 		t.Fatalf("write executable fixture: %v", err)
@@ -245,7 +245,7 @@ func TestSelectReleaseAssetFallbackDoesNotPartialMatchArch(t *testing.T) {
 	t.Parallel()
 
 	_, err := selectReleaseAsset([]githubAsset{
-		{Name: "sloppy_latest_linux_arm64.tar.gz"},
+		{Name: "sloptools_latest_linux_arm64.tar.gz"},
 	}, "1.2.4", "linux", "arm")
 	if err == nil {
 		t.Fatalf("expected no matching asset for linux/arm when only arm64 exists")
@@ -259,13 +259,13 @@ func TestSelectReleaseAssetFallbackMatchesTokenizedArch(t *testing.T) {
 	t.Parallel()
 
 	asset, err := selectReleaseAsset([]githubAsset{
-		{Name: "sloppy_latest_linux_arm.tar.gz"},
+		{Name: "sloptools_latest_linux_arm.tar.gz"},
 	}, "1.2.4", "linux", "arm")
 	if err != nil {
 		t.Fatalf("selectReleaseAsset() error = %v", err)
 	}
-	if asset.Name != "sloppy_latest_linux_arm.tar.gz" {
-		t.Fatalf("asset name = %q, want sloppy_latest_linux_arm.tar.gz", asset.Name)
+	if asset.Name != "sloptools_latest_linux_arm.tar.gz" {
+		t.Fatalf("asset name = %q, want sloptools_latest_linux_arm.tar.gz", asset.Name)
 	}
 }
 

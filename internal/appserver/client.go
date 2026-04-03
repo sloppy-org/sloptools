@@ -152,7 +152,7 @@ func (c *Client) SendPromptStream(ctx context.Context, req PromptRequest, onEven
 		"method":  "initialize",
 		"params": map[string]interface{}{
 			"clientInfo": map[string]interface{}{
-				"name":    "sloppy",
+				"name":    "sloptools",
 				"title":   "Slopshell Web",
 				"version": "0.2.1",
 			},

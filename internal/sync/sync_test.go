@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/krystophny/sloppy/internal/store"
+	"github.com/sloppy-org/sloptools/internal/store"
 )
 
 type fakeAccountSource struct {

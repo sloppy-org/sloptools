@@ -14,7 +14,7 @@ import (
 	"strings"
 )
 
-const buildConfigRelPath = ".sloppy/document.json"
+const buildConfigRelPath = ".sloptools/document.json"
 
 type Builder interface {
 	Build(ctx context.Context, sourceDir string, mainFile string) (pdfPath string, err error)
@@ -454,7 +454,7 @@ func documentArtifactOutputPath(sourceDir, mainFile string) (string, error) {
 	}
 	sum := sha256.Sum256([]byte(rel))
 	name := sanitizeDocumentArtifactName(mainFile)
-	return filepath.Join(rootAbs, ".sloppy", "artifacts", "documents", fmt.Sprintf("%s-%x.pdf", name, sum[:6])), nil
+	return filepath.Join(rootAbs, ".sloptools", "artifacts", "documents", fmt.Sprintf("%s-%x.pdf", name, sum[:6])), nil
 }
 
 func sanitizeDocumentArtifactName(path string) string {

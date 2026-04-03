@@ -1,4 +1,4 @@
-module github.com/krystophny/sloppy
+module github.com/sloppy-org/sloptools
 
 go 1.24.0
 

@@ -5,13 +5,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/krystophny/sloppy/internal/store"
+	"github.com/sloppy-org/sloptools/internal/store"
 )
 
 func newDomainServerForTest(t *testing.T) (*Server, *store.Store, string) {
 	t.Helper()
 	projectDir := t.TempDir()
-	st, err := store.New(filepath.Join(t.TempDir(), "sloppy.db"))
+	st, err := store.New(filepath.Join(t.TempDir(), "sloptools.db"))
 	if err != nil {
 		t.Fatalf("store.New() error: %v", err)
 	}

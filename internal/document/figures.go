@@ -113,7 +113,7 @@ func cleanedFigurePDFPath(pdfPath string) (string, error) {
 }
 
 func defaultFigureOutputDir(pdfPath string) string {
-	return filepath.Join(filepath.Dir(pdfPath), ".sloppy", "artifacts", "figures", sanitizeFigureStem(strings.TrimSuffix(filepath.Base(pdfPath), filepath.Ext(pdfPath))))
+	return filepath.Join(filepath.Dir(pdfPath), ".sloptools", "artifacts", "figures", sanitizeFigureStem(strings.TrimSuffix(filepath.Base(pdfPath), filepath.Ext(pdfPath))))
 }
 
 func sanitizeFigureStem(raw string) string {

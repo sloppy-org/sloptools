@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/krystophny/sloppy/internal/surface"
+	"github.com/sloppy-org/sloptools/internal/surface"
 )
 
 func isPathWithinDir(path, dir string) bool {
@@ -97,7 +97,7 @@ func (s *Server) tempFileRemove(args map[string]interface{}) (map[string]interfa
 		absPath = filepath.Clean(filepath.Join(rootAbs, target))
 	}
 	if !isPathWithinDir(absPath, tmpAbs) {
-		return nil, errors.New("path must be under .sloppy/artifacts/tmp")
+		return nil, errors.New("path must be under .sloptools/artifacts/tmp")
 	}
 	err = os.Remove(absPath)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/krystophny/sloppy/internal/modelprofile"
+	"github.com/sloppy-org/sloptools/internal/modelprofile"
 )
 
 func (s *Store) SetAppState(key, value string) error {

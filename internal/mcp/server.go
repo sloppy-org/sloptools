@@ -12,10 +12,10 @@ import (
 	"strconv"
 	"strings"
 
-	tabcalendar "github.com/krystophny/sloppy/internal/calendar"
-	"github.com/krystophny/sloppy/internal/email"
-	"github.com/krystophny/sloppy/internal/providerdata"
-	"github.com/krystophny/sloppy/internal/store"
+	tabcalendar "github.com/sloppy-org/sloptools/internal/calendar"
+	"github.com/sloppy-org/sloptools/internal/email"
+	"github.com/sloppy-org/sloptools/internal/providerdata"
+	"github.com/sloppy-org/sloptools/internal/store"
 )
 
 const (
@@ -25,7 +25,7 @@ const (
 	defaultProducerMCPURL = "http://127.0.0.1:8090/mcp"
 	handoffKindFile       = "file"
 	handoffKindMail       = "mail"
-	tempArtifactsDirRel   = ".sloppy/artifacts/tmp"
+	tempArtifactsDirRel   = ".sloptools/artifacts/tmp"
 )
 
 var supportedProtocolVersions = map[string]struct{}{

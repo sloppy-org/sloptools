@@ -104,7 +104,7 @@ func TestTempFileCreateAndRemove(t *testing.T) {
 		t.Fatalf("temp_file_create failed: %v", err)
 	}
 	path, _ := created["path"].(string)
-	if !strings.HasPrefix(path, ".sloppy/artifacts/tmp/") {
+	if !strings.HasPrefix(path, ".sloptools/artifacts/tmp/") {
 		t.Fatalf("expected temp path under artifacts/tmp, got %q", path)
 	}
 	absPath := filepath.Join(projectDir, filepath.FromSlash(path))

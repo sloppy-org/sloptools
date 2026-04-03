@@ -482,7 +482,7 @@ func validateMoveRequest(projectID, sectionID, parentID *string) error {
 func newRequestID() string {
 	buf := make([]byte, 16)
 	if _, err := rand.Read(buf); err != nil {
-		return "sloppy-todoist-request"
+		return "sloptools-todoist-request"
 	}
 	return hex.EncodeToString(buf[:4]) + "-" +
 		hex.EncodeToString(buf[4:6]) + "-" +

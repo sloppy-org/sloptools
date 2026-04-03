@@ -37,8 +37,8 @@ func TestBootstrapProjectCreatesExpectedFilesWithoutAgentsMutation(t *testing.T)
 	if err != nil {
 		t.Fatalf("read .gitignore: %v", err)
 	}
-	if !strings.Contains(string(gitignoreBody), ".sloppy/artifacts/") {
-		t.Fatalf(".gitignore missing .sloppy/artifacts/ entry")
+	if !strings.Contains(string(gitignoreBody), ".sloptools/artifacts/") {
+		t.Fatalf(".gitignore missing .sloptools/artifacts/ entry")
 	}
 }
 
@@ -89,7 +89,7 @@ func TestEnsureGitignoreAppendsEntryOnlyOnce(t *testing.T) {
 		t.Fatalf("read .gitignore: %v", err)
 	}
 	content := string(body)
-	if strings.Count(content, ".sloppy/artifacts/") != 1 {
-		t.Fatalf("expected .sloppy/artifacts/ exactly once, got content:\n%s", content)
+	if strings.Count(content, ".sloptools/artifacts/") != 1 {
+		t.Fatalf("expected .sloptools/artifacts/ exactly once, got content:\n%s", content)
 	}
 }

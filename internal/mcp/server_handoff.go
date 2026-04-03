@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/krystophny/sloppy/internal/email"
-	"github.com/krystophny/sloppy/internal/providerdata"
-	"github.com/krystophny/sloppy/internal/store"
+	"github.com/sloppy-org/sloptools/internal/email"
+	"github.com/sloppy-org/sloptools/internal/providerdata"
+	"github.com/sloppy-org/sloptools/internal/store"
 )
 
 const defaultHandoffMaxConsumes = 1

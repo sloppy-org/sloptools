@@ -36,7 +36,7 @@ exit 1
 	if err := os.WriteFile(pdfPath, []byte("%PDF-1.7"), 0o644); err != nil {
 		t.Fatalf("WriteFile(paper.pdf): %v", err)
 	}
-	outputDir := filepath.Join(t.TempDir(), ".sloppy", "artifacts", "figures", "paper")
+	outputDir := filepath.Join(t.TempDir(), ".sloptools", "artifacts", "figures", "paper")
 
 	figures, err := ExtractFiguresWithOptions(pdfPath, FigureExtractOptions{OutputDir: outputDir})
 	if err != nil {

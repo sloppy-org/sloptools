@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/krystophny/sloppy/internal/providerdata"
+	"github.com/sloppy-org/sloptools/internal/providerdata"
 	"google.golang.org/api/option"
 	people "google.golang.org/api/people/v1"
 )
