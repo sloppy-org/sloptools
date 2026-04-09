@@ -32,6 +32,9 @@ func TestBootstrapProjectCreatesExpectedFilesWithoutAgentsMutation(t *testing.T)
 	if !strings.Contains(string(mcpBody), "mcp-server") {
 		t.Fatalf("mcp config missing mcp-server invocation")
 	}
+	if !strings.Contains(string(mcpBody), "[mcp_servers.sloptools]") {
+		t.Fatalf("mcp config missing sloptools server key")
+	}
 
 	gitignoreBody, err := os.ReadFile(filepath.Join(projectDir, ".gitignore"))
 	if err != nil {

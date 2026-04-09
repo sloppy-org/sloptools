@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	tabcalendar "github.com/sloppy-org/sloptools/internal/calendar"
+	"github.com/sloppy-org/sloptools/internal/canvas"
 	"github.com/sloppy-org/sloptools/internal/email"
 	"github.com/sloppy-org/sloptools/internal/providerdata"
 	"github.com/sloppy-org/sloptools/internal/store"
@@ -40,6 +41,7 @@ type RPCError struct {
 
 type Server struct {
 	projectDir              string
+	adapter                 *canvas.Adapter
 	handoffs                *handoffRegistry
 	store                   *store.Store
 	newGoogleCalendarReader func(context.Context) (googleCalendarReader, error)
@@ -66,8 +68,10 @@ func NewServer(projectDir string) *Server {
 }
 
 func NewServerWithStore(projectDir string, st *store.Store) *Server {
+	adapter := canvas.NewAdapter(projectDir, nil)
 	return &Server{
 		projectDir: projectDir,
+		adapter:    adapter,
 		handoffs:   newHandoffRegistry(),
 		store:      st,
 		newGoogleCalendarReader: func(ctx context.Context) (googleCalendarReader, error) {
@@ -78,6 +82,16 @@ func NewServerWithStore(projectDir string, st *store.Store) *Server {
 
 func (s *Server) ProjectDir() string {
 	return s.projectDir
+}
+
+func (s *Server) SetAdapter(adapter *canvas.Adapter) {
+	if adapter == nil {
+		return
+	}
+	s.adapter = adapter
+	if strings.TrimSpace(s.projectDir) == "" {
+		s.projectDir = adapter.ProjectDir()
+	}
 }
 
 func (s *Server) DispatchMessage(message map[string]interface{}) map[string]interface{} {
@@ -129,11 +143,11 @@ func (s *Server) dispatch(method string, params map[string]interface{}) (map[str
 	case "tools/list":
 		return map[string]interface{}{"tools": toolDefinitions()}, nil
 	case "resources/list":
-		return map[string]interface{}{"resources": []map[string]interface{}{}}, nil
+		return map[string]interface{}{"resources": resourcesList(s.adapter)}, nil
 	case "resources/templates/list":
-		return map[string]interface{}{"resourceTemplates": []map[string]interface{}{}}, nil
+		return map[string]interface{}{"resourceTemplates": resourceTemplates()}, nil
 	case "resources/read":
-		return nil, &RPCError{Code: -32002, Message: "no resources available"}
+		return s.dispatchResourceRead(params)
 	case "tools/call":
 		return s.dispatchToolCall(params)
 	default:
@@ -166,7 +180,43 @@ func (s *Server) dispatchToolCall(params map[string]interface{}) (map[string]int
 }
 
 func (s *Server) callTool(name string, args map[string]interface{}) (map[string]interface{}, error) {
+	sid := strArg(args, "session_id")
 	switch name {
+	case "canvas_session_open", "canvas_activate":
+		return s.adapter.CanvasSessionOpen(sid, strArg(args, "mode_hint")), nil
+	case "canvas_artifact_show":
+		text := strArg(args, "markdown_or_text")
+		if text == "" {
+			text = strArg(args, "text")
+		}
+		return s.adapter.CanvasArtifactShow(
+			sid,
+			strArg(args, "kind"),
+			strArg(args, "title"),
+			text,
+			strArg(args, "path"),
+			intArg(args, "page", 0),
+			strArg(args, "reason"),
+			nil,
+		)
+	case "canvas_render_text":
+		text := strArg(args, "markdown_or_text")
+		if text == "" {
+			text = strArg(args, "text")
+		}
+		return s.adapter.CanvasArtifactShow(sid, "text", strArg(args, "title"), text, "", 0, "", nil)
+	case "canvas_render_image":
+		return s.adapter.CanvasArtifactShow(sid, "image", strArg(args, "title"), "", strArg(args, "path"), 0, "", nil)
+	case "canvas_render_pdf":
+		return s.adapter.CanvasArtifactShow(sid, "pdf", strArg(args, "title"), "", strArg(args, "path"), intArg(args, "page", 0), "", nil)
+	case "canvas_clear":
+		return s.adapter.CanvasArtifactShow(sid, "clear", "", "", "", 0, strArg(args, "reason"), nil)
+	case "canvas_status":
+		return s.adapter.CanvasStatus(sid), nil
+	case "canvas_history":
+		return s.adapter.CanvasHistory(sid, intArg(args, "limit", 20)), nil
+	case "canvas_import_handoff":
+		return s.canvasImportHandoff(sid, args)
 	case "handoff.create":
 		return s.handoffCreate(args)
 	case "handoff.peek":

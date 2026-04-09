@@ -387,10 +387,10 @@ func copyRawMessages(ctx context.Context, source, target email.RawMessageProvide
 		newIDs = append(newIDs, newID)
 	}
 	return map[string]interface{}{
-		"source_account": sourceAccount,
-		"target_account": targetAccount,
-		"target_folder":  targetFolder,
-		"copied":         len(newIDs),
+		"source_account":  sourceAccount,
+		"target_account":  targetAccount,
+		"target_folder":   targetFolder,
+		"copied":          len(newIDs),
 		"new_message_ids": newIDs,
 	}, nil
 }
@@ -591,7 +591,15 @@ func mailSyncConfigDir() string {
 	if err != nil || strings.TrimSpace(home) == "" {
 		return ".sloptools"
 	}
-	return filepath.Join(home, ".config", "sloptools")
+	preferred := filepath.Join(home, ".config", "sloptools")
+	legacy := filepath.Join(home, ".config", "slopshell")
+	if _, err := os.Stat(preferred); err == nil {
+		return preferred
+	}
+	if _, err := os.Stat(legacy); err == nil {
+		return legacy
+	}
+	return preferred
 }
 
 func emailConfigPath(configDir, explicitPath, fileName string) string {

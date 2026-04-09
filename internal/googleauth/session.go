@@ -14,13 +14,13 @@ import (
 )
 
 const (
-	ScopeGmailFull   = "https://mail.google.com/"
-	ScopeContacts    = "https://www.googleapis.com/auth/contacts"
-	ScopeCalendar    = "https://www.googleapis.com/auth/calendar"
-	ScopeDrive       = "https://www.googleapis.com/auth/drive"
-	ScopeDocs        = "https://www.googleapis.com/auth/documents"
-	ScopeSheets      = "https://www.googleapis.com/auth/spreadsheets"
-	ScopeTasks       = "https://www.googleapis.com/auth/tasks"
+	ScopeGmailFull = "https://mail.google.com/"
+	ScopeContacts  = "https://www.googleapis.com/auth/contacts"
+	ScopeCalendar  = "https://www.googleapis.com/auth/calendar"
+	ScopeDrive     = "https://www.googleapis.com/auth/drive"
+	ScopeDocs      = "https://www.googleapis.com/auth/documents"
+	ScopeSheets    = "https://www.googleapis.com/auth/spreadsheets"
+	ScopeTasks     = "https://www.googleapis.com/auth/tasks"
 
 	// Deprecated aliases kept for compile compatibility
 	ScopeGmailModify      = ScopeGmailFull
@@ -51,7 +51,15 @@ func DefaultConfigDir() string {
 	if err != nil || strings.TrimSpace(home) == "" {
 		return ".sloptools"
 	}
-	return filepath.Join(home, ".config", "sloptools")
+	preferred := filepath.Join(home, ".config", "sloptools")
+	legacy := filepath.Join(home, ".config", "slopshell")
+	if _, err := os.Stat(preferred); err == nil {
+		return preferred
+	}
+	if _, err := os.Stat(legacy); err == nil {
+		return legacy
+	}
+	return preferred
 }
 
 func DefaultCredentialsPath() string {

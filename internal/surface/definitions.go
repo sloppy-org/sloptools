@@ -22,6 +22,26 @@ type RouteSection struct {
 
 var MCPTools = []Tool{
 	{
+		Name:        "canvas_session_open",
+		Description: "Open canvas session and initialize runtime status.",
+		Required:    []string{"session_id"},
+	},
+	{
+		Name:        "canvas_artifact_show",
+		Description: "Show one artifact kind in canvas: text, image, pdf, or clear.",
+		Required:    []string{"session_id", "kind"},
+	},
+	{
+		Name:        "canvas_status",
+		Description: "Get current session status and active artifact metadata.",
+		Required:    []string{"session_id"},
+	},
+	{
+		Name:        "canvas_import_handoff",
+		Description: "Consume a generic producer handoff and render it in canvas.",
+		Required:    []string{"session_id", "handoff_id"},
+	},
+	{
 		Name:        "handoff.create",
 		Description: "Create a producer handoff. Sloppy currently supports kind=mail with selector.account_id plus message_id or message_ids.",
 		Required:    []string{"kind", "selector"},
@@ -753,10 +773,10 @@ var MCPDaemonRoutes = []string{
 	"POST /mcp",
 	"GET /mcp",
 	"DELETE /mcp",
+	"GET /ws/canvas",
 	"GET /files/*",
 	"GET /health",
 }
-
 
 func MCPToolNamesCSV() string {
 	names := make([]string, 0, len(MCPTools))

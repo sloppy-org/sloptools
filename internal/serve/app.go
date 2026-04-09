@@ -11,9 +11,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/gorilla/websocket"
+	"github.com/sloppy-org/sloptools/internal/canvas"
 	"github.com/sloppy-org/sloptools/internal/mcp"
 	"github.com/sloppy-org/sloptools/internal/store"
 )
@@ -25,9 +28,14 @@ const (
 
 type App struct {
 	ProjectDir string
+	Adapter    *canvas.Adapter
 	Server     *mcp.Server
 	Store      *store.Store
 
+	mu           sync.Mutex
+	pending      []canvas.Event
+	wsClients    map[*websocket.Conn]struct{}
+	wsUpgrader   websocket.Upgrader
 	httpServer   *http.Server
 	shutdownDone chan struct{}
 }
@@ -35,8 +43,11 @@ type App struct {
 func NewApp(projectDir, dataDir string) *App {
 	a := &App{
 		ProjectDir:   projectDir,
+		wsClients:    map[*websocket.Conn]struct{}{},
+		wsUpgrader:   websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }},
 		shutdownDone: make(chan struct{}),
 	}
+	a.Adapter = canvas.NewAdapter(projectDir, a.queueEvent)
 	if strings.TrimSpace(dataDir) != "" {
 		dbPath := filepath.Join(dataDir, "sloptools.db")
 		if st, err := store.New(dbPath); err == nil {
@@ -46,6 +57,7 @@ func NewApp(projectDir, dataDir string) *App {
 		}
 	}
 	a.Server = mcp.NewServerWithStore(projectDir, a.Store)
+	a.Server.SetAdapter(a.Adapter)
 	return a
 }
 
@@ -54,9 +66,43 @@ func (a *App) Router() http.Handler {
 	r.Post("/mcp", a.handleMCPPost)
 	r.Get("/mcp", a.handleMCPGet)
 	r.Delete("/mcp", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
+	r.Get("/ws/canvas", a.handleCanvasWS)
 	r.Get("/files/*", a.handleFiles)
 	r.Get("/health", a.handleHealth)
 	return r
+}
+
+func (a *App) queueEvent(ev canvas.Event) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.pending = append(a.pending, ev)
+}
+
+func (a *App) flushEvents() []canvas.Event {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	out := append([]canvas.Event(nil), a.pending...)
+	a.pending = a.pending[:0]
+	return out
+}
+
+func (a *App) broadcastPending() {
+	events := a.flushEvents()
+	if len(events) == 0 {
+		return
+	}
+	a.mu.Lock()
+	clients := make([]*websocket.Conn, 0, len(a.wsClients))
+	for ws := range a.wsClients {
+		clients = append(clients, ws)
+	}
+	a.mu.Unlock()
+	for _, ev := range events {
+		b, _ := json.Marshal(ev)
+		for _, ws := range clients {
+			_ = ws.WriteMessage(websocket.TextMessage, b)
+		}
+	}
 }
 
 func (a *App) handleMCPPost(w http.ResponseWriter, r *http.Request) {
@@ -67,6 +113,7 @@ func (a *App) handleMCPPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp := a.Server.DispatchMessage(req)
+	a.broadcastPending()
 	if resp == nil {
 		w.WriteHeader(http.StatusAccepted)
 		return
@@ -95,6 +142,29 @@ func (a *App) handleMCPGet(w http.ResponseWriter, r *http.Request) {
 			_, _ = w.Write([]byte(": keepalive\n\n"))
 			f.Flush()
 		}
+	}
+}
+
+func (a *App) handleCanvasWS(w http.ResponseWriter, r *http.Request) {
+	ws, err := a.wsUpgrader.Upgrade(w, r, nil)
+	if err != nil {
+		return
+	}
+	a.mu.Lock()
+	a.wsClients[ws] = struct{}{}
+	a.mu.Unlock()
+	defer func() {
+		a.mu.Lock()
+		delete(a.wsClients, ws)
+		a.mu.Unlock()
+		_ = ws.Close()
+	}()
+	for {
+		_, msg, err := ws.ReadMessage()
+		if err != nil {
+			return
+		}
+		a.Adapter.HandleFeedback(string(msg))
 	}
 }
 
@@ -129,9 +199,14 @@ func (a *App) handleFiles(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleHealth(w http.ResponseWriter, _ *http.Request) {
+	a.mu.Lock()
+	wsCount := len(a.wsClients)
+	a.mu.Unlock()
 	writeJSON(w, map[string]interface{}{
 		"status":      "ok",
 		"project_dir": a.ProjectDir,
+		"sessions":    a.Adapter.ListSessions(),
+		"ws_clients":  wsCount,
 	})
 }
 
