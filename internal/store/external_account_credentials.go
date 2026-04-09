@@ -59,11 +59,6 @@ func externalAccountCredentialRef(config map[string]any) string {
 	return strings.TrimSpace(raw)
 }
 
-func externalAccountLegacyEnvVar(config map[string]any) string {
-	raw, _ := config["legacy_helpy_env_var"].(string)
-	return strings.TrimSpace(raw)
-}
-
 func bitwardenItemNameFromCredentialRef(ref string) (string, error) {
 	clean := strings.TrimSpace(ref)
 	if clean == "" {
@@ -164,12 +159,6 @@ func (s *Store) ResolveExternalAccountPasswordForAccount(ctx context.Context, ac
 	if value, ok := s.lookupExternalAccountEnv(envVar); ok && value != "" {
 		s.cacheExternalAccountPassword(cacheKey, externalAccountCredentialSourceEnv, value)
 		return value, externalAccountCredentialSourceEnv, nil
-	}
-	if legacyEnvVar := externalAccountLegacyEnvVar(config); legacyEnvVar != "" {
-		if value, ok := s.lookupExternalAccountEnv(legacyEnvVar); ok && value != "" {
-			s.cacheExternalAccountPassword(cacheKey, externalAccountCredentialSourceEnv, value)
-			return value, externalAccountCredentialSourceEnv, nil
-		}
 	}
 	if cached, ok := s.cachedExternalAccountPassword(cacheKey); ok {
 		return cached.value, cached.source, nil

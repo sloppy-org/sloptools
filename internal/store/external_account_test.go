@@ -111,6 +111,9 @@ func TestExternalAccountStoreRejectsInvalidConfigAndIdentity(t *testing.T) {
 	if _, err := s.CreateExternalAccount(SphereWork, ExternalProviderGmail, "Mail", map[string]any{"password": "secret"}); err == nil {
 		t.Fatal("expected password config rejection")
 	}
+	if _, err := s.CreateExternalAccount(SphereWork, ExternalProviderExchangeEWS, "Mail", map[string]any{"legacy_helpy_env_var": "HELPY_IMAP_PASSWORD_TUGRAZ"}); err == nil {
+		t.Fatal("expected legacy env var config rejection")
+	}
 	if _, err := s.CreateExternalAccount(SphereWork, ExternalProviderGmail, "Mail", map[string]any{"oauth_token": "raw-token"}); err == nil {
 		t.Fatal("expected token config rejection")
 	}
@@ -281,36 +284,5 @@ func TestResolveExternalAccountPasswordRejectsMissingOrUnsupportedCredentialConf
 	}
 	if _, _, err := s.ResolveExternalAccountPassword(context.Background(), unsupportedAccount.ID); err == nil || !strings.Contains(err.Error(), `unsupported credential_ref "vault://other-mail"`) {
 		t.Fatalf("ResolveExternalAccountPassword(unsupported) error = %v, want unsupported credential_ref", err)
-	}
-}
-
-func TestResolveExternalAccountPasswordFallsBackToLegacyHelpyEnvVar(t *testing.T) {
-	s := newTestStore(t)
-
-	account, err := s.CreateExternalAccount(SphereWork, ExternalProviderExchangeEWS, "TU Graz Exchange", map[string]any{
-		"endpoint":             "https://exchange.example.test/EWS/Exchange.asmx",
-		"username":             "ert",
-		"legacy_helpy_env_var": "HELPY_IMAP_PASSWORD_TUGRAZ",
-	})
-	if err != nil {
-		t.Fatalf("CreateExternalAccount() error: %v", err)
-	}
-
-	s.externalAccountLookupEnv = func(key string) (string, bool) {
-		if key != "HELPY_IMAP_PASSWORD_TUGRAZ" {
-			return "", false
-		}
-		return "legacy-secret", true
-	}
-
-	password, source, err := s.ResolveExternalAccountPasswordForAccount(context.Background(), account)
-	if err != nil {
-		t.Fatalf("ResolveExternalAccountPasswordForAccount() error: %v", err)
-	}
-	if password != "legacy-secret" {
-		t.Fatalf("password = %q, want legacy-secret", password)
-	}
-	if source != externalAccountCredentialSourceEnv {
-		t.Fatalf("source = %q, want %q", source, externalAccountCredentialSourceEnv)
 	}
 }

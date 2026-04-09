@@ -51,15 +51,7 @@ func DefaultConfigDir() string {
 	if err != nil || strings.TrimSpace(home) == "" {
 		return ".sloptools"
 	}
-	preferred := filepath.Join(home, ".config", "sloptools")
-	legacy := filepath.Join(home, ".config", "slopshell")
-	if _, err := os.Stat(preferred); err == nil {
-		return preferred
-	}
-	if _, err := os.Stat(legacy); err == nil {
-		return legacy
-	}
-	return preferred
+	return filepath.Join(home, ".config", "sloptools")
 }
 
 func DefaultCredentialsPath() string {

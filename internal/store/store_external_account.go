@@ -102,6 +102,8 @@ func validateExternalAccountConfigKey(path, key string) error {
 		fullKey = path + "." + strings.TrimSpace(key)
 	}
 	switch {
+	case cleanKey == "legacy_helpy_env_var":
+		return fmt.Errorf("external account config cannot store %s", fullKey)
 	case strings.Contains(cleanKey, "password"):
 		return fmt.Errorf("external account config cannot store %s", fullKey)
 	case strings.Contains(cleanKey, "secret"):
