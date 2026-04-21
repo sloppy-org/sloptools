@@ -3,17 +3,26 @@ package email
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/tls"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"mime"
 	"net"
 	"net/mail"
 	"net/smtp"
+	"path/filepath"
 	"strings"
 	"time"
 )
+
+type DraftAttachment struct {
+	Filename    string
+	ContentType string
+	Content     []byte
+}
 
 type DraftInput struct {
 	From        string
@@ -27,6 +36,7 @@ type DraftInput struct {
 	References  []string
 	ReplyToID   string
 	ReplyToAddr string
+	Attachments []DraftAttachment
 }
 
 type Draft struct {
@@ -130,6 +140,10 @@ func normalizeDraftInput(input DraftInput, requireRecipients bool) (DraftInput, 
 	if requireRecipients && len(to) == 0 && len(cc) == 0 && len(bcc) == 0 {
 		return DraftInput{}, errors.New("at least one recipient is required")
 	}
+	attachments, err := normalizeDraftAttachments(input.Attachments)
+	if err != nil {
+		return DraftInput{}, err
+	}
 	return DraftInput{
 		From:        from,
 		To:          to,
@@ -142,11 +156,43 @@ func normalizeDraftInput(input DraftInput, requireRecipients bool) (DraftInput, 
 		References:  trimStringList(input.References),
 		ReplyToID:   strings.TrimSpace(input.ReplyToID),
 		ReplyToAddr: replyToAddr,
+		Attachments: attachments,
 	}, nil
+}
+
+func normalizeDraftAttachments(values []DraftAttachment) ([]DraftAttachment, error) {
+	if len(values) == 0 {
+		return nil, nil
+	}
+	out := make([]DraftAttachment, 0, len(values))
+	for i, raw := range values {
+		filename := strings.TrimSpace(raw.Filename)
+		if filename == "" {
+			return nil, fmt.Errorf("attachment %d: filename is required", i)
+		}
+		filename = filepath.Base(filename)
+		if len(raw.Content) == 0 {
+			return nil, fmt.Errorf("attachment %q: content is empty", filename)
+		}
+		ct := strings.TrimSpace(raw.ContentType)
+		if ct == "" {
+			ct = "application/octet-stream"
+		}
+		out = append(out, DraftAttachment{
+			Filename:    filename,
+			ContentType: ct,
+			Content:     append([]byte(nil), raw.Content...),
+		})
+	}
+	return out, nil
 }
 
 func NormalizeDraftInput(input DraftInput) (DraftInput, error) {
 	return normalizeDraftInput(input, false)
+}
+
+func ExportRFC822ForTest(input DraftInput) ([]byte, error) {
+	return buildRFC822Message(input)
 }
 
 func NormalizeDraftSendInput(input DraftInput) (DraftInput, error) {
@@ -165,6 +211,10 @@ func trimStringList(values []string) []string {
 }
 
 func ensureReplySubject(subject string) string {
+	return EnsureReplySubject(subject)
+}
+
+func EnsureReplySubject(subject string) string {
 	clean := strings.TrimSpace(subject)
 	if clean == "" {
 		return "Re:"
@@ -203,20 +253,75 @@ func buildRFC822Message(input DraftInput) ([]byte, error) {
 	}
 	fmt.Fprintf(&msg, "Date: %s\r\n", time.Now().UTC().Format(time.RFC1123Z))
 	fmt.Fprintf(&msg, "MIME-Version: 1.0\r\n")
-	fmt.Fprintf(&msg, "Content-Type: text/plain; charset=UTF-8\r\n")
-	fmt.Fprintf(&msg, "Content-Transfer-Encoding: 8bit\r\n")
 	if normalized.InReplyTo != "" {
 		fmt.Fprintf(&msg, "In-Reply-To: %s\r\n", normalized.InReplyTo)
 	}
 	if len(normalized.References) > 0 {
 		fmt.Fprintf(&msg, "References: %s\r\n", strings.Join(normalized.References, " "))
 	}
-	msg.WriteString("\r\n")
-	msg.WriteString(strings.ReplaceAll(normalized.Body, "\n", "\r\n"))
-	if !strings.HasSuffix(normalized.Body, "\n") {
+	body := withTrailingNewline(normalized.Body)
+	if len(normalized.Attachments) == 0 {
+		fmt.Fprintf(&msg, "Content-Type: text/plain; charset=UTF-8\r\n")
+		fmt.Fprintf(&msg, "Content-Transfer-Encoding: 8bit\r\n")
 		msg.WriteString("\r\n")
+		msg.WriteString(strings.ReplaceAll(body, "\n", "\r\n"))
+		return msg.Bytes(), nil
 	}
+	boundary, err := newMIMEBoundary()
+	if err != nil {
+		return nil, err
+	}
+	fmt.Fprintf(&msg, "Content-Type: multipart/mixed; boundary=%q\r\n", boundary)
+	msg.WriteString("\r\n")
+	msg.WriteString("This is a multi-part message in MIME format.\r\n")
+	fmt.Fprintf(&msg, "--%s\r\n", boundary)
+	msg.WriteString("Content-Type: text/plain; charset=UTF-8\r\n")
+	msg.WriteString("Content-Transfer-Encoding: 8bit\r\n")
+	msg.WriteString("\r\n")
+	msg.WriteString(strings.ReplaceAll(body, "\n", "\r\n"))
+	for _, att := range normalized.Attachments {
+		fmt.Fprintf(&msg, "--%s\r\n", boundary)
+		fmt.Fprintf(&msg, "Content-Type: %s\r\n", att.ContentType)
+		fmt.Fprintf(&msg, "Content-Disposition: attachment; filename=%s\r\n", mime.BEncoding.Encode("utf-8", att.Filename))
+		msg.WriteString("Content-Transfer-Encoding: base64\r\n")
+		msg.WriteString("\r\n")
+		msg.WriteString(wrapBase64(att.Content, 76))
+	}
+	fmt.Fprintf(&msg, "--%s--\r\n", boundary)
 	return msg.Bytes(), nil
+}
+
+func withTrailingNewline(body string) string {
+	if strings.HasSuffix(body, "\n") {
+		return body
+	}
+	return body + "\n"
+}
+
+func newMIMEBoundary() (string, error) {
+	var buf [16]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		return "", err
+	}
+	return "sloptools-" + hex.EncodeToString(buf[:]), nil
+}
+
+func wrapBase64(data []byte, width int) string {
+	if width <= 0 {
+		width = 76
+	}
+	encoded := base64.StdEncoding.EncodeToString(data)
+	var b strings.Builder
+	b.Grow(len(encoded) + len(encoded)/width*2 + 2)
+	for i := 0; i < len(encoded); i += width {
+		end := i + width
+		if end > len(encoded) {
+			end = len(encoded)
+		}
+		b.WriteString(encoded[i:end])
+		b.WriteString("\r\n")
+	}
+	return b.String()
 }
 
 func encodeGmailRawMessage(input DraftInput) (string, error) {

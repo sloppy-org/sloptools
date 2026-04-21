@@ -43,6 +43,8 @@ func run(args []string) int {
 		return cmdServer(args[1:])
 	case "mcp-server":
 		return cmdMCPServer(args[1:])
+	case "mail":
+		return cmdMail(args[1:])
 	case "version":
 		return cmdVersion()
 	default:
@@ -54,7 +56,8 @@ func run(args []string) int {
 
 func printHelp() {
 	fmt.Println("sloptools <command> [flags]")
-	fmt.Println("commands: bootstrap server mcp-server version")
+	fmt.Println("commands: bootstrap server mcp-server mail version")
+	fmt.Println("mail subcommands: send reply")
 }
 
 type serverConfig struct {

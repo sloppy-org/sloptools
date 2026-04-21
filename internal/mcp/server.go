@@ -281,6 +281,10 @@ func (s *Server) callTool(name string, args map[string]interface{}) (map[string]
 		return s.mailAttachmentGet(args)
 	case "mail_action":
 		return s.mailAction(args)
+	case "mail_send":
+		return s.mailSend(args)
+	case "mail_reply":
+		return s.mailReply(args)
 	case "mail_message_copy":
 		return s.mailMessageCopy(args)
 	case "mail_server_filter_list":

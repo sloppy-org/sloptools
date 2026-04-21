@@ -723,6 +723,105 @@ var MCPTools = []Tool{
 		},
 	},
 	{
+		Name:        "mail_send",
+		Description: "Compose and send (or save as draft) a plain-text email from a mail account, with optional attachments. Supports explicit In-Reply-To and References headers when you want to stitch threads manually.",
+		Required:    []string{"account_id", "to", "subject", "body"},
+		Properties: map[string]ToolProperty{
+			"account_id": {
+				Type:        "integer",
+				Description: "External account id to send from.",
+			},
+			"to": {
+				Type:        "array",
+				Description: "Recipient email addresses. Accepts plain addresses or Name <addr@example.com> items.",
+			},
+			"cc": {
+				Type:        "array",
+				Description: "Optional Cc addresses.",
+			},
+			"bcc": {
+				Type:        "array",
+				Description: "Optional Bcc addresses.",
+			},
+			"subject": {
+				Type:        "string",
+				Description: "Message subject.",
+			},
+			"body": {
+				Type:        "string",
+				Description: "Plain-text body. Newlines are preserved; the message is always sent text/plain UTF-8.",
+			},
+			"in_reply_to": {
+				Type:        "string",
+				Description: "Optional In-Reply-To header value (message-id to reply to).",
+			},
+			"references": {
+				Type:        "array",
+				Description: "Optional References header values (list of message-ids for thread context).",
+			},
+			"attachments": {
+				Type:        "array",
+				Description: "Optional list of attachments. Each item must be an object with filename, content_base64, and optional content_type, OR an object with path to load the file from disk.",
+			},
+			"draft_only": {
+				Type:        "boolean",
+				Description: "When true, save as draft without sending. Default false.",
+			},
+		},
+	},
+	{
+		Name:        "mail_reply",
+		Description: "Reply to an existing message with the correct In-Reply-To/References threading and a properly formatted plain-text quote. Supports two quote styles: bottom_post (GCC / mailing-list interleaved: quote above, reply below) and top_post (business: reply above, quote below).",
+		Required:    []string{"account_id", "message_id", "body"},
+		Properties: map[string]ToolProperty{
+			"account_id": {
+				Type:        "integer",
+				Description: "External account id to reply from.",
+			},
+			"message_id": {
+				Type:        "string",
+				Description: "Provider message id of the message being replied to.",
+			},
+			"body": {
+				Type:        "string",
+				Description: "Plain-text body of the new reply, before quoting.",
+			},
+			"quote_style": {
+				Type:        "string",
+				Description: "Quote placement: bottom_post (GCC / mailing-list; quote above, reply below) or top_post (modern business; reply above, quote below). Default bottom_post.",
+				Enum:        []string{"bottom_post", "top_post"},
+			},
+			"reply_all": {
+				Type:        "boolean",
+				Description: "When true, also include the original Cc recipients. Default false.",
+			},
+			"to": {
+				Type:        "array",
+				Description: "Optional override of To recipients; by default the original From address is used.",
+			},
+			"cc": {
+				Type:        "array",
+				Description: "Optional Cc recipients; merged with original Cc when reply_all is true.",
+			},
+			"bcc": {
+				Type:        "array",
+				Description: "Optional Bcc recipients.",
+			},
+			"subject": {
+				Type:        "string",
+				Description: "Optional subject override. Defaults to Re: <original subject>.",
+			},
+			"attachments": {
+				Type:        "array",
+				Description: "Optional list of attachments. Each item must be an object with filename, content_base64, and optional content_type, OR an object with path to load the file from disk.",
+			},
+			"draft_only": {
+				Type:        "boolean",
+				Description: "When true, save as draft without sending. Default false.",
+			},
+		},
+	},
+	{
 		Name:        "mail_server_filter_list",
 		Description: "List provider-native server filters or rules when supported.",
 		Required:    []string{"account_id"},
