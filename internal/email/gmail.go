@@ -28,6 +28,12 @@ type GmailClient struct {
 	auth            *googleauth.Session
 	credentialsPath string
 	tokenPath       string
+
+	// serviceBuilder is a test hook: when non-nil it bypasses the OAuth
+	// token source entirely and returns the preconfigured *gmail.Service.
+	// Production callers always use auth + the default gmail.NewService
+	// path; tests point this at a stub HTTP server.
+	serviceBuilder func(ctx context.Context) (*gmail.Service, error)
 }
 
 // Compile-time check that GmailClient implements EmailProvider.
@@ -37,6 +43,8 @@ var _ MessagePageProvider = (*GmailClient)(nil)
 var _ NamedLabelProvider = (*GmailClient)(nil)
 var _ ServerFilterProvider = (*GmailClient)(nil)
 var _ RawMessageProvider = (*GmailClient)(nil)
+var _ FlagMutator = (*GmailClient)(nil)
+var _ CategoryMutator = (*GmailClient)(nil)
 
 // NewGmail creates a new Gmail client.
 func NewGmail() (*GmailClient, error) {
@@ -88,6 +96,9 @@ func (c *GmailClient) getTokenSource(ctx context.Context) (oauth2.TokenSource, e
 }
 
 func (c *GmailClient) getService(ctx context.Context) (*gmail.Service, error) {
+	if c.serviceBuilder != nil {
+		return c.serviceBuilder(ctx)
+	}
 	tokenSource, err := c.getTokenSource(ctx)
 	if err != nil {
 		return nil, err
@@ -448,6 +459,132 @@ func (c *GmailClient) ApplyNamedLabel(ctx context.Context, messageIDs []string, 
 		remove = []string{"INBOX"}
 	}
 	return c.ModifyLabels(ctx, messageIDs, []string{labelID}, remove)
+}
+
+// SetFlag maps the abstract flag status to Gmail's STARRED system label.
+// Gmail has no notion of a "complete" follow-up state, so that status returns
+// ErrCapabilityUnsupported so callers can surface a machine-readable refusal.
+func (c *GmailClient) SetFlag(ctx context.Context, messageIDs []string, flag Flag) (int, error) {
+	switch strings.ToLower(strings.TrimSpace(flag.Status)) {
+	case strings.ToLower(FlagStatusFlagged):
+		return c.ModifyLabels(ctx, messageIDs, []string{"STARRED"}, nil)
+	case strings.ToLower(FlagStatusNotFlagged):
+		return c.ModifyLabels(ctx, messageIDs, nil, []string{"STARRED"})
+	case strings.ToLower(FlagStatusComplete):
+		return 0, fmt.Errorf("gmail flag status %q: %w", FlagStatusComplete, ErrCapabilityUnsupported)
+	default:
+		return 0, fmt.Errorf("gmail flag status %q is not recognised", flag.Status)
+	}
+}
+
+// ClearFlag removes the STARRED label from the target messages.
+func (c *GmailClient) ClearFlag(ctx context.Context, messageIDs []string) (int, error) {
+	return c.ModifyLabels(ctx, messageIDs, nil, []string{"STARRED"})
+}
+
+// SetCategories replaces the category set on each message by mapping
+// categories to Gmail user labels. Labels are created on demand so repeated
+// calls stay idempotent. Labels that match a previously-assigned category but
+// are not in the new set get removed so the operation is a replace, not a
+// union.
+func (c *GmailClient) SetCategories(ctx context.Context, messageIDs []string, categories []string) (int, error) {
+	ids := compactStrings(messageIDs)
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	labels, err := c.ListLabels(ctx)
+	if err != nil {
+		return 0, err
+	}
+	labelsByNameLower := make(map[string]string, len(labels))
+	userLabelIDs := make(map[string]struct{}, len(labels))
+	for _, label := range labels {
+		name := strings.TrimSpace(label.Name)
+		id := strings.TrimSpace(label.ID)
+		if name == "" || id == "" {
+			continue
+		}
+		labelsByNameLower[strings.ToLower(name)] = id
+		if strings.EqualFold(strings.TrimSpace(label.Type), "user") {
+			userLabelIDs[id] = struct{}{}
+		}
+	}
+	desiredIDs := make([]string, 0, len(categories))
+	desiredSet := make(map[string]struct{}, len(categories))
+	for _, category := range compactStrings(categories) {
+		labelID, err := c.ensureUserLabel(ctx, category)
+		if err != nil {
+			return 0, err
+		}
+		if _, seen := desiredSet[labelID]; seen {
+			continue
+		}
+		desiredSet[labelID] = struct{}{}
+		desiredIDs = append(desiredIDs, labelID)
+		userLabelIDs[labelID] = struct{}{}
+	}
+	currentByMsg, err := c.collectUserLabelIDs(ctx, ids, userLabelIDs)
+	if err != nil {
+		return 0, err
+	}
+	succeeded := 0
+	for _, id := range ids {
+		current := currentByMsg[id]
+		remove := make([]string, 0)
+		for labelID := range current {
+			if _, keep := desiredSet[labelID]; !keep {
+				remove = append(remove, labelID)
+			}
+		}
+		add := make([]string, 0, len(desiredIDs))
+		for _, labelID := range desiredIDs {
+			if _, already := current[labelID]; !already {
+				add = append(add, labelID)
+			}
+		}
+		if len(add) == 0 && len(remove) == 0 {
+			succeeded++
+			continue
+		}
+		count, err := c.ModifyLabels(ctx, []string{id}, add, remove)
+		if err != nil {
+			return succeeded, err
+		}
+		succeeded += count
+	}
+	return succeeded, nil
+}
+
+// collectUserLabelIDs fetches current user-label ids per message so
+// SetCategories can compute a minimal add/remove diff.
+func (c *GmailClient) collectUserLabelIDs(ctx context.Context, messageIDs []string, userLabelIDs map[string]struct{}) (map[string]map[string]struct{}, error) {
+	out := make(map[string]map[string]struct{}, len(messageIDs))
+	service, err := c.getService(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range messageIDs {
+		c.rateLimiter.Acquire("messages.get")
+		msg, err := service.Users.Messages.Get("me", id).
+			Context(ctx).
+			Format("minimal").
+			Do()
+		if err != nil {
+			return nil, fmt.Errorf("failed to read gmail labels for %s: %w", id, err)
+		}
+		assigned := make(map[string]struct{}, len(msg.LabelIds))
+		for _, labelID := range msg.LabelIds {
+			clean := strings.TrimSpace(labelID)
+			if clean == "" {
+				continue
+			}
+			if _, ok := userLabelIDs[clean]; ok {
+				assigned[clean] = struct{}{}
+			}
+		}
+		out[id] = assigned
+	}
+	return out, nil
 }
 
 func (c *GmailClient) ServerFilterCapabilities() ServerFilterCapabilities {
