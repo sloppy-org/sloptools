@@ -770,6 +770,21 @@ var MCPTools = []Tool{
 		},
 	},
 	{
+		Name:        "mail_draft_send",
+		Description: "Send an existing draft by id without rewriting its content. Supported for accounts whose backend can dispatch a saved draft directly (Exchange EWS, Gmail). Use this after mail_send with draft_only=true, or to send a draft you edited in your mail client.",
+		Required:    []string{"account_id", "draft_id"},
+		Properties: map[string]ToolProperty{
+			"account_id": {
+				Type:        "integer",
+				Description: "External account id that owns the draft.",
+			},
+			"draft_id": {
+				Type:        "string",
+				Description: "Provider draft id returned by mail_send (or visible on the draft in the mail store).",
+			},
+		},
+	},
+	{
 		Name:        "mail_reply",
 		Description: "Reply to an existing message with the correct In-Reply-To/References threading and a properly formatted plain-text quote. Supports two quote styles: bottom_post (GCC / mailing-list interleaved: quote above, reply below) and top_post (business: reply above, quote below).",
 		Required:    []string{"account_id", "message_id", "body"},

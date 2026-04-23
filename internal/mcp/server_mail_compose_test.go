@@ -18,14 +18,16 @@ import (
 
 type fakeDraftMailProvider struct {
 	fakeMailProvider
-	lastDraft    email.DraftInput
-	lastDraftID  string
-	lastSendID   string
-	lastRawMIME  []byte
-	sentInput    email.DraftInput
-	createCalls  int
-	sendCalls    int
-	createDraft  email.Draft
+	lastDraft          email.DraftInput
+	lastDraftID        string
+	lastSendID         string
+	lastRawMIME        []byte
+	sentInput          email.DraftInput
+	createCalls        int
+	sendCalls          int
+	sendExistingCalls  int
+	lastSendExistingID string
+	createDraft        email.Draft
 }
 
 func (p *fakeDraftMailProvider) CreateDraft(_ context.Context, input email.DraftInput) (email.Draft, error) {
@@ -56,6 +58,12 @@ func (p *fakeDraftMailProvider) SendDraft(_ context.Context, draftID string, inp
 	p.sendCalls++
 	p.lastSendID = draftID
 	p.sentInput = input
+	return nil
+}
+
+func (p *fakeDraftMailProvider) SendExistingDraft(_ context.Context, draftID string) error {
+	p.sendExistingCalls++
+	p.lastSendExistingID = draftID
 	return nil
 }
 
@@ -234,6 +242,85 @@ func TestMailReplyAllAddsOriginalRecipients(t *testing.T) {
 	}
 	if len(provider.lastDraft.Cc) != 1 || provider.lastDraft.Cc[0] != "gcc-patches@gcc.gnu.org" {
 		t.Fatalf("reply_all Cc = %#v, want [gcc-patches@gcc.gnu.org]", provider.lastDraft.Cc)
+	}
+}
+
+type minimalDraftProvider struct {
+	fakeMailProvider
+}
+
+func (p *minimalDraftProvider) CreateDraft(_ context.Context, _ email.DraftInput) (email.Draft, error) {
+	return email.Draft{}, fmt.Errorf("not used in this test")
+}
+
+func (p *minimalDraftProvider) CreateReplyDraft(_ context.Context, _ string, _ email.DraftInput) (email.Draft, error) {
+	return email.Draft{}, fmt.Errorf("not used in this test")
+}
+
+func (p *minimalDraftProvider) UpdateDraft(_ context.Context, _ string, _ email.DraftInput) (email.Draft, error) {
+	return email.Draft{}, fmt.Errorf("not used in this test")
+}
+
+func (p *minimalDraftProvider) SendDraft(_ context.Context, _ string, _ email.DraftInput) error {
+	return fmt.Errorf("not used in this test")
+}
+
+func TestMailDraftSendDispatchesSendExistingDraft(t *testing.T) {
+	s, account, provider := setupComposeFixture(t)
+	out, err := s.callTool("mail_draft_send", map[string]interface{}{
+		"account_id": float64(account.ID),
+		"draft_id":   "draft-abc",
+	})
+	if err != nil {
+		t.Fatalf("mail_draft_send error: %v", err)
+	}
+	if out["sent"] != true {
+		t.Fatalf("expected sent=true, got %v", out["sent"])
+	}
+	if out["draft_id"] != "draft-abc" {
+		t.Fatalf("draft_id echo = %v, want draft-abc", out["draft_id"])
+	}
+	if provider.sendExistingCalls != 1 {
+		t.Fatalf("sendExistingCalls = %d, want 1", provider.sendExistingCalls)
+	}
+	if provider.lastSendExistingID != "draft-abc" {
+		t.Fatalf("lastSendExistingID = %q, want draft-abc", provider.lastSendExistingID)
+	}
+	if provider.sendCalls != 0 {
+		t.Fatalf("sendCalls = %d; mail_draft_send must not route through SendDraft", provider.sendCalls)
+	}
+	if provider.createCalls != 0 {
+		t.Fatalf("createCalls = %d; mail_draft_send must not recreate the draft", provider.createCalls)
+	}
+}
+
+func TestMailDraftSendRequiresDraftID(t *testing.T) {
+	s, account, _ := setupComposeFixture(t)
+	if _, err := s.callTool("mail_draft_send", map[string]interface{}{
+		"account_id": float64(account.ID),
+	}); err == nil {
+		t.Fatalf("expected error when draft_id is missing")
+	}
+}
+
+func TestMailDraftSendUnsupportedProvider(t *testing.T) {
+	s, st, _ := newDomainServerForTest(t)
+	account, err := st.CreateExternalAccount(store.SphereWork, store.ExternalProviderExchangeEWS, "albert@tugraz.at", map[string]any{})
+	if err != nil {
+		t.Fatalf("CreateExternalAccount: %v", err)
+	}
+	s.newEmailProvider = func(context.Context, store.ExternalAccount) (email.EmailProvider, error) {
+		return &minimalDraftProvider{}, nil
+	}
+	_, err = s.callTool("mail_draft_send", map[string]interface{}{
+		"account_id": float64(account.ID),
+		"draft_id":   "draft-abc",
+	})
+	if err == nil {
+		t.Fatalf("expected error for provider without ExistingDraftSender")
+	}
+	if !strings.Contains(err.Error(), "does not support sending an existing draft") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

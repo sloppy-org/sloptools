@@ -51,6 +51,14 @@ type DraftProvider interface {
 	SendDraft(context.Context, string, DraftInput) error
 }
 
+// ExistingDraftSender sends a draft that already lives in the mailbox as-is,
+// without rewriting its content. Providers that cannot send by id alone (for
+// example IMAP+SMTP, where the SMTP envelope must be rebuilt from the stored
+// draft) do not implement this interface.
+type ExistingDraftSender interface {
+	SendExistingDraft(ctx context.Context, draftID string) error
+}
+
 type SMTPConfig struct {
 	Host      string
 	Port      int

@@ -86,6 +86,35 @@ func (s *Server) mailSend(args map[string]interface{}) (map[string]interface{}, 
 	return mailComposeResultToMap(result), nil
 }
 
+func (s *Server) mailDraftSend(args map[string]interface{}) (map[string]interface{}, error) {
+	accountID, err := int64Arg(args, "account_id")
+	if err != nil {
+		return nil, err
+	}
+	draftID := strings.TrimSpace(strArg(args, "draft_id"))
+	if draftID == "" {
+		return nil, errors.New("draft_id is required")
+	}
+	ctx := context.Background()
+	account, provider, err := s.ResolveMailAccount(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer provider.Close()
+	sender, ok := provider.(email.ExistingDraftSender)
+	if !ok {
+		return nil, fmt.Errorf("account %q (%s) does not support sending an existing draft by id", account.AccountName, account.Provider)
+	}
+	if err := sender.SendExistingDraft(ctx, draftID); err != nil {
+		return nil, err
+	}
+	return map[string]interface{}{
+		"account":  account,
+		"draft_id": draftID,
+		"sent":     true,
+	}, nil
+}
+
 func (s *Server) mailReply(args map[string]interface{}) (map[string]interface{}, error) {
 	req, err := parseMailReplyArgs(args)
 	if err != nil {

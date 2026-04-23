@@ -32,6 +32,7 @@ type ExchangeEWSMailProvider struct {
 var _ EmailProvider = (*ExchangeEWSMailProvider)(nil)
 var _ AttachmentProvider = (*ExchangeEWSMailProvider)(nil)
 var _ DraftProvider = (*ExchangeEWSMailProvider)(nil)
+var _ ExistingDraftSender = (*ExchangeEWSMailProvider)(nil)
 var _ MessagePageProvider = (*ExchangeEWSMailProvider)(nil)
 var _ NamedFolderProvider = (*ExchangeEWSMailProvider)(nil)
 var _ ServerFilterProvider = (*ExchangeEWSMailProvider)(nil)
@@ -696,6 +697,20 @@ func (p *ExchangeEWSMailProvider) SendDraft(ctx context.Context, draftID string,
 		return err
 	}
 	if err := p.client.SendDraft(ctx, strings.TrimSpace(draftID)); err != nil {
+		return fmt.Errorf("exchange ews send draft: %w", err)
+	}
+	return nil
+}
+
+func (p *ExchangeEWSMailProvider) SendExistingDraft(ctx context.Context, draftID string) error {
+	if p == nil || p.client == nil {
+		return fmt.Errorf("exchange ews provider is not configured")
+	}
+	draftID = strings.TrimSpace(draftID)
+	if draftID == "" {
+		return fmt.Errorf("draft_id is required")
+	}
+	if err := p.client.SendDraft(ctx, draftID); err != nil {
 		return fmt.Errorf("exchange ews send draft: %w", err)
 	}
 	return nil

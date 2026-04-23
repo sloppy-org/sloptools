@@ -10,6 +10,7 @@ import (
 )
 
 var _ DraftProvider = (*GmailClient)(nil)
+var _ ExistingDraftSender = (*GmailClient)(nil)
 
 func (c *GmailClient) CreateDraft(ctx context.Context, input DraftInput) (Draft, error) {
 	normalized, err := NormalizeDraftInput(input)
@@ -108,12 +109,19 @@ func (c *GmailClient) UpdateDraft(ctx context.Context, draftID string, input Dra
 }
 
 func (c *GmailClient) SendDraft(ctx context.Context, draftID string, _ DraftInput) error {
+	return c.SendExistingDraft(ctx, draftID)
+}
+
+func (c *GmailClient) SendExistingDraft(ctx context.Context, draftID string) error {
+	draftID = strings.TrimSpace(draftID)
+	if draftID == "" {
+		return fmt.Errorf("draft_id is required")
+	}
 	service, err := c.getService(ctx)
 	if err != nil {
 		return err
 	}
-	_, err = service.Users.Drafts.Send("me", &gmail.Draft{Id: strings.TrimSpace(draftID)}).Context(ctx).Do()
-	if err != nil {
+	if _, err := service.Users.Drafts.Send("me", &gmail.Draft{Id: draftID}).Context(ctx).Do(); err != nil {
 		return fmt.Errorf("gmail send draft: %w", err)
 	}
 	return nil
