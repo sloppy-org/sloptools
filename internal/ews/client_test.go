@@ -659,3 +659,83 @@ func TestClientSyncFolderItemsParsesChanges(t *testing.T) {
 		}
 	}
 }
+
+func TestClientRetriesOn401WithFreshSession(t *testing.T) {
+	var (
+		requests   atomic.Int32
+		cookieSeen atomic.Int32
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := requests.Add(1)
+		if strings.Contains(r.Header.Get("Cookie"), "X-BackEndCookie=") {
+			cookieSeen.Add(1)
+		}
+		if n == 1 {
+			// First call: hand out a session cookie and succeed so it is
+			// primed in the shared jar for the next client.
+			http.SetCookie(w, &http.Cookie{Name: "X-BackEndCookie", Value: "sticky", Path: "/"})
+			w.Header().Set("Content-Type", "text/xml; charset=utf-8")
+			_, _ = io.WriteString(w, `<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types">
+  <soap:Body>
+    <m:GetItemResponse>
+      <m:ResponseMessages>
+        <m:GetItemResponseMessage ResponseClass="Success">
+          <m:ResponseCode>NoError</m:ResponseCode>
+          <m:Items><t:Message><t:ItemId Id="msg-1" ChangeKey="ck-1" /></t:Message></m:Items>
+        </m:GetItemResponseMessage>
+      </m:ResponseMessages>
+    </m:GetItemResponse>
+  </soap:Body>
+</soap:Envelope>`)
+			return
+		}
+		if n == 2 {
+			// Second call: simulate an expired session. Reject with bare 401
+			// and no WWW-Authenticate header so go-ntlmssp does not retry.
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		// Third call is the automatic retry. It must arrive without the
+		// stale cookie; answer successfully.
+		if strings.Contains(r.Header.Get("Cookie"), "X-BackEndCookie=") {
+			t.Errorf("retry request still carries stale session cookie")
+		}
+		w.Header().Set("Content-Type", "text/xml; charset=utf-8")
+		_, _ = io.WriteString(w, `<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types">
+  <soap:Body>
+    <m:GetItemResponse>
+      <m:ResponseMessages>
+        <m:GetItemResponseMessage ResponseClass="Success">
+          <m:ResponseCode>NoError</m:ResponseCode>
+          <m:Items><t:Message><t:ItemId Id="msg-2" ChangeKey="ck-2" /></t:Message></m:Items>
+        </m:GetItemResponseMessage>
+      </m:ResponseMessages>
+    </m:GetItemResponse>
+  </soap:Body>
+</soap:Envelope>`)
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, Username: "ert-retry", Password: "secret"})
+	if err != nil {
+		t.Fatalf("NewClient() error: %v", err)
+	}
+	defer client.Close()
+
+	if _, err := client.GetMessages(t.Context(), []string{"msg-1"}); err != nil {
+		t.Fatalf("first GetMessages() error: %v", err)
+	}
+	if _, err := client.GetMessages(t.Context(), []string{"msg-2"}); err != nil {
+		t.Fatalf("second GetMessages() error: %v", err)
+	}
+	if got := requests.Load(); got != 3 {
+		t.Fatalf("server saw %d requests, want 3 (1 priming + 1 rejected + 1 retry)", got)
+	}
+	// Exactly one request (the rejected second) carries the stale cookie;
+	// the retried third call uses the fresh jar.
+	if got := cookieSeen.Load(); got != 1 {
+		t.Fatalf("requests carrying stale session cookie = %d, want 1", got)
+	}
+}

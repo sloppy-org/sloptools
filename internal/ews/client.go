@@ -905,33 +905,48 @@ func (c *Client) callWithHTTPClient(ctx context.Context, client *http.Client, so
   <soap:Header><t:RequestServerVersion Version="%s" /></soap:Header>
   <soap:Body>%s</soap:Body>
 </soap:Envelope>`, xmlEscapeAttr(c.cfg.ServerVersion), innerXML)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.Endpoint, strings.NewReader(body))
-	if err != nil {
-		return err
+
+	// Exchange sometimes returns a bare 401 on write operations when the
+	// cached affinity/NTLM session cookie has expired server-side. The
+	// negotiator won't re-handshake without a WWW-Authenticate hint, so
+	// drop the session cookies and retry once with a fresh handshake.
+	var sanitized []byte
+	var status int
+	for attempt := 0; attempt < 2; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.Endpoint, strings.NewReader(body))
+		if err != nil {
+			return err
+		}
+		req.SetBasicAuth(c.cfg.Username, c.cfg.Password)
+		req.Header.Set("Content-Type", "text/xml; charset=utf-8")
+		req.Header.Set("Accept", "text/xml")
+		req.Header.Set("SOAPAction", fmt.Sprintf(`"http://schemas.microsoft.com/exchange/services/2006/messages/%s"`, soapAction))
+		if mailbox := strings.TrimSpace(c.cfg.Username); mailbox != "" {
+			req.Header.Set("X-AnchorMailbox", mailbox)
+			req.Header.Set("X-PreferServerAffinity", "true")
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			return err
+		}
+		data, readErr := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if readErr != nil {
+			return readErr
+		}
+		sanitized, _ = sanitizeXML10Document(data)
+		status = resp.StatusCode
+		if status == http.StatusUnauthorized && attempt == 0 {
+			c.resetSessionCookies(client)
+			continue
+		}
+		break
 	}
-	req.SetBasicAuth(c.cfg.Username, c.cfg.Password)
-	req.Header.Set("Content-Type", "text/xml; charset=utf-8")
-	req.Header.Set("Accept", "text/xml")
-	req.Header.Set("SOAPAction", fmt.Sprintf(`"http://schemas.microsoft.com/exchange/services/2006/messages/%s"`, soapAction))
-	if mailbox := strings.TrimSpace(c.cfg.Username); mailbox != "" {
-		req.Header.Set("X-AnchorMailbox", mailbox)
-		req.Header.Set("X-PreferServerAffinity", "true")
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-	sanitized, _ := sanitizeXML10Document(data)
-	if faultErr := parseSOAPFaultError(soapAction, resp.StatusCode, sanitized); faultErr != nil {
+	if faultErr := parseSOAPFaultError(soapAction, status, sanitized); faultErr != nil {
 		return faultErr
 	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("ews http %d: %s", resp.StatusCode, strings.TrimSpace(string(sanitized)))
+	if status < 200 || status >= 300 {
+		return fmt.Errorf("ews http %d: %s", status, strings.TrimSpace(string(sanitized)))
 	}
 	if err := xml.Unmarshal(sanitized, target); err != nil {
 		return fmt.Errorf("decode ews %s response: %w", soapAction, err)
@@ -940,6 +955,33 @@ func (c *Client) callWithHTTPClient(ctx context.Context, client *http.Client, so
 		return fmt.Errorf("ews %s: %s", soapAction, rc)
 	}
 	return nil
+}
+
+// resetSessionCookies drops the cached cookie jar shared across all clients
+// for this mailbox so the next request re-runs the NTLM handshake. Only the
+// passed-in http.Client's Jar field is swapped; peer clients that still point
+// at the previous jar will pick up the fresh jar on their next call because
+// the shared session holds the canonical reference.
+func (c *Client) resetSessionCookies(client *http.Client) {
+	if c == nil || c.session == nil {
+		return
+	}
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		return
+	}
+	c.session.mu.Lock()
+	c.session.jar = jar
+	c.session.mu.Unlock()
+	if client != nil {
+		client.Jar = jar
+	}
+	if c.httpClient != nil && c.httpClient != client {
+		c.httpClient.Jar = jar
+	}
+	if c.streamingHTTPClient != nil && c.streamingHTTPClient != client {
+		c.streamingHTTPClient.Jar = jar
+	}
 }
 
 func (c *Client) acquireRequestSlot(ctx context.Context, client *http.Client) (func(), error) {
