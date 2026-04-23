@@ -8,6 +8,7 @@ import (
 	"time"
 
 	tabcalendar "github.com/sloppy-org/sloptools/internal/calendar"
+	"github.com/sloppy-org/sloptools/internal/groupware"
 	"github.com/sloppy-org/sloptools/internal/providerdata"
 	"github.com/sloppy-org/sloptools/internal/store"
 )
@@ -17,7 +18,8 @@ func (s *Server) calendarList(args map[string]interface{}) (map[string]interface
 	if err != nil {
 		return nil, err
 	}
-	accounts, err := tabcalendar.GoogleCalendarAccounts(st)
+	ctx := context.Background()
+	accounts, err := s.resolveCalendarAccounts(st, args)
 	if err != nil {
 		return nil, err
 	}
@@ -28,28 +30,32 @@ func (s *Server) calendarList(args map[string]interface{}) (map[string]interface
 			"count":     0,
 		}, nil
 	}
-	if s.newGoogleCalendarReader == nil {
-		return nil, fmt.Errorf("google calendar reader is unavailable")
-	}
-	reader, err := s.newGoogleCalendarReader(context.Background())
+	allAccounts, err := tabcalendar.GoogleCalendarAccounts(st)
 	if err != nil {
 		return nil, err
 	}
-	calendars, err := reader.ListCalendars(context.Background())
-	if err != nil {
-		return nil, err
-	}
-	items := make([]map[string]interface{}, 0, len(calendars))
-	for _, cal := range calendars {
-		items = append(items, map[string]interface{}{
-			"id":          cal.ID,
-			"name":        cal.Name,
-			"description": cal.Description,
-			"time_zone":   cal.TimeZone,
-			"primary":     cal.Primary,
-			"provider":    store.ExternalProviderGoogleCalendar,
-			"sphere":      tabcalendar.ResolveCalendarSphere(st, store.ExternalProviderGoogleCalendar, cal.ID, cal.Name, "", accounts),
-		})
+	items := make([]map[string]interface{}, 0, len(accounts))
+	for _, account := range accounts {
+		provider, err := s.calendarProvider(ctx, account)
+		if err != nil {
+			return nil, err
+		}
+		calendars, err := provider.ListCalendars(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("list calendars for %q: %w", account.Label, err)
+		}
+		for _, cal := range calendars {
+			items = append(items, map[string]interface{}{
+				"id":          cal.ID,
+				"name":        cal.Name,
+				"description": cal.Description,
+				"time_zone":   cal.TimeZone,
+				"primary":     cal.Primary,
+				"provider":    calendarProviderName(account, provider),
+				"account_id":  account.ID,
+				"sphere":      tabcalendar.ResolveCalendarSphere(st, store.ExternalProviderGoogleCalendar, cal.ID, cal.Name, account.Sphere, allAccounts),
+			})
+		}
 	}
 	sort.Slice(items, func(i, j int) bool {
 		return strings.ToLower(strFromAny(items[i]["name"])) < strings.ToLower(strFromAny(items[j]["name"]))
@@ -66,7 +72,8 @@ func (s *Server) calendarEvents(args map[string]interface{}) (map[string]interfa
 	if err != nil {
 		return nil, err
 	}
-	accounts, err := tabcalendar.GoogleCalendarAccounts(st)
+	ctx := context.Background()
+	accounts, err := s.resolveCalendarAccounts(st, args)
 	if err != nil {
 		return nil, err
 	}
@@ -77,14 +84,7 @@ func (s *Server) calendarEvents(args map[string]interface{}) (map[string]interfa
 			"count":    0,
 		}, nil
 	}
-	if s.newGoogleCalendarReader == nil {
-		return nil, fmt.Errorf("google calendar reader is unavailable")
-	}
-	reader, err := s.newGoogleCalendarReader(context.Background())
-	if err != nil {
-		return nil, err
-	}
-	calendars, err := reader.ListCalendars(context.Background())
+	allAccounts, err := tabcalendar.GoogleCalendarAccounts(st)
 	if err != nil {
 		return nil, err
 	}
@@ -99,28 +99,31 @@ func (s *Server) calendarEvents(args map[string]interface{}) (map[string]interfa
 		limit = 100
 	}
 	now := time.Now()
-	timeMin := now
-	timeMax := now.Add(time.Duration(days) * 24 * time.Hour)
-	calendarNames := make(map[string]string, len(calendars))
+	rng := tabcalendar.TimeRange{Start: now, End: now.Add(time.Duration(days) * 24 * time.Hour)}
 	events := make([]map[string]interface{}, 0, limit)
-	for _, cal := range calendars {
-		if calendarID != "" && !strings.EqualFold(strings.TrimSpace(cal.ID), calendarID) {
-			continue
-		}
-		calendarNames[cal.ID] = cal.Name
-		providerSphere := tabcalendar.ResolveCalendarSphere(st, store.ExternalProviderGoogleCalendar, cal.ID, cal.Name, "", accounts)
-		items, err := reader.GetEvents(context.Background(), tabcalendar.GetEventsOptions{
-			CalendarID: cal.ID,
-			TimeMin:    timeMin,
-			TimeMax:    timeMax,
-			MaxResults: int64(limit),
-			Query:      query,
-		})
+	calendarNames := make(map[string]string)
+	for _, account := range accounts {
+		provider, err := s.calendarProvider(ctx, account)
 		if err != nil {
-			return nil, fmt.Errorf("list events for %q: %w", cal.Name, err)
+			return nil, err
 		}
-		for _, event := range items {
-			events = append(events, eventPayload(event, cal.Name, providerSphere))
+		calendars, err := provider.ListCalendars(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("list calendars for %q: %w", account.Label, err)
+		}
+		for _, cal := range calendars {
+			if calendarID != "" && !strings.EqualFold(strings.TrimSpace(cal.ID), calendarID) {
+				continue
+			}
+			calendarNames[cal.ID] = cal.Name
+			providerSphere := tabcalendar.ResolveCalendarSphere(st, store.ExternalProviderGoogleCalendar, cal.ID, cal.Name, account.Sphere, allAccounts)
+			items, err := listCalendarEvents(ctx, provider, cal.ID, rng, query, int64(limit))
+			if err != nil {
+				return nil, fmt.Errorf("list events for %q: %w", cal.Name, err)
+			}
+			for _, event := range items {
+				events = append(events, eventPayload(event, cal.Name, providerSphere, calendarProviderName(account, provider)))
+			}
 		}
 	}
 	sort.Slice(events, func(i, j int) bool {
@@ -150,51 +153,137 @@ func (s *Server) calendarEventCreate(args map[string]interface{}) (map[string]in
 	if err != nil {
 		return nil, err
 	}
-	accounts, err := tabcalendar.GoogleCalendarAccounts(st)
+	ctx := context.Background()
+	accounts, err := s.resolveCalendarAccounts(st, args)
 	if err != nil {
 		return nil, err
 	}
 	if len(accounts) == 0 {
-		return nil, fmt.Errorf("no Google Calendar accounts are configured")
+		return nil, fmt.Errorf("no calendar accounts are configured")
 	}
-	if s.newGoogleCalendarReader == nil {
-		return nil, fmt.Errorf("google calendar writer is unavailable")
-	}
-	reader, err := s.newGoogleCalendarReader(context.Background())
+	allAccounts, err := tabcalendar.GoogleCalendarAccounts(st)
 	if err != nil {
 		return nil, err
 	}
-	calendars, err := reader.ListCalendars(context.Background())
+	account := accounts[0]
+	provider, err := s.calendarProvider(ctx, account)
+	if err != nil {
+		return nil, err
+	}
+	mutator, ok := groupware.Supports[tabcalendar.EventMutator](provider)
+	if !ok {
+		return nil, fmt.Errorf("calendar account %q does not support event creation", account.Label)
+	}
+	calendars, err := provider.ListCalendars(ctx)
 	if err != nil {
 		return nil, err
 	}
 	target, err := tabcalendar.SelectCalendar(
 		calendars,
 		st,
-		accounts,
+		allAccounts,
 		strArg(args, "calendar_id"),
 		strArg(args, "sphere"),
 	)
 	if err != nil {
 		return nil, err
 	}
-	createOpts, err := calendarCreateOptionsFromArgs(args, target.ID)
+	draft, err := calendarEventFromArgs(args, target.ID)
 	if err != nil {
 		return nil, err
 	}
-	event, err := reader.CreateEvent(context.Background(), createOpts)
+	created, err := mutator.CreateEvent(ctx, target.ID, draft)
 	if err != nil {
 		return nil, err
 	}
-	sphere := tabcalendar.ResolveCalendarSphere(st, store.ExternalProviderGoogleCalendar, target.ID, target.Name, strArg(args, "sphere"), accounts)
+	sphere := tabcalendar.ResolveCalendarSphere(st, store.ExternalProviderGoogleCalendar, target.ID, target.Name, strArg(args, "sphere"), allAccounts)
 	return map[string]interface{}{
-		"provider": store.ExternalProviderGoogleCalendar,
+		"provider": calendarProviderName(account, provider),
 		"created":  true,
-		"event":    eventPayload(event, target.Name, sphere),
+		"event":    eventPayload(created, target.Name, sphere, calendarProviderName(account, provider)),
 	}, nil
 }
 
-func eventPayload(event providerdata.Event, calendarName, sphere string) map[string]interface{} {
+// resolveCalendarAccounts applies account_id / sphere routing. Absent
+// account_id defaults to the existing GoogleCalendarAccounts() behaviour
+// (Google accounts with the Gmail fallback), preserving the pre-refactor
+// calendar_list response when no routing arguments are supplied.
+func (s *Server) resolveCalendarAccounts(st *store.Store, args map[string]interface{}) ([]store.ExternalAccount, error) {
+	accountIDPtr, _, err := optionalInt64Arg(args, "account_id")
+	if err != nil {
+		return nil, err
+	}
+	if accountIDPtr != nil {
+		account, err := st.GetExternalAccount(*accountIDPtr)
+		if err != nil {
+			return nil, err
+		}
+		if !account.Enabled {
+			return nil, fmt.Errorf("account %d is disabled", *accountIDPtr)
+		}
+		return []store.ExternalAccount{account}, nil
+	}
+	accounts, err := tabcalendar.GoogleCalendarAccounts(st)
+	if err != nil {
+		return nil, err
+	}
+	sphere := strings.TrimSpace(strArg(args, "sphere"))
+	if sphere == "" {
+		return accounts, nil
+	}
+	filtered := make([]store.ExternalAccount, 0, len(accounts))
+	for _, account := range accounts {
+		if strings.EqualFold(account.Sphere, sphere) {
+			filtered = append(filtered, account)
+		}
+	}
+	return filtered, nil
+}
+
+func (s *Server) calendarProvider(ctx context.Context, account store.ExternalAccount) (tabcalendar.Provider, error) {
+	if s.newCalendarProvider != nil {
+		return s.newCalendarProvider(ctx, account)
+	}
+	if s.groupware == nil {
+		return nil, fmt.Errorf("groupware registry is not configured")
+	}
+	return s.groupware.CalendarFor(ctx, account.ID)
+}
+
+func calendarProviderName(account store.ExternalAccount, provider tabcalendar.Provider) string {
+	if provider != nil {
+		if name := strings.TrimSpace(provider.ProviderName()); name != "" {
+			return name
+		}
+	}
+	if account.Provider != "" {
+		return account.Provider
+	}
+	return store.ExternalProviderGoogleCalendar
+}
+
+func listCalendarEvents(ctx context.Context, provider tabcalendar.Provider, calendarID string, rng tabcalendar.TimeRange, query string, limit int64) ([]providerdata.Event, error) {
+	if searcher, ok := groupware.Supports[tabcalendar.EventSearcher](provider); ok {
+		return searcher.SearchEvents(ctx, calendarID, rng, query, limit)
+	}
+	items, err := provider.ListEvents(ctx, calendarID, rng)
+	if err != nil {
+		return nil, err
+	}
+	if query == "" {
+		return items, nil
+	}
+	q := strings.ToLower(query)
+	filtered := items[:0]
+	for _, ev := range items {
+		if strings.Contains(strings.ToLower(ev.Summary+" "+ev.Description+" "+ev.Location), q) {
+			filtered = append(filtered, ev)
+		}
+	}
+	return filtered, nil
+}
+
+func eventPayload(event providerdata.Event, calendarName, sphere, providerName string) map[string]interface{} {
 	attendees := make([]map[string]interface{}, 0, len(event.Attendees))
 	for _, att := range event.Attendees {
 		attendees = append(attendees, map[string]interface{}{
@@ -203,11 +292,14 @@ func eventPayload(event providerdata.Event, calendarName, sphere string) map[str
 			"response": att.Response,
 		})
 	}
+	if strings.TrimSpace(providerName) == "" {
+		providerName = store.ExternalProviderGoogleCalendar
+	}
 	payload := map[string]interface{}{
 		"id":            event.ID,
 		"calendar_id":   event.CalendarID,
 		"calendar_name": calendarName,
-		"provider":      store.ExternalProviderGoogleCalendar,
+		"provider":      providerName,
 		"sphere":        sphere,
 		"summary":       event.Summary,
 		"description":   event.Description,
@@ -232,25 +324,25 @@ func strFromAny(v any) string {
 	return strings.TrimSpace(s)
 }
 
-func calendarCreateOptionsFromArgs(args map[string]interface{}, calendarID string) (tabcalendar.CreateEventOptions, error) {
+func calendarEventFromArgs(args map[string]interface{}, calendarID string) (providerdata.Event, error) {
 	summary := strings.TrimSpace(strArg(args, "summary"))
 	if summary == "" {
 		summary = strings.TrimSpace(strArg(args, "title"))
 	}
 	if summary == "" {
-		return tabcalendar.CreateEventOptions{}, fmt.Errorf("summary is required")
+		return providerdata.Event{}, fmt.Errorf("summary is required")
 	}
 	allDay := boolArg(args, "all_day")
 	start, startRaw, err := parseCalendarToolTimeArg(args, "start")
 	if err != nil {
-		return tabcalendar.CreateEventOptions{}, err
+		return providerdata.Event{}, err
 	}
 	if startRaw != "" && calendarTimeLooksDateOnly(startRaw) {
 		allDay = true
 	}
 	end, endRaw, err := parseCalendarToolOptionalTimeArg(args, "end")
 	if err != nil {
-		return tabcalendar.CreateEventOptions{}, err
+		return providerdata.Event{}, err
 	}
 	durationMinutes := intArg(args, "duration_minutes", 0)
 	if end.IsZero() {
@@ -266,9 +358,13 @@ func calendarCreateOptionsFromArgs(args map[string]interface{}, calendarID strin
 		allDay = true
 	}
 	if !end.After(start) {
-		return tabcalendar.CreateEventOptions{}, fmt.Errorf("end must be after start")
+		return providerdata.Event{}, fmt.Errorf("end must be after start")
 	}
-	return tabcalendar.CreateEventOptions{
+	attendees := make([]providerdata.Attendee, 0)
+	for _, email := range stringListArg(args, "attendees") {
+		attendees = append(attendees, providerdata.Attendee{Email: email, Response: "needsAction"})
+	}
+	return providerdata.Event{
 		CalendarID:  calendarID,
 		Summary:     summary,
 		Description: strings.TrimSpace(strArg(args, "description")),
@@ -276,7 +372,7 @@ func calendarCreateOptionsFromArgs(args map[string]interface{}, calendarID strin
 		Start:       start,
 		End:         end,
 		AllDay:      allDay,
-		Attendees:   stringListArg(args, "attendees"),
+		Attendees:   attendees,
 	}, nil
 }
 
