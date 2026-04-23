@@ -195,7 +195,15 @@ func (s *Server) calendarEventCreate(args map[string]interface{}) (map[string]in
 }
 
 func eventPayload(event providerdata.Event, calendarName, sphere string) map[string]interface{} {
-	return map[string]interface{}{
+	attendees := make([]map[string]interface{}, 0, len(event.Attendees))
+	for _, att := range event.Attendees {
+		attendees = append(attendees, map[string]interface{}{
+			"email":    att.Email,
+			"name":     att.Name,
+			"response": att.Response,
+		})
+	}
+	payload := map[string]interface{}{
 		"id":            event.ID,
 		"calendar_id":   event.CalendarID,
 		"calendar_name": calendarName,
@@ -209,9 +217,14 @@ func eventPayload(event providerdata.Event, calendarName, sphere string) map[str
 		"all_day":       event.AllDay,
 		"status":        event.Status,
 		"organizer":     event.Organizer,
-		"attendees":     append([]string(nil), event.Attendees...),
+		"attendees":     attendees,
 		"recurring":     event.Recurring,
+		"ics_uid":       event.ICSUID,
 	}
+	if event.ReminderMinutes != nil {
+		payload["reminder_minutes"] = *event.ReminderMinutes
+	}
+	return payload
 }
 
 func strFromAny(v any) string {

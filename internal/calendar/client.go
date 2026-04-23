@@ -294,7 +294,28 @@ func eventFromGoogleCalendarItem(item *gcal.Event, calendarID string) providerda
 		event.Organizer = item.Organizer.Email
 	}
 	for _, att := range item.Attendees {
-		event.Attendees = append(event.Attendees, att.Email)
+		if att == nil {
+			continue
+		}
+		event.Attendees = append(event.Attendees, providerdata.Attendee{
+			Email:    att.Email,
+			Name:     att.DisplayName,
+			Response: att.ResponseStatus,
+		})
+	}
+	if item.ICalUID != "" {
+		event.ICSUID = item.ICalUID
+	}
+	if item.Reminders != nil && !item.Reminders.UseDefault {
+		// First explicit override wins; the Google API orders overrides by priority.
+		for _, override := range item.Reminders.Overrides {
+			if override == nil {
+				continue
+			}
+			minutes := int(override.Minutes)
+			event.ReminderMinutes = &minutes
+			break
+		}
 	}
 	event.Start, event.AllDay = parseEventTime(item.Start)
 	event.End, _ = parseEventTime(item.End)
