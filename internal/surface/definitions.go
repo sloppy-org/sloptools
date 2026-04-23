@@ -886,6 +886,64 @@ var MCPTools = []Tool{
 		},
 	},
 	{
+		Name:        "mail_flag_set",
+		Description: "Set the follow-up flag on one or more messages. Gmail maps flagged onto the STARRED label; the complete status is EWS-only and returns error_code=capability_unsupported for Gmail.",
+		Required:    []string{"account_id", "message_ids", "status"},
+		Properties: map[string]ToolProperty{
+			"account_id": {
+				Type:        "integer",
+				Description: "External account id.",
+			},
+			"message_ids": {
+				Type:        "array",
+				Description: "Provider message ids to flag.",
+			},
+			"status": {
+				Type:        "string",
+				Description: "Flag status. flagged marks the message for follow-up; complete marks a follow-up done (EWS only).",
+				Enum:        []string{"flagged", "complete"},
+			},
+			"due_at": {
+				Type:        "string",
+				Description: "Optional follow-up due date for status=flagged. Accepts RFC3339, YYYY-MM-DDTHH:MM, YYYY-MM-DD HH:MM, or YYYY-MM-DD. Honoured by EWS; ignored by Gmail.",
+			},
+		},
+	},
+	{
+		Name:        "mail_flag_clear",
+		Description: "Clear the follow-up flag (or STARRED label on Gmail) on one or more messages.",
+		Required:    []string{"account_id", "message_ids"},
+		Properties: map[string]ToolProperty{
+			"account_id": {
+				Type:        "integer",
+				Description: "External account id.",
+			},
+			"message_ids": {
+				Type:        "array",
+				Description: "Provider message ids to unflag.",
+			},
+		},
+	},
+	{
+		Name:        "mail_categories_set",
+		Description: "Replace the set of categories on one or more messages. Gmail creates or reuses user labels whose display name matches each category; EWS writes ItemCategories natively.",
+		Required:    []string{"account_id", "message_ids", "categories"},
+		Properties: map[string]ToolProperty{
+			"account_id": {
+				Type:        "integer",
+				Description: "External account id.",
+			},
+			"message_ids": {
+				Type:        "array",
+				Description: "Provider message ids whose categories to replace.",
+			},
+			"categories": {
+				Type:        "array",
+				Description: "New categories for each message. An empty list clears all categories.",
+			},
+		},
+	},
+	{
 		Name:        "mail_oof_get",
 		Description: "Read the out-of-office / vacation-responder settings for the mailbox on the given account. EWS returns error_code=capability_unsupported until the SOAP wrappers land.",
 		Required:    []string{"account_id"},
