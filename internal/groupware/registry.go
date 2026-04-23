@@ -21,6 +21,7 @@ import (
 	"github.com/sloppy-org/sloptools/internal/googleauth"
 	"github.com/sloppy-org/sloptools/internal/mailboxsettings"
 	"github.com/sloppy-org/sloptools/internal/store"
+	"github.com/sloppy-org/sloptools/internal/tasks"
 )
 
 // ErrUnsupported is returned when a provider cannot back a requested
@@ -42,6 +43,7 @@ type Registry struct {
 	mailProviders            map[int64]email.EmailProvider
 	calendarProviders        map[int64]calendar.Provider
 	contactsProviders        map[int64]contacts.Provider
+	tasksProviders           map[int64]tasks.Provider
 	mailboxSettingsProviders map[int64]mailboxsettings.OOFProvider
 }
 
@@ -63,6 +65,7 @@ func NewRegistry(st *store.Store, googleCreds string) *Registry {
 		mailProviders:            make(map[int64]email.EmailProvider),
 		calendarProviders:        make(map[int64]calendar.Provider),
 		contactsProviders:        make(map[int64]contacts.Provider),
+		tasksProviders:           make(map[int64]tasks.Provider),
 		mailboxSettingsProviders: make(map[int64]mailboxsettings.OOFProvider),
 	}
 }
@@ -287,8 +290,48 @@ func (r *Registry) calendarFor(_ context.Context, account store.ExternalAccount)
 	}
 }
 
-// TasksFor is a placeholder for later tiers.
-func (r *Registry) TasksFor(context.Context, int64) (any, error) { return nil, ErrUnsupported }
+// TasksFor returns a tasks.Provider for the given account, reusing the cached
+// OAuth session so mail, calendar, and tasks share one token pipeline per
+// Google account. EWS tasks lands in a follow-up and returns tasks.ErrUnsupported.
+func (r *Registry) TasksFor(ctx context.Context, accountID int64) (tasks.Provider, error) {
+	if r == nil {
+		return nil, errors.New("groupware: registry is nil")
+	}
+	if r.store == nil {
+		return nil, errors.New("groupware: store is not configured")
+	}
+	account, err := r.store.GetExternalAccount(accountID)
+	if err != nil {
+		return nil, err
+	}
+	return r.tasksFor(ctx, account)
+}
+
+func (r *Registry) tasksFor(_ context.Context, account store.ExternalAccount) (tasks.Provider, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if cached, ok := r.tasksProviders[account.ID]; ok {
+		return cached, nil
+	}
+	switch account.Provider {
+	case store.ExternalProviderGmail, store.ExternalProviderGoogleCalendar:
+		cfg, err := decodeMailSyncAccountConfig(account)
+		if err != nil {
+			return nil, err
+		}
+		session, err := r.googleSessionLocked(account, cfg)
+		if err != nil {
+			return nil, err
+		}
+		provider := tasks.NewGoogleProvider(session)
+		r.tasksProviders[account.ID] = provider
+		return provider, nil
+	case store.ExternalProviderExchangeEWS:
+		return nil, fmt.Errorf("%s tasks: %w", account.Provider, tasks.ErrUnsupported)
+	default:
+		return nil, fmt.Errorf("tasks provider %s is not supported", account.Provider)
+	}
+}
 
 // MailboxSettingsFor returns a mailboxsettings.OOFProvider for the given
 // account, reusing cached auth primitives so Gmail and EWS share one
