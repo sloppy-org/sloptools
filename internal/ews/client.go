@@ -891,6 +891,78 @@ func (c *Client) SetReadState(ctx context.Context, ids []string, isRead bool) er
 	return c.call(ctx, "UpdateItem", body, &resp)
 }
 
+// FlagStatus values understood by SetFlag. EWS stores the follow-up state
+// alongside an optional DueDate in the item:Flag complex property.
+const (
+	FlagStatusNotFlagged = "NotFlagged"
+	FlagStatusFlagged    = "Flagged"
+	FlagStatusComplete   = "Complete"
+)
+
+// SetFlag writes the follow-up flag state on one or more items. dueAt is
+// optional and only honoured when status is Flagged. A zero time skips the
+// DueDateTime field.
+func (c *Client) SetFlag(ctx context.Context, ids []string, status string, dueAt time.Time) error {
+	ids = compactStrings(ids)
+	if len(ids) == 0 {
+		return nil
+	}
+	status = strings.TrimSpace(status)
+	if status == "" {
+		return fmt.Errorf("ews SetFlag: status is required")
+	}
+	var changes strings.Builder
+	for _, id := range ids {
+		changes.WriteString(`<t:ItemChange><t:ItemId Id="`)
+		changes.WriteString(xmlEscapeAttr(id))
+		changes.WriteString(`" /><t:Updates><t:SetItemField><t:FieldURI FieldURI="item:Flag" /><t:Item><t:Flag><t:FlagStatus>`)
+		changes.WriteString(xmlEscapeAttr(status))
+		changes.WriteString(`</t:FlagStatus>`)
+		if status == FlagStatusFlagged && !dueAt.IsZero() {
+			changes.WriteString(`<t:StartDate>`)
+			changes.WriteString(dueAt.UTC().Format(time.RFC3339))
+			changes.WriteString(`</t:StartDate><t:DueDate>`)
+			changes.WriteString(dueAt.UTC().Format(time.RFC3339))
+			changes.WriteString(`</t:DueDate>`)
+		}
+		changes.WriteString(`</t:Flag></t:Item></t:SetItemField></t:Updates></t:ItemChange>`)
+	}
+	body := `<m:UpdateItem MessageDisposition="SaveOnly" ConflictResolution="AlwaysOverwrite"><m:ItemChanges>` + changes.String() + `</m:ItemChanges></m:UpdateItem>`
+	var resp updateItemEnvelope
+	return c.call(ctx, "UpdateItem", body, &resp)
+}
+
+// SetCategories replaces the categories collection on each item. An empty
+// categories slice clears the collection via DeleteItemField.
+func (c *Client) SetCategories(ctx context.Context, ids []string, categories []string) error {
+	ids = compactStrings(ids)
+	if len(ids) == 0 {
+		return nil
+	}
+	clean := compactStrings(categories)
+	var changes strings.Builder
+	for _, id := range ids {
+		changes.WriteString(`<t:ItemChange><t:ItemId Id="`)
+		changes.WriteString(xmlEscapeAttr(id))
+		changes.WriteString(`" /><t:Updates>`)
+		if len(clean) == 0 {
+			changes.WriteString(`<t:DeleteItemField><t:FieldURI FieldURI="item:Categories" /></t:DeleteItemField>`)
+		} else {
+			changes.WriteString(`<t:SetItemField><t:FieldURI FieldURI="item:Categories" /><t:Item><t:Categories>`)
+			for _, category := range clean {
+				changes.WriteString(`<t:String>`)
+				changes.WriteString(xmlEscapeText(category))
+				changes.WriteString(`</t:String>`)
+			}
+			changes.WriteString(`</t:Categories></t:Item></t:SetItemField>`)
+		}
+		changes.WriteString(`</t:Updates></t:ItemChange>`)
+	}
+	body := `<m:UpdateItem MessageDisposition="SaveOnly" ConflictResolution="AlwaysOverwrite"><m:ItemChanges>` + changes.String() + `</m:ItemChanges></m:UpdateItem>`
+	var resp updateItemEnvelope
+	return c.call(ctx, "UpdateItem", body, &resp)
+}
+
 func (c *Client) FindFolderByName(ctx context.Context, name string) (*Folder, error) {
 	target := strings.ToLower(strings.TrimSpace(name))
 	if target == "" {

@@ -16,7 +16,6 @@ import (
 	"github.com/sloppy-org/sloptools/internal/canvas"
 	"github.com/sloppy-org/sloptools/internal/email"
 	"github.com/sloppy-org/sloptools/internal/groupware"
-	"github.com/sloppy-org/sloptools/internal/providerdata"
 	"github.com/sloppy-org/sloptools/internal/store"
 )
 
@@ -41,19 +40,13 @@ type RPCError struct {
 }
 
 type Server struct {
-	projectDir              string
-	adapter                 *canvas.Adapter
-	handoffs                *handoffRegistry
-	store                   *store.Store
-	groupware               *groupware.Registry
-	newGoogleCalendarReader func(context.Context) (googleCalendarReader, error)
-	newEmailProvider        func(context.Context, store.ExternalAccount) (email.EmailProvider, error)
-}
-
-type googleCalendarReader interface {
-	ListCalendars(ctx context.Context) ([]providerdata.Calendar, error)
-	GetEvents(ctx context.Context, opts tabcalendar.GetEventsOptions) ([]providerdata.Event, error)
-	CreateEvent(ctx context.Context, opts tabcalendar.CreateEventOptions) (providerdata.Event, error)
+	projectDir          string
+	adapter             *canvas.Adapter
+	handoffs            *handoffRegistry
+	store               *store.Store
+	groupware           *groupware.Registry
+	newCalendarProvider func(ctx context.Context, account store.ExternalAccount) (tabcalendar.Provider, error)
+	newEmailProvider    func(context.Context, store.ExternalAccount) (email.EmailProvider, error)
 }
 
 type handoffEnvelope struct {
@@ -71,16 +64,17 @@ func NewServer(projectDir string) *Server {
 
 func NewServerWithStore(projectDir string, st *store.Store) *Server {
 	adapter := canvas.NewAdapter(projectDir, nil)
-	return &Server{
+	srv := &Server{
 		projectDir: projectDir,
 		adapter:    adapter,
 		handoffs:   newHandoffRegistry(),
 		store:      st,
 		groupware:  groupware.NewRegistry(st, ""),
-		newGoogleCalendarReader: func(ctx context.Context) (googleCalendarReader, error) {
-			return tabcalendar.New(ctx)
-		},
 	}
+	srv.newCalendarProvider = func(ctx context.Context, account store.ExternalAccount) (tabcalendar.Provider, error) {
+		return srv.groupware.CalendarFor(ctx, account.ID)
+	}
+	return srv
 }
 
 func (s *Server) ProjectDir() string {
@@ -298,6 +292,12 @@ func (s *Server) callTool(name string, args map[string]interface{}) (map[string]
 		return s.mailServerFilterUpsert(args)
 	case "mail_server_filter_delete":
 		return s.mailServerFilterDelete(args)
+	case "mail_flag_set":
+		return s.mailFlagSet(args)
+	case "mail_flag_clear":
+		return s.mailFlagClear(args)
+	case "mail_categories_set":
+		return s.mailCategoriesSet(args)
 	default:
 		return nil, errors.New("unknown tool: " + name)
 	}
