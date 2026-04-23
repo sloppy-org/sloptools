@@ -80,10 +80,25 @@ func NewExchangeEWSMailProvider(cfg ExchangeEWSConfig) (*ExchangeEWSMailProvider
 	if err != nil {
 		return nil, err
 	}
+	return NewExchangeEWSMailProviderFromClient(cfg, client), nil
+}
+
+// NewExchangeEWSMailProviderFromClient wraps an existing EWS client so mail,
+// calendar, contacts, and tasks can all share one authenticated pipeline.
+func NewExchangeEWSMailProviderFromClient(cfg ExchangeEWSConfig, client *ews.Client) *ExchangeEWSMailProvider {
 	if strings.TrimSpace(cfg.ArchiveFolder) == "" {
 		cfg.ArchiveFolder = "Archive"
 	}
-	return &ExchangeEWSMailProvider{client: client, cfg: cfg}, nil
+	return &ExchangeEWSMailProvider{client: client, cfg: cfg}
+}
+
+// Client exposes the underlying EWS client so the groupware registry can share
+// one client across mail, calendar, contacts, and tasks providers.
+func (p *ExchangeEWSMailProvider) Client() *ews.Client {
+	if p == nil {
+		return nil
+	}
+	return p.client
 }
 
 func (p *ExchangeEWSMailProvider) ListLabels(ctx context.Context) ([]providerdata.Label, error) {
