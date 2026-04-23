@@ -885,6 +885,32 @@ var MCPTools = []Tool{
 			},
 		},
 	},
+	{
+		Name:        "mail_oof_get",
+		Description: "Read the out-of-office / vacation-responder settings for the mailbox on the given account. EWS returns error_code=capability_unsupported until the SOAP wrappers land.",
+		Required:    []string{"account_id"},
+		Properties: map[string]ToolProperty{
+			"account_id": {
+				Type:        "integer",
+				Description: "External account id.",
+			},
+		},
+	},
+	{
+		Name:        "mail_oof_set",
+		Description: "Write the out-of-office / vacation-responder settings. EWS returns error_code=capability_unsupported until the SOAP wrappers land.",
+		Required:    []string{"account_id", "settings"},
+		Properties: map[string]ToolProperty{
+			"account_id": {
+				Type:        "integer",
+				Description: "External account id.",
+			},
+			"settings": {
+				Type:        "object",
+				Description: "OOFSettings: enabled (bool), scope (all|contacts|internal|external), internal_reply, external_reply, start_at, end_at (RFC3339).",
+			},
+		},
+	},
 }
 
 var MCPDaemonRoutes = []string{

@@ -298,6 +298,10 @@ func (s *Server) callTool(name string, args map[string]interface{}) (map[string]
 		return s.mailServerFilterUpsert(args)
 	case "mail_server_filter_delete":
 		return s.mailServerFilterDelete(args)
+	case "mail_oof_get":
+		return s.mailOOFGet(args)
+	case "mail_oof_set":
+		return s.mailOOFSet(args)
 	default:
 		return nil, errors.New("unknown tool: " + name)
 	}

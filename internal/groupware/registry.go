@@ -17,6 +17,7 @@ import (
 	"github.com/sloppy-org/sloptools/internal/email"
 	"github.com/sloppy-org/sloptools/internal/ews"
 	"github.com/sloppy-org/sloptools/internal/googleauth"
+	"github.com/sloppy-org/sloptools/internal/mailboxsettings"
 	"github.com/sloppy-org/sloptools/internal/store"
 )
 
@@ -33,10 +34,11 @@ type Registry struct {
 	configDir   string
 	googleCreds string
 
-	mu             sync.Mutex
-	googleSessions map[int64]*googleauth.Session
-	ewsClients     map[int64]*ews.Client
-	mailProviders  map[int64]email.EmailProvider
+	mu                       sync.Mutex
+	googleSessions           map[int64]*googleauth.Session
+	ewsClients               map[int64]*ews.Client
+	mailProviders            map[int64]email.EmailProvider
+	mailboxSettingsProviders map[int64]mailboxsettings.OOFProvider
 }
 
 // NewRegistry constructs a Registry backed by the given store. googleCreds
@@ -49,12 +51,13 @@ func NewRegistry(st *store.Store, googleCreds string) *Registry {
 		configDir = cleaned
 	}
 	return &Registry{
-		store:          st,
-		configDir:      configDir,
-		googleCreds:    cleaned,
-		googleSessions: make(map[int64]*googleauth.Session),
-		ewsClients:     make(map[int64]*ews.Client),
-		mailProviders:  make(map[int64]email.EmailProvider),
+		store:                    st,
+		configDir:                configDir,
+		googleCreds:              cleaned,
+		googleSessions:           make(map[int64]*googleauth.Session),
+		ewsClients:               make(map[int64]*ews.Client),
+		mailProviders:            make(map[int64]email.EmailProvider),
+		mailboxSettingsProviders: make(map[int64]mailboxsettings.OOFProvider),
 	}
 }
 
@@ -199,9 +202,63 @@ func (r *Registry) CalendarFor(context.Context, int64) (any, error) { return nil
 // TasksFor is a placeholder for later tiers.
 func (r *Registry) TasksFor(context.Context, int64) (any, error) { return nil, ErrUnsupported }
 
-// MailboxSettingsFor is a placeholder for later tiers.
-func (r *Registry) MailboxSettingsFor(context.Context, int64) (any, error) {
-	return nil, ErrUnsupported
+// MailboxSettingsFor returns a mailboxsettings.OOFProvider for the given
+// account, reusing cached auth primitives so Gmail and EWS share one
+// pipeline across the feature providers. EWS is wired through but its SOAP
+// methods return ErrUnsupported until the OOF wrappers land.
+func (r *Registry) MailboxSettingsFor(ctx context.Context, accountID int64) (mailboxsettings.OOFProvider, error) {
+	if r == nil {
+		return nil, errors.New("groupware: registry is nil")
+	}
+	if r.store == nil {
+		return nil, errors.New("groupware: store is not configured")
+	}
+	account, err := r.store.GetExternalAccount(accountID)
+	if err != nil {
+		return nil, err
+	}
+	return r.mailboxSettingsFor(ctx, account)
+}
+
+func (r *Registry) mailboxSettingsFor(ctx context.Context, account store.ExternalAccount) (mailboxsettings.OOFProvider, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if cached, ok := r.mailboxSettingsProviders[account.ID]; ok {
+		return cached, nil
+	}
+	switch account.Provider {
+	case store.ExternalProviderGmail, store.ExternalProviderGoogleCalendar:
+		cfg, err := decodeMailSyncAccountConfig(account)
+		if err != nil {
+			return nil, err
+		}
+		session, err := r.googleSessionLocked(account, cfg)
+		if err != nil {
+			return nil, err
+		}
+		provider := mailboxsettings.NewGmailProvider(session)
+		r.mailboxSettingsProviders[account.ID] = provider
+		return provider, nil
+	case store.ExternalProviderExchangeEWS:
+		ewsCfg, err := decodeExchangeEWSAccountConfig(account)
+		if err != nil {
+			return nil, err
+		}
+		password, _, err := r.store.ResolveExternalAccountPasswordForAccount(ctx, account)
+		if err != nil {
+			return nil, err
+		}
+		ewsCfg.Password = password
+		client, err := r.ewsClientLocked(account, ewsCfg)
+		if err != nil {
+			return nil, err
+		}
+		provider := mailboxsettings.NewEWSProvider(client, ewsCfg.Username)
+		r.mailboxSettingsProviders[account.ID] = provider
+		return provider, nil
+	default:
+		return nil, fmt.Errorf("mailbox settings provider %s is not supported", account.Provider)
+	}
 }
 
 type mailSyncAccountConfig struct {
