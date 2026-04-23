@@ -43,20 +43,20 @@ type MailReplyRequest struct {
 }
 
 type MailComposeResult struct {
-	Account   store.ExternalAccount  `json:"account"`
-	DraftID   string                 `json:"draft_id"`
-	ThreadID  string                 `json:"thread_id,omitempty"`
-	Sent      bool                   `json:"sent"`
-	Reply     *MailComposeReplyInfo  `json:"reply,omitempty"`
-	Composed  MailComposedEnvelope   `json:"composed"`
+	Account  store.ExternalAccount `json:"account"`
+	DraftID  string                `json:"draft_id"`
+	ThreadID string                `json:"thread_id,omitempty"`
+	Sent     bool                  `json:"sent"`
+	Reply    *MailComposeReplyInfo `json:"reply,omitempty"`
+	Composed MailComposedEnvelope  `json:"composed"`
 }
 
 type MailComposeReplyInfo struct {
-	MessageID         string `json:"message_id"`
-	InReplyTo         string `json:"in_reply_to,omitempty"`
-	ThreadID          string `json:"thread_id,omitempty"`
-	OriginalSubject   string `json:"original_subject,omitempty"`
-	QuoteStyle        string `json:"quote_style"`
+	MessageID       string `json:"message_id"`
+	InReplyTo       string `json:"in_reply_to,omitempty"`
+	ThreadID        string `json:"thread_id,omitempty"`
+	OriginalSubject string `json:"original_subject,omitempty"`
+	QuoteStyle      string `json:"quote_style"`
 }
 
 type MailComposedEnvelope struct {
