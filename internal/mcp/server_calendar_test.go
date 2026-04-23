@@ -30,6 +30,10 @@ func (s *stubCalendarReader) CreateEvent(_ context.Context, opts tabcalendar.Cre
 	s.lastCreate = opts
 	created := s.created
 	if created.ID == "" {
+		attendees := make([]providerdata.Attendee, 0, len(opts.Attendees))
+		for _, email := range opts.Attendees {
+			attendees = append(attendees, providerdata.Attendee{Email: email, Response: "needsAction"})
+		}
 		created = providerdata.Event{
 			ID:          "evt-created",
 			CalendarID:  opts.CalendarID,
@@ -39,7 +43,7 @@ func (s *stubCalendarReader) CreateEvent(_ context.Context, opts tabcalendar.Cre
 			Start:       opts.Start,
 			End:         opts.End,
 			AllDay:      opts.AllDay,
-			Attendees:   append([]string(nil), opts.Attendees...),
+			Attendees:   attendees,
 			Status:      "confirmed",
 		}
 	}
