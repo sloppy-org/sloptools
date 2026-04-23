@@ -630,7 +630,7 @@ var MCPTools = []Tool{
 	},
 	{
 		Name:        "mail_attachment_get",
-		Description: "Get one mail attachment with base64-encoded content.",
+		Description: "Download one mail attachment to disk and return the absolute path. Never returns the file bytes inline so large attachments stay out of agent context.",
 		Required:    []string{"account_id", "message_id", "attachment_id"},
 		Properties: map[string]ToolProperty{
 			"account_id": {
@@ -644,6 +644,10 @@ var MCPTools = []Tool{
 			"attachment_id": {
 				Type:        "string",
 				Description: "Provider attachment id from the message metadata.",
+			},
+			"dest_dir": {
+				Type:        "string",
+				Description: "Optional destination directory for the saved file. Defaults to ~/Downloads/sloppy-attachments. Created if missing. Supports a leading ~/.",
 			},
 		},
 	},

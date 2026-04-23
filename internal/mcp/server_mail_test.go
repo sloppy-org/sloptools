@@ -2,8 +2,9 @@ package mcp
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -239,10 +240,12 @@ func TestMailToolsListReadAndAttachment(t *testing.T) {
 		t.Fatalf("message = %#v", message["message"])
 	}
 
+	destDir := t.TempDir()
 	attachment, err := s.callTool("mail_attachment_get", map[string]interface{}{
 		"account_id":    account.ID,
 		"message_id":    "m1",
 		"attachment_id": "att-1",
+		"dest_dir":      destDir,
 	})
 	if err != nil {
 		t.Fatalf("mail_attachment_get failed: %v", err)
@@ -251,8 +254,28 @@ func TestMailToolsListReadAndAttachment(t *testing.T) {
 	if gotAttachment["id"] != "att-1" {
 		t.Fatalf("attachment id = %#v", gotAttachment["id"])
 	}
-	if gotAttachment["content_base64"] != base64.StdEncoding.EncodeToString([]byte("pdfbytes")) {
-		t.Fatalf("content_base64 = %#v", gotAttachment["content_base64"])
+	if _, hasB64 := gotAttachment["content_base64"]; hasB64 {
+		t.Fatalf("attachment must not contain content_base64: %#v", gotAttachment)
+	}
+	pathAny, ok := gotAttachment["path"].(string)
+	if !ok || pathAny == "" {
+		t.Fatalf("attachment path missing: %#v", gotAttachment)
+	}
+	if !strings.HasPrefix(pathAny, destDir) {
+		t.Fatalf("attachment path %q not under destDir %q", pathAny, destDir)
+	}
+	data, err := os.ReadFile(pathAny)
+	if err != nil {
+		t.Fatalf("read saved attachment: %v", err)
+	}
+	if string(data) != "pdfbytes" {
+		t.Fatalf("saved attachment bytes = %q", data)
+	}
+	if gotAttachment["size_bytes"] != len([]byte("pdfbytes")) {
+		t.Fatalf("size_bytes = %#v", gotAttachment["size_bytes"])
+	}
+	if filepath.Base(pathAny) == "" {
+		t.Fatalf("empty basename for %q", pathAny)
 	}
 }
 

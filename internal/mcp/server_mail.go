@@ -2,7 +2,6 @@ package mcp
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -11,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/sloppy-org/sloptools/internal/email"
 	"github.com/sloppy-org/sloptools/internal/providerdata"
@@ -156,17 +156,121 @@ func (s *Server) mailAttachmentGet(args map[string]interface{}) (map[string]inte
 	if err != nil {
 		return nil, err
 	}
+	destDir, err := resolveAttachmentDir(strArg(args, "dest_dir"))
+	if err != nil {
+		return nil, err
+	}
+	absPath, err := writeAttachmentFile(destDir, account.AccountName, messageID, attachment)
+	if err != nil {
+		return nil, err
+	}
 	return map[string]interface{}{
 		"account": account,
 		"attachment": map[string]interface{}{
-			"id":             strings.TrimSpace(attachment.ID),
-			"filename":       strings.TrimSpace(attachment.Filename),
-			"mime_type":      strings.TrimSpace(attachment.MimeType),
-			"size":           attachment.Size,
-			"is_inline":      attachment.IsInline,
-			"content_base64": base64.StdEncoding.EncodeToString(attachment.Content),
+			"id":         strings.TrimSpace(attachment.ID),
+			"filename":   strings.TrimSpace(attachment.Filename),
+			"mime_type":  strings.TrimSpace(attachment.MimeType),
+			"size":       attachment.Size,
+			"is_inline":  attachment.IsInline,
+			"path":       absPath,
+			"size_bytes": len(attachment.Content),
 		},
 	}, nil
+}
+
+func resolveAttachmentDir(arg string) (string, error) {
+	dest := strings.TrimSpace(arg)
+	if dest == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("resolve home dir: %w", err)
+		}
+		dest = filepath.Join(home, "Downloads", "sloppy-attachments")
+	}
+	if strings.HasPrefix(dest, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("resolve home dir: %w", err)
+		}
+		dest = filepath.Join(home, strings.TrimPrefix(dest, "~/"))
+	}
+	absDir, err := filepath.Abs(dest)
+	if err != nil {
+		return "", fmt.Errorf("resolve dest_dir: %w", err)
+	}
+	if err := os.MkdirAll(absDir, 0o755); err != nil {
+		return "", fmt.Errorf("create dest_dir: %w", err)
+	}
+	return absDir, nil
+}
+
+func writeAttachmentFile(destDir, account, messageID string, a *providerdata.AttachmentData) (string, error) {
+	filename := sanitizeFilenameComponent(strings.TrimSpace(a.Filename))
+	if filename == "" {
+		filename = sanitizeFilenameComponent(strings.TrimSpace(a.ID))
+	}
+	if filename == "" {
+		filename = "attachment"
+	}
+	prefix := sanitizeFilenameComponent(strings.TrimSpace(account))
+	if prefix == "" {
+		prefix = "unknown-account"
+	}
+	msgTag := sanitizeFilenameComponent(strings.TrimSpace(messageID))
+	if len(msgTag) > 16 {
+		msgTag = msgTag[:16]
+	}
+	if msgTag != "" {
+		prefix = prefix + "_" + msgTag
+	}
+	base := prefix + "_" + filename
+	absPath := filepath.Join(destDir, base)
+	absPath, err := writeNoClobber(absPath, a.Content)
+	if err != nil {
+		return "", fmt.Errorf("write attachment: %w", err)
+	}
+	return absPath, nil
+}
+
+func writeNoClobber(path string, data []byte) (string, error) {
+	candidate := path
+	for i := 0; i < 1000; i++ {
+		f, err := os.OpenFile(candidate, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+		if err == nil {
+			defer f.Close()
+			if _, werr := f.Write(data); werr != nil {
+				return "", werr
+			}
+			return candidate, nil
+		}
+		if !os.IsExist(err) {
+			return "", err
+		}
+		ext := filepath.Ext(path)
+		stem := strings.TrimSuffix(path, ext)
+		candidate = fmt.Sprintf("%s-%d%s", stem, i+1, ext)
+	}
+	return "", fmt.Errorf("too many filename collisions for %s", path)
+}
+
+func sanitizeFilenameComponent(s string) string {
+	s = strings.TrimSpace(s)
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case unicode.IsLetter(r), unicode.IsDigit(r):
+			b.WriteRune(r)
+		case r == '.' || r == '-' || r == '_':
+			b.WriteRune(r)
+		default:
+			b.WriteRune('_')
+		}
+	}
+	cleaned := strings.Trim(b.String(), ".")
+	if len(cleaned) > 120 {
+		cleaned = cleaned[:120]
+	}
+	return cleaned
 }
 
 func (s *Server) mailAction(args map[string]interface{}) (map[string]interface{}, error) {
