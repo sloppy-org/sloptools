@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/sloppy-org/sloptools/internal/contacts"
 	"github.com/sloppy-org/sloptools/internal/email"
 	"github.com/sloppy-org/sloptools/internal/ews"
 	"github.com/sloppy-org/sloptools/internal/googleauth"
@@ -33,10 +34,11 @@ type Registry struct {
 	configDir   string
 	googleCreds string
 
-	mu             sync.Mutex
-	googleSessions map[int64]*googleauth.Session
-	ewsClients     map[int64]*ews.Client
-	mailProviders  map[int64]email.EmailProvider
+	mu                sync.Mutex
+	googleSessions    map[int64]*googleauth.Session
+	ewsClients        map[int64]*ews.Client
+	mailProviders     map[int64]email.EmailProvider
+	contactsProviders map[int64]contacts.Provider
 }
 
 // NewRegistry constructs a Registry backed by the given store. googleCreds
@@ -49,12 +51,13 @@ func NewRegistry(st *store.Store, googleCreds string) *Registry {
 		configDir = cleaned
 	}
 	return &Registry{
-		store:          st,
-		configDir:      configDir,
-		googleCreds:    cleaned,
-		googleSessions: make(map[int64]*googleauth.Session),
-		ewsClients:     make(map[int64]*ews.Client),
-		mailProviders:  make(map[int64]email.EmailProvider),
+		store:             st,
+		configDir:         configDir,
+		googleCreds:       cleaned,
+		googleSessions:    make(map[int64]*googleauth.Session),
+		ewsClients:        make(map[int64]*ews.Client),
+		mailProviders:     make(map[int64]email.EmailProvider),
+		contactsProviders: make(map[int64]contacts.Provider),
 	}
 }
 
@@ -190,8 +193,49 @@ func (r *Registry) EWSClient(accountID int64) *ews.Client {
 	return r.ewsClients[accountID]
 }
 
-// ContactsFor is a placeholder for later tiers.
-func (r *Registry) ContactsFor(context.Context, int64) (any, error) { return nil, ErrUnsupported }
+// ContactsFor returns a contacts.Provider for the given account, reusing the
+// cached OAuth session so mail, calendar, contacts, and tasks share one
+// token pipeline per Google account. EWS contacts lands in a follow-up and
+// returns contacts.ErrUnsupported.
+func (r *Registry) ContactsFor(ctx context.Context, accountID int64) (contacts.Provider, error) {
+	if r == nil {
+		return nil, errors.New("groupware: registry is nil")
+	}
+	if r.store == nil {
+		return nil, errors.New("groupware: store is not configured")
+	}
+	account, err := r.store.GetExternalAccount(accountID)
+	if err != nil {
+		return nil, err
+	}
+	return r.contactsFor(ctx, account)
+}
+
+func (r *Registry) contactsFor(_ context.Context, account store.ExternalAccount) (contacts.Provider, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if cached, ok := r.contactsProviders[account.ID]; ok {
+		return cached, nil
+	}
+	switch account.Provider {
+	case store.ExternalProviderGmail, store.ExternalProviderGoogleCalendar:
+		cfg, err := decodeMailSyncAccountConfig(account)
+		if err != nil {
+			return nil, err
+		}
+		session, err := r.googleSessionLocked(account, cfg)
+		if err != nil {
+			return nil, err
+		}
+		provider := contacts.NewGmailProvider(session)
+		r.contactsProviders[account.ID] = provider
+		return provider, nil
+	case store.ExternalProviderExchangeEWS:
+		return nil, fmt.Errorf("%s contacts: %w", account.Provider, contacts.ErrUnsupported)
+	default:
+		return nil, fmt.Errorf("contacts provider %s is not supported", account.Provider)
+	}
+}
 
 // CalendarFor is a placeholder for later tiers.
 func (r *Registry) CalendarFor(context.Context, int64) (any, error) { return nil, ErrUnsupported }
