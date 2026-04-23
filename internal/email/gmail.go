@@ -49,13 +49,28 @@ func NewGmailWithFiles(credentialsPath, tokenPath string) (*GmailClient, error) 
 	if err != nil {
 		return nil, err
 	}
-	client := &GmailClient{
+	return NewGmailFromSession(auth), nil
+}
+
+// NewGmailFromSession wraps an existing googleauth.Session so multiple Google
+// features (Gmail, Contacts, Calendar, Tasks) can share the same OAuth pipeline
+// without rebuilding tokens for each one.
+func NewGmailFromSession(auth *googleauth.Session) *GmailClient {
+	return &GmailClient{
 		rateLimiter:     NewRateLimiter(15000),
 		auth:            auth,
 		credentialsPath: auth.CredentialsPath(),
 		tokenPath:       auth.TokenPath(),
 	}
-	return client, nil
+}
+
+// Session returns the underlying googleauth.Session so callers can verify
+// session sharing or reuse the same auth pipeline for other Google features.
+func (c *GmailClient) Session() *googleauth.Session {
+	if c == nil {
+		return nil
+	}
+	return c.auth
 }
 
 // GetAuthURL returns the URL for OAuth authorization.

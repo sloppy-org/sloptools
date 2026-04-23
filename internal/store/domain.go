@@ -117,10 +117,10 @@ type Workspace struct {
 	ChatModel                string  `json:"chat_model,omitempty"`
 	ChatModelReasoningEffort string  `json:"chat_model_reasoning_effort,omitempty"`
 	CompanionConfigJSON      string  `json:"companion_config_json,omitempty"`
-	Kind          string `json:"kind,omitempty"`
-	WorkspacePath string `json:"workspace_path,omitempty"`
-	RootPath      string `json:"root_path,omitempty"`
-	IsDefault     bool   `json:"is_default"`
+	Kind                     string  `json:"kind,omitempty"`
+	WorkspacePath            string  `json:"workspace_path,omitempty"`
+	RootPath                 string  `json:"root_path,omitempty"`
+	IsDefault                bool    `json:"is_default"`
 	CreatedAt                string  `json:"created_at"`
 	UpdatedAt                string  `json:"updated_at"`
 }
