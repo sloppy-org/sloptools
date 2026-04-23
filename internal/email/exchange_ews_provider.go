@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/sloppy-org/sloptools/internal/ews"
 	"github.com/sloppy-org/sloptools/internal/providerdata"
@@ -38,6 +39,8 @@ var _ NamedFolderProvider = (*ExchangeEWSMailProvider)(nil)
 var _ ServerFilterProvider = (*ExchangeEWSMailProvider)(nil)
 var _ FolderIncrementalSyncProvider = (*ExchangeEWSMailProvider)(nil)
 var _ RawMessageProvider = (*ExchangeEWSMailProvider)(nil)
+var _ FlagMutator = (*ExchangeEWSMailProvider)(nil)
+var _ CategoryMutator = (*ExchangeEWSMailProvider)(nil)
 
 func ExchangeEWSConfigFromMap(label string, config map[string]any) (ExchangeEWSConfig, error) {
 	cfg := ExchangeEWSConfig{Label: strings.TrimSpace(label)}
@@ -751,6 +754,59 @@ func (p *ExchangeEWSMailProvider) SendExistingDraft(ctx context.Context, draftID
 		return fmt.Errorf("exchange ews send draft: %w", err)
 	}
 	return nil
+}
+
+func (p *ExchangeEWSMailProvider) SetFlag(ctx context.Context, messageIDs []string, flag Flag) (int, error) {
+	if p == nil || p.client == nil {
+		return 0, fmt.Errorf("exchange ews provider is not configured")
+	}
+	status, err := exchangeEWSFlagStatus(flag.Status)
+	if err != nil {
+		return 0, err
+	}
+	ids := compactMessageIDs(messageIDs)
+	dueAt := time.Time{}
+	if flag.DueAt != nil {
+		dueAt = *flag.DueAt
+	}
+	if err := p.client.SetFlag(ctx, ids, status, dueAt); err != nil {
+		return 0, err
+	}
+	return len(ids), nil
+}
+
+func (p *ExchangeEWSMailProvider) ClearFlag(ctx context.Context, messageIDs []string) (int, error) {
+	if p == nil || p.client == nil {
+		return 0, fmt.Errorf("exchange ews provider is not configured")
+	}
+	ids := compactMessageIDs(messageIDs)
+	if err := p.client.SetFlag(ctx, ids, ews.FlagStatusNotFlagged, time.Time{}); err != nil {
+		return 0, err
+	}
+	return len(ids), nil
+}
+
+func (p *ExchangeEWSMailProvider) SetCategories(ctx context.Context, messageIDs []string, categories []string) (int, error) {
+	if p == nil || p.client == nil {
+		return 0, fmt.Errorf("exchange ews provider is not configured")
+	}
+	ids := compactMessageIDs(messageIDs)
+	if err := p.client.SetCategories(ctx, ids, categories); err != nil {
+		return 0, err
+	}
+	return len(ids), nil
+}
+
+func exchangeEWSFlagStatus(status string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case strings.ToLower(FlagStatusNotFlagged):
+		return ews.FlagStatusNotFlagged, nil
+	case strings.ToLower(FlagStatusFlagged):
+		return ews.FlagStatusFlagged, nil
+	case strings.ToLower(FlagStatusComplete):
+		return ews.FlagStatusComplete, nil
+	}
+	return "", fmt.Errorf("exchange ews flag status %q is not recognised", status)
 }
 
 func (p *ExchangeEWSMailProvider) Close() error {

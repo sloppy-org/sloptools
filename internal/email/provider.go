@@ -2,10 +2,48 @@ package email
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/sloppy-org/sloptools/internal/providerdata"
 )
+
+// ErrCapabilityUnsupported signals that the provider does not implement a
+// requested capability (for example Gmail has no flag "complete" status).
+// MCP handlers translate this into a machine-readable capability_unsupported
+// response so callers can distinguish a missing capability from a real error.
+var ErrCapabilityUnsupported = errors.New("capability_unsupported")
+
+// Flag status values accepted by FlagMutator.SetFlag. EWS supports all three;
+// Gmail only supports notFlagged and flagged.
+const (
+	FlagStatusNotFlagged = "notFlagged"
+	FlagStatusFlagged    = "flagged"
+	FlagStatusComplete   = "complete"
+)
+
+// Flag carries the target flag status plus an optional due date used by
+// backends that support follow-up flags (EWS). DueAt is ignored by backends
+// that only model a boolean star/flag (Gmail).
+type Flag struct {
+	Status string
+	DueAt  *time.Time
+}
+
+// FlagMutator is implemented by providers that can set or clear a follow-up
+// flag on one or more messages. Backends that cannot honour a specific status
+// must return ErrCapabilityUnsupported so MCP callers can react accordingly.
+type FlagMutator interface {
+	SetFlag(ctx context.Context, messageIDs []string, flag Flag) (int, error)
+	ClearFlag(ctx context.Context, messageIDs []string) (int, error)
+}
+
+// CategoryMutator is implemented by providers that can replace the set of
+// categories on one or more messages. Gmail maps categories onto user labels
+// (creating them on demand); EWS writes to ItemCategories natively.
+type CategoryMutator interface {
+	SetCategories(ctx context.Context, messageIDs []string, categories []string) (int, error)
+}
 
 type EmailProvider interface {
 	ListLabels(ctx context.Context) ([]providerdata.Label, error)
