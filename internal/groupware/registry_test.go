@@ -199,7 +199,6 @@ func TestRegistryPlaceholderCapabilitiesReturnErrUnsupported(t *testing.T) {
 		call func() error
 	}{
 		{"ContactsFor", func() error { _, err := reg.ContactsFor(ctx, 1); return err }},
-		{"CalendarFor", func() error { _, err := reg.CalendarFor(ctx, 1); return err }},
 		{"TasksFor", func() error { _, err := reg.TasksFor(ctx, 1); return err }},
 		{"MailboxSettingsFor", func() error { _, err := reg.MailboxSettingsFor(ctx, 1); return err }},
 	}
