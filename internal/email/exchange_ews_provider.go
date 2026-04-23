@@ -593,7 +593,14 @@ func (p *ExchangeEWSMailProvider) CreateDraft(ctx context.Context, input DraftIn
 	if err != nil {
 		return Draft{}, err
 	}
-	raw, err := buildRFC822Message(normalized)
+	// Split attachments from the body so each file gets its own
+	// CreateAttachment SOAP call. TU Graz Exchange rejects oversized single
+	// CreateItem bodies with a bare HTTP 401, so we keep the initial
+	// CreateItem small and add attachments one-by-one afterwards.
+	attachments := normalized.Attachments
+	bodyOnly := normalized
+	bodyOnly.Attachments = nil
+	raw, err := buildRFC822Message(bodyOnly)
 	if err != nil {
 		return Draft{}, err
 	}
@@ -607,7 +614,22 @@ func (p *ExchangeEWSMailProvider) CreateDraft(ctx context.Context, input DraftIn
 	if err != nil {
 		return Draft{}, fmt.Errorf("exchange ews create draft: %w", err)
 	}
-	return Draft{ID: strings.TrimSpace(created.ID), ThreadID: strings.TrimSpace(created.ConversationID)}, nil
+	draftID := strings.TrimSpace(created.ID)
+	changeKey := strings.TrimSpace(created.ChangeKey)
+	for _, att := range attachments {
+		updatedKey, err := p.client.CreateAttachment(ctx, draftID, changeKey, ews.AttachmentFile{
+			Name:        att.Filename,
+			ContentType: att.ContentType,
+			Content:     att.Content,
+		})
+		if err != nil {
+			return Draft{}, fmt.Errorf("exchange ews add attachment %q: %w", att.Filename, err)
+		}
+		if updatedKey != "" {
+			changeKey = updatedKey
+		}
+	}
+	return Draft{ID: draftID, ThreadID: strings.TrimSpace(created.ConversationID)}, nil
 }
 
 func (p *ExchangeEWSMailProvider) CreateReplyDraft(ctx context.Context, messageID string, input DraftInput) (Draft, error) {

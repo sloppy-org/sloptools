@@ -153,6 +153,14 @@ type AttachmentContent struct {
 	Content     []byte
 }
 
+// AttachmentFile describes a single file to attach via CreateAttachment.
+type AttachmentFile struct {
+	Name        string
+	ContentType string
+	Content     []byte
+	IsInline    bool
+}
+
 type Message struct {
 	ID                string
 	ChangeKey         string
@@ -726,6 +734,64 @@ func (c *Client) CreateDraft(ctx context.Context, message DraftMessage) (Message
 		return Message{}, fmt.Errorf("ews CreateItem returned no items")
 	}
 	return resp.Body.CreateItemResponse.ResponseMessages.Message.Items.Values[0].toMessage(), nil
+}
+
+// CreateAttachment adds one file attachment to an existing item (typically a
+// draft) and returns the new parent ChangeKey. Call it once per file, reusing
+// the returned ChangeKey as the parentChangeKey for subsequent calls, since
+// each attachment write invalidates the previous key. Splitting large payloads
+// across separate CreateAttachment SOAP calls avoids the bare-401 that
+// TU Graz Exchange returns for oversized CreateItem bodies.
+func (c *Client) CreateAttachment(ctx context.Context, parentID, parentChangeKey string, file AttachmentFile) (string, error) {
+	parentID = strings.TrimSpace(parentID)
+	if parentID == "" {
+		return "", fmt.Errorf("parent item id is required")
+	}
+	contentType := strings.TrimSpace(file.ContentType)
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	name := strings.TrimSpace(file.Name)
+	if name == "" {
+		name = "attachment"
+	}
+	var b strings.Builder
+	b.WriteString(`<m:CreateAttachment><m:ParentItemId Id="`)
+	b.WriteString(xmlEscapeAttr(parentID))
+	b.WriteString(`"`)
+	if ck := strings.TrimSpace(parentChangeKey); ck != "" {
+		b.WriteString(` ChangeKey="`)
+		b.WriteString(xmlEscapeAttr(ck))
+		b.WriteString(`"`)
+	}
+	b.WriteString(` /><m:Attachments><t:FileAttachment><t:Name>`)
+	b.WriteString(xmlEscapeText(name))
+	b.WriteString(`</t:Name><t:ContentType>`)
+	b.WriteString(xmlEscapeText(contentType))
+	b.WriteString(`</t:ContentType>`)
+	if file.IsInline {
+		b.WriteString(`<t:IsInline>true</t:IsInline>`)
+	}
+	b.WriteString(`<t:Content>`)
+	b.WriteString(base64.StdEncoding.EncodeToString(file.Content))
+	b.WriteString(`</t:Content></t:FileAttachment></m:Attachments></m:CreateAttachment>`)
+
+	var resp createAttachmentEnvelope
+	if err := c.call(ctx, "CreateAttachment", b.String(), &resp); err != nil {
+		return "", err
+	}
+	msg := resp.Body.CreateAttachmentResponse.ResponseMessages.Message
+	if rc := strings.TrimSpace(msg.ResponseCode); rc != "" && !strings.EqualFold(rc, "NoError") {
+		return "", fmt.Errorf("ews CreateAttachment: %s", rc)
+	}
+	if len(msg.Attachments.Files) == 0 {
+		return "", fmt.Errorf("ews CreateAttachment returned no attachment")
+	}
+	newKey := strings.TrimSpace(msg.Attachments.Files[0].AttachmentID.RootItemChangeKey)
+	if newKey == "" {
+		newKey = parentChangeKey
+	}
+	return newKey, nil
 }
 
 func (c *Client) UpdateDraft(ctx context.Context, itemID string, message DraftMessage) (Message, error) {
@@ -1405,6 +1471,8 @@ func responseCode(target any) string {
 		return typed.Body.GetStreamingEventsResponse.ResponseMessages.Message.ResponseCode
 	case *createItemEnvelope:
 		return typed.Body.CreateItemResponse.ResponseMessages.Message.ResponseCode
+	case *createAttachmentEnvelope:
+		return typed.Body.CreateAttachmentResponse.ResponseMessages.Message.ResponseCode
 	case *moveItemEnvelope:
 		return typed.Body.MoveItemResponse.ResponseMessages.FirstCode()
 	case *updateInboxRulesEnvelope:
@@ -1445,6 +1513,30 @@ type createItemEnvelope struct {
 			} `xml:"ResponseMessages"`
 		} `xml:"CreateItemResponse"`
 	} `xml:"Body"`
+}
+
+type createAttachmentEnvelope struct {
+	Body struct {
+		CreateAttachmentResponse struct {
+			ResponseMessages struct {
+				Message struct {
+					ResponseCode string `xml:"ResponseCode"`
+					Attachments  struct {
+						Files []createAttachmentFile `xml:"FileAttachment"`
+					} `xml:"Attachments"`
+				} `xml:"CreateAttachmentResponseMessage"`
+			} `xml:"ResponseMessages"`
+		} `xml:"CreateAttachmentResponse"`
+	} `xml:"Body"`
+}
+
+type createAttachmentFile struct {
+	AttachmentID struct {
+		ID                string `xml:"Id,attr"`
+		RootItemID        string `xml:"RootItemId,attr"`
+		RootItemChangeKey string `xml:"RootItemChangeKey,attr"`
+	} `xml:"AttachmentId"`
+	Name string `xml:"Name"`
 }
 
 type moveItemEnvelope struct {

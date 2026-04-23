@@ -660,6 +660,63 @@ func TestClientSyncFolderItemsParsesChanges(t *testing.T) {
 	}
 }
 
+func TestClientCreateAttachmentReturnsNewChangeKey(t *testing.T) {
+	var body string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		data, _ := io.ReadAll(r.Body)
+		body = string(data)
+		r.Body.Close()
+		w.Header().Set("Content-Type", "text/xml; charset=utf-8")
+		_, _ = io.WriteString(w, `<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages" xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types">
+  <soap:Body>
+    <m:CreateAttachmentResponse>
+      <m:ResponseMessages>
+        <m:CreateAttachmentResponseMessage ResponseClass="Success">
+          <m:ResponseCode>NoError</m:ResponseCode>
+          <m:Attachments>
+            <t:FileAttachment>
+              <t:AttachmentId Id="att-1" RootItemId="draft-1" RootItemChangeKey="ck-updated" />
+              <t:Name>note.pdf</t:Name>
+            </t:FileAttachment>
+          </m:Attachments>
+        </m:CreateAttachmentResponseMessage>
+      </m:ResponseMessages>
+    </m:CreateAttachmentResponse>
+  </soap:Body>
+</soap:Envelope>`)
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{Endpoint: server.URL, Username: "ert-att", Password: "secret"})
+	if err != nil {
+		t.Fatalf("NewClient() error: %v", err)
+	}
+	defer client.Close()
+
+	newKey, err := client.CreateAttachment(t.Context(), "draft-1", "ck-old", AttachmentFile{
+		Name:        "note.pdf",
+		ContentType: "application/pdf",
+		Content:     []byte("hello"),
+	})
+	if err != nil {
+		t.Fatalf("CreateAttachment() error: %v", err)
+	}
+	if newKey != "ck-updated" {
+		t.Fatalf("new change key = %q, want ck-updated", newKey)
+	}
+	for _, snippet := range []string{
+		`<m:ParentItemId Id="draft-1" ChangeKey="ck-old" />`,
+		`<t:Name>note.pdf</t:Name>`,
+		`<t:ContentType>application/pdf</t:ContentType>`,
+		`<t:Content>aGVsbG8=</t:Content>`,
+	} {
+		if !strings.Contains(body, snippet) {
+			t.Fatalf("request body missing %q:\n%s", snippet, body)
+		}
+	}
+}
+
 func TestClientRetriesOn401WithFreshSession(t *testing.T) {
 	var (
 		requests   atomic.Int32
