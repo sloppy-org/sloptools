@@ -2,7 +2,6 @@ package groupware
 
 import (
 	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"sync"
@@ -187,22 +186,6 @@ func TestRegistryMailForConcurrentCalls(t *testing.T) {
 		gmail := providers[i].(*email.GmailClient)
 		if gmail.Session() != first {
 			t.Fatalf("worker %d session differs from worker 0", i)
-		}
-	}
-}
-
-func TestRegistryPlaceholderCapabilitiesReturnErrUnsupported(t *testing.T) {
-	reg := NewRegistry(nil, "")
-	ctx := context.Background()
-	cases := []struct {
-		name string
-		call func() error
-	}{
-		{"MailboxSettingsFor", func() error { _, err := reg.MailboxSettingsFor(ctx, 1); return err }},
-	}
-	for _, tc := range cases {
-		if err := tc.call(); !errors.Is(err, ErrUnsupported) {
-			t.Fatalf("%s returned %v, want ErrUnsupported", tc.name, err)
 		}
 	}
 }
