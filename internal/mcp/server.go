@@ -15,6 +15,7 @@ import (
 	tabcalendar "github.com/sloppy-org/sloptools/internal/calendar"
 	"github.com/sloppy-org/sloptools/internal/canvas"
 	"github.com/sloppy-org/sloptools/internal/email"
+	"github.com/sloppy-org/sloptools/internal/groupware"
 	"github.com/sloppy-org/sloptools/internal/providerdata"
 	"github.com/sloppy-org/sloptools/internal/store"
 )
@@ -44,6 +45,7 @@ type Server struct {
 	adapter                 *canvas.Adapter
 	handoffs                *handoffRegistry
 	store                   *store.Store
+	groupware               *groupware.Registry
 	newGoogleCalendarReader func(context.Context) (googleCalendarReader, error)
 	newEmailProvider        func(context.Context, store.ExternalAccount) (email.EmailProvider, error)
 }
@@ -74,6 +76,7 @@ func NewServerWithStore(projectDir string, st *store.Store) *Server {
 		adapter:    adapter,
 		handoffs:   newHandoffRegistry(),
 		store:      st,
+		groupware:  groupware.NewRegistry(st, ""),
 		newGoogleCalendarReader: func(ctx context.Context) (googleCalendarReader, error) {
 			return tabcalendar.New(ctx)
 		},

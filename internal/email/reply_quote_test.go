@@ -96,13 +96,13 @@ func TestFormatQuotedReplyDeepenQuotes(t *testing.T) {
 
 func TestParseReplyQuoteStyleAccepts(t *testing.T) {
 	tests := map[string]ReplyQuoteStyle{
-		"":             ReplyQuoteBottomPost,
-		"bottom_post":  ReplyQuoteBottomPost,
-		"GCC":          ReplyQuoteBottomPost,
-		"interleaved":  ReplyQuoteBottomPost,
-		"top_post":     ReplyQuoteTopPost,
-		"business":     ReplyQuoteTopPost,
-		"modern":       ReplyQuoteTopPost,
+		"":            ReplyQuoteBottomPost,
+		"bottom_post": ReplyQuoteBottomPost,
+		"GCC":         ReplyQuoteBottomPost,
+		"interleaved": ReplyQuoteBottomPost,
+		"top_post":    ReplyQuoteTopPost,
+		"business":    ReplyQuoteTopPost,
+		"modern":      ReplyQuoteTopPost,
 	}
 	for input, want := range tests {
 		got, err := ParseReplyQuoteStyle(input)

@@ -13,7 +13,6 @@ import (
 // Project is a temporary type alias kept so callers outside this package
 // continue to compile while they migrate to Workspace.
 
-
 const (
 	appStateActiveWorkspaceIDKey = "active_workspace_id"
 	// DB-stored key prefixes are intentionally kept unchanged for backward
