@@ -112,7 +112,7 @@ func bindCommonFlags(fs *flag.FlagSet, c *mailCommonFlags) {
 
 func defaultDataDir() string {
 	home := os.Getenv("HOME")
-	return filepath.Join(home, ".local", "share", "sloptools")
+	return filepath.Join(home, ".local", "share", "sloppy")
 }
 
 func cmdMailSend(args []string) int {
@@ -258,7 +258,7 @@ func runMailReply(common mailCommonFlags, req mcp.MailReplyRequest) int {
 }
 
 func newMailServer(projectDir, dataDir string) (*mcp.Server, *store.Store, error) {
-	st, err := store.New(filepath.Join(dataDir, "sloptools.db"))
+	st, err := store.New(filepath.Join(dataDir, "sloppy.db"))
 	if err != nil {
 		return nil, nil, fmt.Errorf("open store: %w", err)
 	}

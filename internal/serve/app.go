@@ -49,7 +49,7 @@ func NewApp(projectDir, dataDir string) *App {
 	}
 	a.Adapter = canvas.NewAdapter(projectDir, a.queueEvent)
 	if strings.TrimSpace(dataDir) != "" {
-		dbPath := filepath.Join(dataDir, "sloptools.db")
+		dbPath := filepath.Join(dataDir, "sloppy.db")
 		if st, err := store.New(dbPath); err == nil {
 			a.Store = st
 		} else {

@@ -21,11 +21,6 @@ const (
 	ScopeDocs      = "https://www.googleapis.com/auth/documents"
 	ScopeSheets    = "https://www.googleapis.com/auth/spreadsheets"
 	ScopeTasks     = "https://www.googleapis.com/auth/tasks"
-
-	// Deprecated aliases kept for compile compatibility
-	ScopeGmailModify      = ScopeGmailFull
-	ScopeContactsReadonly = ScopeContacts
-	ScopeCalendarReadonly = "https://www.googleapis.com/auth/calendar.readonly"
 )
 
 var DefaultScopes = []string{
@@ -49,9 +44,9 @@ type Session struct {
 func DefaultConfigDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil || strings.TrimSpace(home) == "" {
-		return ".sloptools"
+		return ".sloppy"
 	}
-	return filepath.Join(home, ".config", "sloptools")
+	return filepath.Join(home, ".config", "sloppy")
 }
 
 func DefaultCredentialsPath() string {

@@ -11,7 +11,7 @@ import (
 func newDomainServerForTest(t *testing.T) (*Server, *store.Store, string) {
 	t.Helper()
 	projectDir := t.TempDir()
-	st, err := store.New(filepath.Join(t.TempDir(), "sloptools.db"))
+	st, err := store.New(filepath.Join(t.TempDir(), "sloppy.db"))
 	if err != nil {
 		t.Fatalf("store.New() error: %v", err)
 	}

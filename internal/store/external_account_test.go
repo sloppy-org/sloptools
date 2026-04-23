@@ -132,7 +132,7 @@ func TestExternalAccountStoreRejectsInvalidConfigAndIdentity(t *testing.T) {
 
 func TestExternalAccountCredentialHelpers(t *testing.T) {
 	envVar := ExternalAccountPasswordEnvVar(ExternalProviderGoogleCalendar, "Work Calendar")
-	if envVar != "SLOPSHELL_GOOGLE_CALENDAR_PASSWORD_WORK_CALENDAR" {
+	if envVar != "SLOPPY_GOOGLE_CALENDAR_PASSWORD_WORK_CALENDAR" {
 		t.Fatalf("ExternalAccountPasswordEnvVar() = %q", envVar)
 	}
 

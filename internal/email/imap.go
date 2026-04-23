@@ -94,9 +94,9 @@ func (c *IMAPClient) ConfigureDraftTransport(cfg SMTPConfig) {
 }
 
 // NewIMAPFromConfig creates an IMAP client from a provider configuration.
-// Password is read from environment variable SLOPSHELL_IMAP_PASSWORD_<NAME>.
+// Password is read from environment variable SLOPPY_IMAP_PASSWORD_<NAME>.
 func NewIMAPFromConfig(name string, config ProviderConfig) (*IMAPClient, error) {
-	envName := "SLOPSHELL_IMAP_PASSWORD_" + strings.ToUpper(strings.ReplaceAll(name, "-", "_"))
+	envName := "SLOPPY_IMAP_PASSWORD_" + strings.ToUpper(strings.ReplaceAll(name, "-", "_"))
 	password := os.Getenv(envName)
 	if password == "" {
 		return nil, fmt.Errorf("password not set - export %s environment variable", envName)

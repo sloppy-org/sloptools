@@ -47,7 +47,7 @@ func (s *stubCalendarReader) CreateEvent(_ context.Context, opts tabcalendar.Cre
 }
 
 func TestCalendarListUsesGmailFallback(t *testing.T) {
-	st, err := store.New(filepath.Join(t.TempDir(), "sloptools.db"))
+	st, err := store.New(filepath.Join(t.TempDir(), "sloppy.db"))
 	if err != nil {
 		t.Fatalf("store.New: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestCalendarListUsesGmailFallback(t *testing.T) {
 }
 
 func TestCalendarEventsReturnsStructuredEvents(t *testing.T) {
-	st, err := store.New(filepath.Join(t.TempDir(), "sloptools.db"))
+	st, err := store.New(filepath.Join(t.TempDir(), "sloppy.db"))
 	if err != nil {
 		t.Fatalf("store.New: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestCalendarEventsReturnsStructuredEvents(t *testing.T) {
 }
 
 func TestCalendarEventCreateUsesPreferredSphereCalendar(t *testing.T) {
-	st, err := store.New(filepath.Join(t.TempDir(), "sloptools.db"))
+	st, err := store.New(filepath.Join(t.TempDir(), "sloppy.db"))
 	if err != nil {
 		t.Fatalf("store.New: %v", err)
 	}

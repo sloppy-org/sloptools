@@ -199,7 +199,7 @@ func normalizeExchangeConfig(cfg ExchangeConfig) ExchangeConfig {
 		cfg.AuthBaseURL = defaultExchangeAuthBaseURL
 	}
 	if cfg.ConfigDir == "" {
-		cfg.ConfigDir = defaultSlopshellConfigDir()
+		cfg.ConfigDir = defaultEmailConfigDir()
 	}
 	if cfg.TokenPath == "" {
 		cfg.TokenPath = ExchangeTokenPath(cfg.ConfigDir, cfg.Label)
@@ -235,7 +235,7 @@ func validateExchangeConfig(cfg ExchangeConfig) error {
 }
 
 func ExchangeSecretEnvVar(label string) string {
-	return "SLOPSHELL_EXCHANGE_SECRET_" + sanitizeExchangeEnvSegment(label)
+	return "SLOPPY_EXCHANGE_SECRET_" + sanitizeExchangeEnvSegment(label)
 }
 
 func ExchangeTokenPath(configDir, label string) string {
@@ -609,12 +609,12 @@ func sleepContext(ctx context.Context, d time.Duration) error {
 	}
 }
 
-func defaultSlopshellConfigDir() string {
+func defaultEmailConfigDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil || strings.TrimSpace(home) == "" {
-		return ".sloptools"
+		return ".sloppy"
 	}
-	return filepath.Join(home, ".config", "sloptools")
+	return filepath.Join(home, ".config", "sloppy")
 }
 
 func sanitizeExchangeEnvSegment(raw string) string {

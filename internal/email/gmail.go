@@ -19,7 +19,7 @@ import (
 var gmailScopes = append([]string(nil), googleauth.DefaultScopes...)
 
 func configDir() string {
-	return defaultSlopshellConfigDir()
+	return defaultEmailConfigDir()
 }
 
 // GmailClient provides access to Gmail API with rate limiting.

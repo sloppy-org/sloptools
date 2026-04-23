@@ -90,7 +90,7 @@ func cmdBootstrap(args []string) int {
 func cmdMCPServer(args []string) int {
 	fs := flag.NewFlagSet("mcp-server", flag.ContinueOnError)
 	projectDir := fs.String("project-dir", ".", "project dir")
-	dataDir := fs.String("data-dir", filepath.Join(os.Getenv("HOME"), ".sloptools"), "data dir")
+	dataDir := fs.String("data-dir", filepath.Join(os.Getenv("HOME"), ".local", "share", "sloppy"), "data dir")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -99,7 +99,7 @@ func cmdMCPServer(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	st, err := store.New(filepath.Join(*dataDir, "sloptools.db"))
+	st, err := store.New(filepath.Join(*dataDir, "sloppy.db"))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
@@ -119,7 +119,7 @@ func cmdServer(args []string) int {
 func parseServerConfig(args []string) (*serverConfig, int) {
 	fs := flag.NewFlagSet("server", flag.ContinueOnError)
 	cfg := &serverConfig{
-		dataDir: filepath.Join(os.Getenv("HOME"), ".sloptools"),
+		dataDir: filepath.Join(os.Getenv("HOME"), ".local", "share", "sloppy"),
 	}
 	projectDir := fs.String("project-dir", ".", "project dir")
 	fs.StringVar(&cfg.dataDir, "data-dir", cfg.dataDir, "data dir")

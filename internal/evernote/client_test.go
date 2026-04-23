@@ -26,7 +26,7 @@ func newTestClient(t *testing.T, handler http.HandlerFunc) *Client {
 }
 
 func TestTokenEnvVarAndNewClientFromEnv(t *testing.T) {
-	if got, want := TokenEnvVar("Lab Notes"), "SLOPSHELL_EVERNOTE_TOKEN_LAB_NOTES"; got != want {
+	if got, want := TokenEnvVar("Lab Notes"), "SLOPPY_EVERNOTE_TOKEN_LAB_NOTES"; got != want {
 		t.Fatalf("TokenEnvVar() = %q, want %q", got, want)
 	}
 

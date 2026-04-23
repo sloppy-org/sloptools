@@ -30,7 +30,7 @@ func newTestClient(t *testing.T, handler http.HandlerFunc) *Client {
 }
 
 func TestTokenEnvVarAndNewClientFromEnv(t *testing.T) {
-	if got, want := TokenEnvVar("Work Main"), "SLOPSHELL_TODOIST_TOKEN_WORK_MAIN"; got != want {
+	if got, want := TokenEnvVar("Work Main"), "SLOPPY_TODOIST_TOKEN_WORK_MAIN"; got != want {
 		t.Fatalf("TokenEnvVar() = %q, want %q", got, want)
 	}
 

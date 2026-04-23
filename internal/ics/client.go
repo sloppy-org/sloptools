@@ -267,7 +267,7 @@ func parseICSDateTime(dtStr string) (time.Time, bool) {
 func defaultConfigDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil || strings.TrimSpace(home) == "" {
-		return ".sloptools"
+		return ".sloppy"
 	}
-	return filepath.Join(home, ".config", "sloptools")
+	return filepath.Join(home, ".config", "sloppy")
 }

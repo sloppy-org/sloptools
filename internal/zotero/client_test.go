@@ -27,7 +27,7 @@ func newTestClient(t *testing.T, handler http.HandlerFunc) *Client {
 }
 
 func TestAPIKeyEnvVarAndNewClientFromEnv(t *testing.T) {
-	if got, want := APIKeyEnvVar("Main Library"), "SLOPSHELL_ZOTERO_API_KEY_MAIN_LIBRARY"; got != want {
+	if got, want := APIKeyEnvVar("Main Library"), "SLOPPY_ZOTERO_API_KEY_MAIN_LIBRARY"; got != want {
 		t.Fatalf("APIKeyEnvVar() = %q, want %q", got, want)
 	}
 

@@ -24,7 +24,7 @@ func TestExchangeConfigHelpers(t *testing.T) {
 	if cfg.ClientID != "client-id" || cfg.TenantID != "tenant-id" {
 		t.Fatalf("ExchangeConfigFromMap() = %+v", cfg)
 	}
-	if got := ExchangeSecretEnvVar("Work Mail"); got != "SLOPSHELL_EXCHANGE_SECRET_WORK_MAIL" {
+	if got := ExchangeSecretEnvVar("Work Mail"); got != "SLOPPY_EXCHANGE_SECRET_WORK_MAIL" {
 		t.Fatalf("ExchangeSecretEnvVar() = %q", got)
 	}
 	tokenPath := ExchangeTokenPath("/tmp/slopshell", "Work Mail")
@@ -173,7 +173,7 @@ func TestExchangeClientUsesRefreshTokenForGraphOperations(t *testing.T) {
 		AuthBaseURL: server.URL,
 		TokenPath:   tokensPath,
 	}, WithExchangeClock(func() time.Time { return now }), WithExchangeEnvLookup(func(key string) (string, bool) {
-		if key != "SLOPSHELL_EXCHANGE_SECRET_WORK_MAIL" {
+		if key != "SLOPPY_EXCHANGE_SECRET_WORK_MAIL" {
 			t.Fatalf("env key = %q", key)
 		}
 		return "secret-value", true
