@@ -91,9 +91,10 @@ type InviteResponse struct {
 // FreeBusySlot reports a single busy-time window for a calendar owner.
 // Status values: free, busy, tentative, oof, workingElsewhere.
 type FreeBusySlot struct {
-	Start  time.Time
-	End    time.Time
-	Status string
+	Participant string
+	Start       time.Time
+	End         time.Time
+	Status      string
 }
 
 // OOFSettings is the out-of-office auto-reply configuration for a mailbox.

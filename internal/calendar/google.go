@@ -30,6 +30,7 @@ var (
 	_ Provider        = (*GoogleProvider)(nil)
 	_ EventMutator    = (*GoogleProvider)(nil)
 	_ InviteResponder = (*GoogleProvider)(nil)
+	_ FreeBusyLooker  = (*GoogleProvider)(nil)
 )
 
 // NewGoogleProvider wraps an existing OAuth session. The Google Calendar

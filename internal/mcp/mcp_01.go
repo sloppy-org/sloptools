@@ -238,6 +238,8 @@ func (s *Server) callTool(name string, args map[string]interface{}) (map[string]
 		return s.calendarEvents(args)
 	case "calendar_event_create":
 		return s.calendarEventCreate(args)
+	case "calendar_freebusy":
+		return s.calendarFreeBusy(args)
 	case "mail_account_list":
 		return s.mailAccountList(args)
 	case "mail_label_list":
