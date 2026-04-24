@@ -217,7 +217,6 @@ func TestMailToolsActAndFilter(t *testing.T) {
 		t.Fatalf("deleted = %#v", deleted["deleted"])
 	}
 }
-
 func TestMailActionResolvesTargetsFromQuery(t *testing.T) {
 	s, st, _ := newDomainServerForTest(t)
 	account, err := st.CreateExternalAccount(store.SphereWork, store.ExternalProviderGmail, "Work Gmail", map[string]any{})
@@ -263,7 +262,6 @@ func TestMailActionResolvesTargetsFromQuery(t *testing.T) {
 		t.Fatalf("request query = %q", got)
 	}
 }
-
 func TestMailActionDeferResolvesTargetsFromQuery(t *testing.T) {
 	s, st, _ := newDomainServerForTest(t)
 	account, err := st.CreateExternalAccount(store.SphereWork, store.ExternalProviderGmail, "Work Gmail", map[string]any{})
@@ -316,7 +314,6 @@ func TestMailActionDeferResolvesTargetsFromQuery(t *testing.T) {
 		t.Fatalf("request until = %q", got)
 	}
 }
-
 func TestMailActionRejectsMissingIDsAndQuery(t *testing.T) {
 	s, st, _ := newDomainServerForTest(t)
 	account, err := st.CreateExternalAccount(store.SphereWork, store.ExternalProviderGmail, "Work Gmail", map[string]any{})
@@ -334,7 +331,6 @@ func TestMailActionRejectsMissingIDsAndQuery(t *testing.T) {
 		t.Fatalf("error = %q", got)
 	}
 }
-
 func TestMailActionDeferRequiresUntil(t *testing.T) {
 	s, st, _ := newDomainServerForTest(t)
 	account, err := st.CreateExternalAccount(store.SphereWork, store.ExternalProviderGmail, "Work Gmail", map[string]any{})
@@ -352,7 +348,6 @@ func TestMailActionDeferRequiresUntil(t *testing.T) {
 		t.Fatalf("error = %q", got)
 	}
 }
-
 func TestMailActionDeferRejectsUnsupportedProvider(t *testing.T) {
 	s, st, _ := newDomainServerForTest(t)
 	account, err := st.CreateExternalAccount(store.SphereWork, store.ExternalProviderIMAP, "Work IMAP", map[string]any{})
@@ -383,7 +378,6 @@ func TestMailActionDeferRejectsUnsupportedProvider(t *testing.T) {
 		t.Fatalf("log error = %q", logs[0].ErrorText)
 	}
 }
-
 func TestMailActionLogsAndReconcilesExchangeBindings(t *testing.T) {
 	s, st, _ := newDomainServerForTest(t)
 	account, err := st.CreateExternalAccount(store.SphereWork, store.ExternalProviderExchangeEWS, "TU Graz", map[string]any{})
@@ -443,7 +437,6 @@ func TestMailActionLogsAndReconcilesExchangeBindings(t *testing.T) {
 		t.Fatalf("resolved id = %q", logs[0].ResolvedMessageID)
 	}
 }
-
 func TestCanvasImportHandoffFileText(t *testing.T) {
 	content := []byte("hello from handoff")
 	sum := sha256.Sum256(content)
@@ -494,4 +487,13 @@ func TestCanvasImportHandoffFileText(t *testing.T) {
 	if string(data) != string(content) {
 		t.Fatalf("imported content mismatch")
 	}
+}
+func stringHex(b []byte) string {
+	const hextable = "0123456789abcdef"
+	out := make([]byte, len(b)*2)
+	for i, v := range b {
+		out[i*2] = hextable[v>>4]
+		out[i*2+1] = hextable[v&0x0f]
+	}
+	return string(out)
 }

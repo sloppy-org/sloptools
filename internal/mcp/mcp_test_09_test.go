@@ -10,6 +10,45 @@ import (
 	"github.com/sloppy-org/sloptools/internal/store"
 )
 
+type fakeOOFProvider struct {
+	name        string
+	state       providerdata.OOFSettings
+	getCalls    int
+	setCalls    int
+	closeCalls  int
+	failGetWith error
+	failSetWith error
+}
+
+func (p *fakeOOFProvider) GetOOF(_ context.Context) (providerdata.OOFSettings, error) {
+	p.getCalls++
+	if p.failGetWith != nil {
+		return providerdata.OOFSettings{}, p.failGetWith
+	}
+	return p.state, nil
+}
+
+func (p *fakeOOFProvider) SetOOF(_ context.Context, settings providerdata.OOFSettings) error {
+	p.setCalls++
+	if p.failSetWith != nil {
+		return p.failSetWith
+	}
+	p.state = settings
+	return nil
+}
+
+func (p *fakeOOFProvider) ProviderName() string {
+	if p.name == "" {
+		return "fake_oof"
+	}
+	return p.name
+}
+
+func (p *fakeOOFProvider) Close() error {
+	p.closeCalls++
+	return nil
+}
+
 type fakeDelegationProvider struct {
 	fakeOOFProvider
 	delegates       []providerdata.Delegate
