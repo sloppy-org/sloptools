@@ -1,4 +1,5 @@
 package mcp
+
 import (
 	"bufio"
 	"bytes"
@@ -30,11 +31,14 @@ const (
 	handoffKindMail       = "mail"
 	tempArtifactsDirRel   = ".sloptools/artifacts/tmp"
 )
+
 var supportedProtocolVersions = map[string]struct{}{"2024-11-05": {}, "2025-03-26": {}}
+
 type RPCError struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
 }
+
 type Server struct {
 	projectDir                 string
 	adapter                    *canvas.Adapter
@@ -68,6 +72,7 @@ func NewServerWithStore(projectDir string, st *store.Store) *Server {
 	}
 	return srv
 }
+
 func (s *Server) ProjectDir() string {
 	return s.projectDir
 }
@@ -81,6 +86,7 @@ func (s *Server) SetAdapter(adapter *canvas.Adapter) {
 		s.projectDir = adapter.ProjectDir()
 	}
 }
+
 func (s *Server) DispatchMessage(message map[string]interface{}) map[string]interface{} {
 	id, hasID := message["id"]
 	method, _ := message["method"].(string)
@@ -234,16 +240,8 @@ func (s *Server) callTool(name string, args map[string]interface{}) (map[string]
 		return s.calendarEventCreate(args)
 	case "calendar_freebusy":
 		return s.calendarFreeBusy(args)
-	case "calendar_event_get":
-		return s.calendarEventGet(args)
-	case "calendar_event_update":
-		return s.calendarEventUpdate(args)
-	case "calendar_event_delete":
-		return s.calendarEventDelete(args)
-	case "calendar_event_respond":
-		return s.calendarEventRespond(args)
-	case "calendar_event_ics_export":
-		return s.calendarEventIcsExport(args)
+	case "calendar_event_get", "calendar_event_update", "calendar_event_delete", "calendar_event_respond", "calendar_event_ics_export":
+		return s.dispatchCalendarEvent(name, args)
 	case "mail_account_list":
 		return s.mailAccountList(args)
 	case "mail_label_list":
@@ -298,9 +296,11 @@ func (s *Server) callTool(name string, args map[string]interface{}) (map[string]
 		return nil, errors.New("unknown tool: " + name)
 	}
 }
+
 func RunStdio(projectDir string) int {
 	return RunStdioWithStore(projectDir, nil)
 }
+
 func RunStdioWithStore(projectDir string, st *store.Store) int {
 	s := NewServerWithStore(projectDir, st)
 	reader := bufio.NewReader(os.Stdin)

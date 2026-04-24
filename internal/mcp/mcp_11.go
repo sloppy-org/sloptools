@@ -12,6 +12,22 @@ import (
 	"github.com/sloppy-org/sloptools/internal/store"
 )
 
+func (s *Server) dispatchCalendarEvent(method string, args map[string]interface{}) (map[string]interface{}, error) {
+	switch method {
+	case "calendar_event_get":
+		return s.calendarEventGet(args)
+	case "calendar_event_update":
+		return s.calendarEventUpdate(args)
+	case "calendar_event_delete":
+		return s.calendarEventDelete(args)
+	case "calendar_event_respond":
+		return s.calendarEventRespond(args)
+	case "calendar_event_ics_export":
+		return s.calendarEventIcsExport(args)
+	}
+	return nil, fmt.Errorf("unknown calendar event method: %s", method)
+}
+
 func (s *Server) calendarEventGet(args map[string]interface{}) (map[string]interface{}, error) {
 	st, err := s.requireStore()
 	if err != nil {
