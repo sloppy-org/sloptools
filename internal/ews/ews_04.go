@@ -51,7 +51,7 @@ func responseCode(target any) string {
 	case *setUserOofSettingsEnvelope:
 		return typed.responseCode()
 	default:
-		return ""
+		return contactEnvelopeResponseCode(target)
 	}
 }
 
