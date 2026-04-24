@@ -53,16 +53,16 @@ func TestInviteResponseJSONRoundTrip(t *testing.T) {
 
 func TestFreeBusySlotZeroValue(t *testing.T) {
 	var zero FreeBusySlot
-	if !zero.Start.IsZero() || !zero.End.IsZero() || zero.Status != "" {
+	if zero.Participant != "" || !zero.Start.IsZero() || !zero.End.IsZero() || zero.Status != "" {
 		t.Fatalf("zero FreeBusySlot has populated fields: %+v", zero)
 	}
 }
 
 func TestFreeBusySlotJSONRoundTrip(t *testing.T) {
 	start := time.Date(2026, time.April, 23, 9, 0, 0, 0, time.UTC)
-	in := FreeBusySlot{Start: start, End: start.Add(30 * time.Minute), Status: "busy"}
+	in := FreeBusySlot{Participant: "alice@example.com", Start: start, End: start.Add(30 * time.Minute), Status: "busy"}
 	got := roundTripJSON(t, in)
-	if !got.Start.Equal(in.Start) || !got.End.Equal(in.End) || got.Status != in.Status {
+	if got.Participant != in.Participant || !got.Start.Equal(in.Start) || !got.End.Equal(in.End) || got.Status != in.Status {
 		t.Fatalf("round trip mismatch: in=%+v got=%+v", in, got)
 	}
 }

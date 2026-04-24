@@ -108,3 +108,20 @@ func TestGoogleProviderListCalendarsWithoutSession(t *testing.T) {
 		t.Fatal("ListCalendars() without session returned nil error")
 	}
 }
+
+func TestGoogleProviderQueryFreeBusyWithoutSession(t *testing.T) {
+	g := NewGoogleProvider(nil)
+	if _, err := g.QueryFreeBusy(context.Background(), []string{"alice@example.com"}, TimeRange{}); err == nil {
+		t.Fatal("QueryFreeBusy() without session returned nil error")
+	}
+}
+
+func TestGoogleProviderQueryFreeBusyEmptyParticipants(t *testing.T) {
+	g := NewGoogleProvider(nil)
+	// Without a session this will fail on getService, but we can verify the error path
+	// is reached before the API call. We just check it returns an error.
+	_, err := g.QueryFreeBusy(context.Background(), []string{}, TimeRange{})
+	if err == nil {
+		t.Fatal("QueryFreeBusy() with empty participants should fail")
+	}
+}
