@@ -107,6 +107,25 @@ type OOFSettings struct {
 	EndAt         *time.Time
 }
 
+// Delegate is one entry returned by the mailbox delegation list.
+// Permissions are backend-specific tokens (Gmail verification status,
+// EWS per-folder permission levels such as calendar:Editor) and callers
+// should treat them as opaque strings for display.
+type Delegate struct {
+	Email       string
+	Name        string
+	Permissions []string
+}
+
+// SharedMailbox is one mailbox the account has structured access to beyond
+// its own. Gmail models forwarding addresses here; EWS reports empty until a
+// discovery path lands.
+type SharedMailbox struct {
+	Email       string
+	Name        string
+	AccessLevel string
+}
+
 // TaskList is a single task container (Google Tasks list or Exchange tasks folder).
 type TaskList struct {
 	ID      string

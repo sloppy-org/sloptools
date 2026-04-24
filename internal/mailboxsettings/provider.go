@@ -24,3 +24,11 @@ type OOFProvider interface {
 	ProviderName() string
 	Close() error
 }
+
+// DelegationProvider reads the set of mailbox delegates and shared mailboxes
+// accessible to the account. Both lists are read-only for now; mutating
+// delegate assignments is out of scope for the first cut.
+type DelegationProvider interface {
+	ListDelegates(ctx context.Context) ([]providerdata.Delegate, error)
+	ListSharedMailboxes(ctx context.Context) ([]providerdata.SharedMailbox, error)
+}

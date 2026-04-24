@@ -180,3 +180,115 @@ type setUserOofSettingsEnvelope struct {
 func (e setUserOofSettingsEnvelope) responseCode() string {
 	return strings.TrimSpace(e.Body.Response.ResponseMessage.ResponseCode)
 }
+
+// DelegateUser is one entry returned by GetDelegate, carrying the delegate's
+// identity and per-folder permission levels. Exchange reports permissions as
+// enumerated strings (None, Reviewer, Author, Editor, Custom, ...); callers
+// should treat them as opaque tokens suitable for display.
+type DelegateUser struct {
+	PrimarySmtpAddress string
+	DisplayName        string
+	Permissions        DelegatePermissions
+	ViewPrivateItems   bool
+	ReceiveCopiesOfMR  bool
+}
+
+// DelegatePermissions mirrors the EWS DelegatePermissions element. Each field
+// is the raw permission-level string per Exchange folder; an empty value means
+// the server omitted that folder (commonly "None").
+type DelegatePermissions struct {
+	CalendarFolder string
+	TasksFolder    string
+	InboxFolder    string
+	ContactsFolder string
+	NotesFolder    string
+	JournalFolder  string
+}
+
+// GetDelegate invokes the EWS `GetDelegate` SOAP operation for the given
+// mailbox SMTP address and returns the delegate users Exchange reports. The
+// request includes IncludePermissions="true" so each delegate carries its
+// per-folder permission levels.
+func (c *Client) GetDelegate(ctx context.Context, mailbox string) ([]DelegateUser, error) {
+	mailbox = strings.TrimSpace(mailbox)
+	if mailbox == "" {
+		return nil, fmt.Errorf("ews GetDelegate: mailbox is required")
+	}
+	body := `<m:GetDelegate IncludePermissions="true"><m:Mailbox><t:EmailAddress>` + xmlEscapeText(mailbox) + `</t:EmailAddress></m:Mailbox></m:GetDelegate>`
+	var resp getDelegateEnvelope
+	if err := c.call(ctx, "GetDelegate", body, &resp); err != nil {
+		return nil, err
+	}
+	return resp.delegates(), nil
+}
+
+type getDelegateEnvelope struct {
+	Body struct {
+		Response struct {
+			ResponseCode     string `xml:"ResponseCode"`
+			MessageText      string `xml:"MessageText"`
+			ResponseMessages struct {
+				DelegateUserResponseMessageType []delegateUserResponseMessageXML `xml:"DelegateUserResponseMessageType"`
+			} `xml:"ResponseMessages"`
+			DeliverMeetingRequests string `xml:"DeliverMeetingRequests"`
+		} `xml:"GetDelegateResponse"`
+	} `xml:"Body"`
+}
+
+func (e getDelegateEnvelope) responseCode() string {
+	return strings.TrimSpace(e.Body.Response.ResponseCode)
+}
+
+type delegateUserResponseMessageXML struct {
+	ResponseClass string          `xml:"ResponseClass,attr"`
+	ResponseCode  string          `xml:"ResponseCode"`
+	DelegateUser  delegateUserXML `xml:"DelegateUser"`
+}
+
+type delegateUserXML struct {
+	UserID struct {
+		PrimarySmtpAddress string `xml:"PrimarySmtpAddress"`
+		DisplayName        string `xml:"DisplayName"`
+	} `xml:"UserId"`
+	DelegatePermissions struct {
+		CalendarFolder string `xml:"CalendarFolderPermissionLevel"`
+		TasksFolder    string `xml:"TasksFolderPermissionLevel"`
+		InboxFolder    string `xml:"InboxFolderPermissionLevel"`
+		ContactsFolder string `xml:"ContactsFolderPermissionLevel"`
+		NotesFolder    string `xml:"NotesFolderPermissionLevel"`
+		JournalFolder  string `xml:"JournalFolderPermissionLevel"`
+	} `xml:"DelegatePermissions"`
+	ReceiveCopiesOfMeetingMessages string `xml:"ReceiveCopiesOfMeetingMessages"`
+	ViewPrivateItems               string `xml:"ViewPrivateItems"`
+}
+
+func (e getDelegateEnvelope) delegates() []DelegateUser {
+	messages := e.Body.Response.ResponseMessages.DelegateUserResponseMessageType
+	out := make([]DelegateUser, 0, len(messages))
+	for _, msg := range messages {
+		if !strings.EqualFold(strings.TrimSpace(msg.ResponseClass), "Success") {
+			continue
+		}
+		raw := msg.DelegateUser
+		email := strings.TrimSpace(raw.UserID.PrimarySmtpAddress)
+		name := strings.TrimSpace(raw.UserID.DisplayName)
+		if email == "" && name == "" {
+			continue
+		}
+		out = append(out, DelegateUser{
+			PrimarySmtpAddress: email,
+			DisplayName:        name,
+			Permissions: DelegatePermissions{
+				CalendarFolder: strings.TrimSpace(raw.DelegatePermissions.CalendarFolder),
+				TasksFolder:    strings.TrimSpace(raw.DelegatePermissions.TasksFolder),
+				InboxFolder:    strings.TrimSpace(raw.DelegatePermissions.InboxFolder),
+				ContactsFolder: strings.TrimSpace(raw.DelegatePermissions.ContactsFolder),
+				NotesFolder:    strings.TrimSpace(raw.DelegatePermissions.NotesFolder),
+				JournalFolder:  strings.TrimSpace(raw.DelegatePermissions.JournalFolder),
+			},
+			ReceiveCopiesOfMR: strings.EqualFold(strings.TrimSpace(raw.ReceiveCopiesOfMeetingMessages), "true"),
+			ViewPrivateItems:  strings.EqualFold(strings.TrimSpace(raw.ViewPrivateItems), "true"),
+		})
+	}
+	return out
+}

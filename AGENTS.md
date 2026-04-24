@@ -18,7 +18,7 @@
 - `internal/ics`: ICS calendar client.
 - `internal/licensing`: license-policy tests and repository-wide size-limit enforcement.
 - `internal/llmcache`: local cache and cache-key helpers for LLM calls.
-- `internal/mailboxsettings`: mailbox setting providers such as Gmail and EWS out-of-office state.
+- `internal/mailboxsettings`: mailbox setting providers (Gmail and EWS) covering out-of-office state and delegation/shared-mailbox listing.
 - `internal/mailtriage`: mail triage models, distillation, hybrid routing, and LLM integration.
 - `internal/mcp`: MCP server, tool registration, domain/mail/calendar/handoff handlers, and compose/flag flows.
 - `internal/modelprofile`: model-profile definitions and validation.

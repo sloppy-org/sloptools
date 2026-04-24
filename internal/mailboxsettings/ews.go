@@ -19,7 +19,10 @@ type EWSProvider struct {
 	mailbox string
 }
 
-var _ OOFProvider = (*EWSProvider)(nil)
+var (
+	_ OOFProvider        = (*EWSProvider)(nil)
+	_ DelegationProvider = (*EWSProvider)(nil)
+)
 
 // NewEWSProvider wraps a cached EWS client for the given mailbox SMTP address;
 // the address is sent in the SOAP `Mailbox/Address` element of the OOF
@@ -104,6 +107,62 @@ func (p *EWSProvider) SetOOF(ctx context.Context, settings providerdata.OOFSetti
 		return fmt.Errorf("ews OOF SetOOF: %w", err)
 	}
 	return nil
+}
+
+// ListDelegates returns mailbox delegates via the EWS GetDelegate SOAP
+// operation. Exchange reports per-folder permission levels (calendar, tasks,
+// inbox, contacts, notes, journal); each non-empty, non-None level is
+// surfaced as a single Permissions token like "calendar:Editor".
+func (p *EWSProvider) ListDelegates(ctx context.Context) ([]providerdata.Delegate, error) {
+	if p == nil || p.client == nil {
+		return nil, fmt.Errorf("ews delegation ListDelegates: client is not configured")
+	}
+	if p.mailbox == "" {
+		return nil, fmt.Errorf("ews delegation ListDelegates: mailbox address is required")
+	}
+	raw, err := p.client.GetDelegate(ctx, p.mailbox)
+	if err != nil {
+		return nil, fmt.Errorf("ews delegation ListDelegates: %w", err)
+	}
+	out := make([]providerdata.Delegate, 0, len(raw))
+	for _, entry := range raw {
+		out = append(out, providerdata.Delegate{
+			Email:       entry.PrimarySmtpAddress,
+			Name:        entry.DisplayName,
+			Permissions: delegatePermissionTokens(entry.Permissions),
+		})
+	}
+	return out, nil
+}
+
+// ListSharedMailboxes returns an empty slice for EWS. Exchange does not
+// publish the set of mailboxes the account has been granted access to via a
+// single SOAP call; enumerating them reliably requires AutoDiscover
+// GetUserSettings plus GetFolder probes per candidate, which is out of scope
+// for the first read-only cut. The capability is still implemented so MCP
+// callers can probe without a `capability_unsupported` error.
+func (p *EWSProvider) ListSharedMailboxes(ctx context.Context) ([]providerdata.SharedMailbox, error) {
+	return []providerdata.SharedMailbox{}, nil
+}
+
+func delegatePermissionTokens(perms ews.DelegatePermissions) []string {
+	entries := [][2]string{
+		{"calendar", perms.CalendarFolder},
+		{"tasks", perms.TasksFolder},
+		{"inbox", perms.InboxFolder},
+		{"contacts", perms.ContactsFolder},
+		{"notes", perms.NotesFolder},
+		{"journal", perms.JournalFolder},
+	}
+	out := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		value := strings.TrimSpace(entry[1])
+		if value == "" || strings.EqualFold(value, "None") {
+			continue
+		}
+		out = append(out, entry[0]+":"+value)
+	}
+	return out
 }
 
 func scopeFromAudience(audience ews.OofExternalAudience) string {

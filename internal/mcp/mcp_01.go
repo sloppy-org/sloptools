@@ -270,10 +270,8 @@ func (s *Server) callTool(name string, args map[string]interface{}) (map[string]
 		return s.mailFlagClear(args)
 	case "mail_categories_set":
 		return s.mailCategoriesSet(args)
-	case "mail_oof_get":
-		return s.mailOOFGet(args)
-	case "mail_oof_set":
-		return s.mailOOFSet(args)
+	case "mail_oof_get", "mail_oof_set", "mail_delegate_list":
+		return s.callMailboxSettingsTool(name, args)
 	case "contact_list":
 		return s.contactList(args)
 	case "contact_get":
