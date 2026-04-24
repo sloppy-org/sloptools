@@ -1,5 +1,4 @@
 package mcp
-
 import (
 	"bufio"
 	"bytes"
@@ -31,9 +30,7 @@ const (
 	handoffKindMail       = "mail"
 	tempArtifactsDirRel   = ".sloptools/artifacts/tmp"
 )
-
 var supportedProtocolVersions = map[string]struct{}{"2024-11-05": {}, "2025-03-26": {}}
-
 type RPCError struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
