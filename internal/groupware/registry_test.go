@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/sloppy-org/sloptools/internal/contacts"
 	"github.com/sloppy-org/sloptools/internal/email"
 	"github.com/sloppy-org/sloptools/internal/store"
 )
@@ -187,6 +188,56 @@ func TestRegistryMailForConcurrentCalls(t *testing.T) {
 		if gmail.Session() != first {
 			t.Fatalf("worker %d session differs from worker 0", i)
 		}
+	}
+}
+
+func TestRegistryContactsForEWSSharesClient(t *testing.T) {
+	st := newTestStore(t)
+	accountName := "TU Graz"
+	config := map[string]any{
+		"endpoint":       "https://example.invalid/EWS/Exchange.asmx",
+		"username":       "alice@example.invalid",
+		"server_version": "Exchange2016",
+	}
+	account, err := st.CreateExternalAccount(store.SphereWork, store.ExternalProviderExchangeEWS, accountName, config)
+	if err != nil {
+		t.Fatalf("CreateExternalAccount() error: %v", err)
+	}
+	envVar := store.ExternalAccountPasswordEnvVar(store.ExternalProviderExchangeEWS, accountName)
+	t.Setenv(envVar, "swordfish")
+
+	reg := NewRegistry(st, t.TempDir())
+	ctx := context.Background()
+
+	mailProvider, err := reg.MailFor(ctx, account.ID)
+	if err != nil {
+		t.Fatalf("MailFor() error: %v", err)
+	}
+	mailEWS, ok := mailProvider.(*email.ExchangeEWSMailProvider)
+	if !ok {
+		t.Fatalf("mail provider = %T, want *email.ExchangeEWSMailProvider", mailProvider)
+	}
+
+	first, err := reg.ContactsFor(ctx, account.ID)
+	if err != nil {
+		t.Fatalf("ContactsFor() first call error: %v", err)
+	}
+	second, err := reg.ContactsFor(ctx, account.ID)
+	if err != nil {
+		t.Fatalf("ContactsFor() second call error: %v", err)
+	}
+	ewsContacts, ok := first.(*contacts.EWSProvider)
+	if !ok {
+		t.Fatalf("contacts provider = %T, want *contacts.EWSProvider", first)
+	}
+	if first != second {
+		t.Fatalf("contacts provider was rebuilt between calls: first=%p second=%p", first, second)
+	}
+	if ewsContacts.Client() == nil {
+		t.Fatalf("contacts ews client is nil")
+	}
+	if ewsContacts.Client() != mailEWS.Client() {
+		t.Fatalf("contacts ews client %p differs from mail ews client %p", ewsContacts.Client(), mailEWS.Client())
 	}
 }
 

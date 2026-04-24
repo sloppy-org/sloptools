@@ -203,9 +203,9 @@ func (r *Registry) EWSClient(accountID int64) *ews.Client {
 }
 
 // ContactsFor returns a contacts.Provider for the given account, reusing the
-// cached OAuth session so mail, calendar, contacts, and tasks share one
-// token pipeline per Google account. EWS contacts lands in a follow-up and
-// returns contacts.ErrUnsupported.
+// cached OAuth session for Google accounts and the cached ews.Client for
+// Exchange/EWS accounts so mail, calendar, contacts, and tasks share a
+// single auth pipeline per external account.
 func (r *Registry) ContactsFor(ctx context.Context, accountID int64) (contacts.Provider, error) {
 	if r == nil {
 		return nil, errors.New("groupware: registry is nil")
@@ -220,7 +220,7 @@ func (r *Registry) ContactsFor(ctx context.Context, accountID int64) (contacts.P
 	return r.contactsFor(ctx, account)
 }
 
-func (r *Registry) contactsFor(_ context.Context, account store.ExternalAccount) (contacts.Provider, error) {
+func (r *Registry) contactsFor(ctx context.Context, account store.ExternalAccount) (contacts.Provider, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if cached, ok := r.contactsProviders[account.ID]; ok {
@@ -240,7 +240,22 @@ func (r *Registry) contactsFor(_ context.Context, account store.ExternalAccount)
 		r.contactsProviders[account.ID] = provider
 		return provider, nil
 	case store.ExternalProviderExchangeEWS:
-		return nil, fmt.Errorf("%s contacts: %w", account.Provider, contacts.ErrUnsupported)
+		ewsCfg, err := decodeExchangeEWSAccountConfig(account)
+		if err != nil {
+			return nil, err
+		}
+		password, _, err := r.store.ResolveExternalAccountPasswordForAccount(ctx, account)
+		if err != nil {
+			return nil, err
+		}
+		ewsCfg.Password = password
+		client, err := r.ewsClientLocked(account, ewsCfg)
+		if err != nil {
+			return nil, err
+		}
+		provider := contacts.NewEWSProvider(client, "")
+		r.contactsProviders[account.ID] = provider
+		return provider, nil
 	default:
 		return nil, fmt.Errorf("contacts provider %s is not supported", account.Provider)
 	}
