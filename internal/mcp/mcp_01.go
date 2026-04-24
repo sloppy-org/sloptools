@@ -446,16 +446,14 @@ func (s *Server) calendarEvents(args map[string]interface{}) (map[string]interfa
 	}
 	calendarID := strings.TrimSpace(strArg(args, "calendar_id"))
 	query := strings.TrimSpace(strArg(args, "query"))
-	days := intArg(args, "days", 30)
-	if days <= 0 {
-		days = 30
-	}
 	limit := intArg(args, "limit", 100)
 	if limit <= 0 {
 		limit = 100
 	}
-	now := time.Now()
-	rng := tabcalendar.TimeRange{Start: now, End: now.Add(time.Duration(days) * 24 * time.Hour)}
+	rng, days, err := calendarEventsRange(args, time.Now())
+	if err != nil {
+		return nil, err
+	}
 	events := make([]map[string]interface{}, 0, limit)
 	calendarNames := make(map[string]string)
 	for _, account := range accounts {
@@ -493,5 +491,5 @@ func (s *Server) calendarEvents(args map[string]interface{}) (map[string]interfa
 	if len(events) > limit {
 		events = events[:limit]
 	}
-	return map[string]interface{}{"provider": store.ExternalProviderGoogleCalendar, "calendar_id": calendarID, "calendar_name": strings.TrimSpace(calendarNames[calendarID]), "days": days, "query": query, "events": events, "count": len(events)}, nil
+	return map[string]interface{}{"provider": store.ExternalProviderGoogleCalendar, "calendar_id": calendarID, "calendar_name": strings.TrimSpace(calendarNames[calendarID]), "days": days, "start": rng.Start.Format(time.RFC3339), "end": rng.End.Format(time.RFC3339), "query": query, "events": events, "count": len(events)}, nil
 }

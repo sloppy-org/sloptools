@@ -138,6 +138,44 @@ func TestCalendarEventsReturnsStructuredEvents(t *testing.T) {
 	}
 }
 
+func TestCalendarEventsAcceptsPastRange(t *testing.T) {
+	st, err := store.New(filepath.Join(t.TempDir(), "sloppy.db"))
+	if err != nil {
+		t.Fatalf("store.New: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = st.Close()
+	})
+	if _, err := st.CreateExternalAccount(store.SphereWork, store.ExternalProviderGoogleCalendar, "Work", map[string]any{}); err != nil {
+		t.Fatalf("CreateExternalAccount(calendar): %v", err)
+	}
+	stub := &stubCalendarProvider{
+		calendars: []providerdata.Calendar{{ID: "work", Name: "Work"}},
+		events: map[string][]providerdata.Event{"work": {{
+			ID:         "evt-1",
+			CalendarID: "work",
+			Summary:    "Masterprüfung",
+			Start:      time.Date(2021, time.June, 25, 9, 0, 0, 0, time.UTC),
+			End:        time.Date(2021, time.June, 25, 10, 0, 0, 0, time.UTC),
+		}}},
+	}
+	s := NewServerWithStore(t.TempDir(), st)
+	s.newCalendarProvider = func(context.Context, store.ExternalAccount) (tabcalendar.Provider, error) {
+		return stub, nil
+	}
+	got, err := s.callTool("calendar_events", map[string]interface{}{"calendar_id": "work", "start": "2021-01-01", "end": "2022-01-01", "query": "Master", "limit": 10})
+	if err != nil {
+		t.Fatalf("calendar_events failed: %v", err)
+	}
+	if strFromAny(got["start"]) == "" || strFromAny(got["end"]) == "" {
+		t.Fatalf("missing returned range: %#v", got)
+	}
+	events, _ := got["events"].([]map[string]interface{})
+	if len(events) != 1 {
+		t.Fatalf("event count = %d, want 1", len(events))
+	}
+}
+
 func TestCalendarEventCreateUsesPreferredSphereCalendar(t *testing.T) {
 	st, err := store.New(filepath.Join(t.TempDir(), "sloppy.db"))
 	if err != nil {
