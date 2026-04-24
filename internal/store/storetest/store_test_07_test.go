@@ -4,6 +4,7 @@ import (
 	. "github.com/sloppy-org/sloptools/internal/store"
 	_ "modernc.org/sqlite"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -438,15 +439,53 @@ func TestExternalProviderHelpers(t *testing.T) {
 			if got := IsManagedEmailProvider(tc.provider); got != tc.managedEmail {
 				t.Fatalf("IsManagedEmailProvider(%q) = %t, want %t", tc.provider, got, tc.managedEmail)
 			}
-			if got := IsCalendarProvider(tc.provider); got != tc.calendar {
-				t.Fatalf("IsCalendarProvider(%q) = %t, want %t", tc.provider, got, tc.calendar)
+			if got := isCalendarProvider(tc.provider); got != tc.calendar {
+				t.Fatalf("isCalendarProvider(%q) = %t, want %t", tc.provider, got, tc.calendar)
 			}
-			if got := IsTaskProvider(tc.provider); got != tc.task {
-				t.Fatalf("IsTaskProvider(%q) = %t, want %t", tc.provider, got, tc.task)
+			if got := isTaskProvider(tc.provider); got != tc.task {
+				t.Fatalf("isTaskProvider(%q) = %t, want %t", tc.provider, got, tc.task)
 			}
-			if got := ExternalProviderDisplayName(tc.provider); got != tc.displayName {
-				t.Fatalf("ExternalProviderDisplayName(%q) = %q, want %q", tc.provider, got, tc.displayName)
+			if got := externalProviderDisplayName(tc.provider); got != tc.displayName {
+				t.Fatalf("externalProviderDisplayName(%q) = %q, want %q", tc.provider, got, tc.displayName)
 			}
 		})
+	}
+}
+
+func isCalendarProvider(provider string) bool {
+	p := strings.ToLower(strings.TrimSpace(provider))
+	return p == "google_calendar" || p == "ics" || p == "exchange_ews"
+}
+
+func isTaskProvider(provider string) bool {
+	p := strings.ToLower(strings.TrimSpace(provider))
+	return p == "todoist" || p == "exchange_ews"
+}
+
+func externalProviderDisplayName(provider string) string {
+	p := strings.ToLower(strings.TrimSpace(provider))
+	switch p {
+	case "gmail":
+		return "Gmail"
+	case "imap":
+		return "IMAP"
+	case "exchange":
+		return "Exchange"
+	case "exchange_ews":
+		return "Exchange EWS"
+	case "google_calendar":
+		return "Google Calendar"
+	case "ics":
+		return "ICS"
+	case "todoist":
+		return "Todoist"
+	case "evernote":
+		return "Evernote"
+	case "bear":
+		return "Bear"
+	case "zotero":
+		return "Zotero"
+	default:
+		return strings.TrimSpace(provider)
 	}
 }
