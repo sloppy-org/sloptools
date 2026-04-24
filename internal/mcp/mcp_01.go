@@ -9,6 +9,7 @@ import (
 	"fmt"
 	tabcalendar "github.com/sloppy-org/sloptools/internal/calendar"
 	"github.com/sloppy-org/sloptools/internal/canvas"
+	"github.com/sloppy-org/sloptools/internal/contacts"
 	"github.com/sloppy-org/sloptools/internal/email"
 	"github.com/sloppy-org/sloptools/internal/groupware"
 	"github.com/sloppy-org/sloptools/internal/mailboxsettings"
@@ -47,6 +48,7 @@ type Server struct {
 	newCalendarProvider        func(ctx context.Context, account store.ExternalAccount) (tabcalendar.Provider, error)
 	newEmailProvider           func(context.Context, store.ExternalAccount) (email.EmailProvider, error)
 	newMailboxSettingsProvider func(context.Context, store.ExternalAccount) (mailboxsettings.OOFProvider, error)
+	newContactsProvider        func(context.Context, store.ExternalAccount) (contacts.Provider, error)
 }
 
 type handoffEnvelope struct {
@@ -272,6 +274,22 @@ func (s *Server) callTool(name string, args map[string]interface{}) (map[string]
 		return s.mailOOFGet(args)
 	case "mail_oof_set":
 		return s.mailOOFSet(args)
+	case "contact_list":
+		return s.contactList(args)
+	case "contact_get":
+		return s.contactGet(args)
+	case "contact_search":
+		return s.contactSearch(args)
+	case "contact_create":
+		return s.contactCreate(args)
+	case "contact_update":
+		return s.contactUpdate(args)
+	case "contact_delete":
+		return s.contactDelete(args)
+	case "contact_group_list":
+		return s.contactGroupList(args)
+	case "contact_photo_get":
+		return s.contactPhotoGet(args)
 	default:
 		return nil, errors.New("unknown tool: " + name)
 	}
