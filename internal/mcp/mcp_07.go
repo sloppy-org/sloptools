@@ -303,6 +303,13 @@ func (s *Server) mailboxSettingsProviderForTool(args map[string]interface{}) (st
 	if !account.Enabled {
 		return store.ExternalAccount{}, nil, fmt.Errorf("account %d is disabled", accountID)
 	}
+	if s.newMailboxSettingsProvider != nil {
+		provider, err := s.newMailboxSettingsProvider(context.Background(), account)
+		if err != nil {
+			return store.ExternalAccount{}, nil, err
+		}
+		return account, provider, nil
+	}
 	if s.groupware == nil {
 		return store.ExternalAccount{}, nil, fmt.Errorf("groupware registry is not configured")
 	}

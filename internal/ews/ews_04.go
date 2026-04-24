@@ -46,6 +46,10 @@ func responseCode(target any) string {
 		return typed.Body.MoveItemResponse.ResponseMessages.FirstCode()
 	case *updateInboxRulesEnvelope:
 		return typed.Body.UpdateInboxRulesResponse.ResponseCode
+	case *getUserOofSettingsEnvelope:
+		return typed.responseCode()
+	case *setUserOofSettingsEnvelope:
+		return typed.responseCode()
 	default:
 		return ""
 	}

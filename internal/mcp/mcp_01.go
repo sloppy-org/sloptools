@@ -11,6 +11,7 @@ import (
 	"github.com/sloppy-org/sloptools/internal/canvas"
 	"github.com/sloppy-org/sloptools/internal/email"
 	"github.com/sloppy-org/sloptools/internal/groupware"
+	"github.com/sloppy-org/sloptools/internal/mailboxsettings"
 	"github.com/sloppy-org/sloptools/internal/store"
 	"io"
 	"os"
@@ -38,13 +39,14 @@ type RPCError struct {
 }
 
 type Server struct {
-	projectDir          string
-	adapter             *canvas.Adapter
-	handoffs            *handoffRegistry
-	store               *store.Store
-	groupware           *groupware.Registry
-	newCalendarProvider func(ctx context.Context, account store.ExternalAccount) (tabcalendar.Provider, error)
-	newEmailProvider    func(context.Context, store.ExternalAccount) (email.EmailProvider, error)
+	projectDir                 string
+	adapter                    *canvas.Adapter
+	handoffs                   *handoffRegistry
+	store                      *store.Store
+	groupware                  *groupware.Registry
+	newCalendarProvider        func(ctx context.Context, account store.ExternalAccount) (tabcalendar.Provider, error)
+	newEmailProvider           func(context.Context, store.ExternalAccount) (email.EmailProvider, error)
+	newMailboxSettingsProvider func(context.Context, store.ExternalAccount) (mailboxsettings.OOFProvider, error)
 }
 
 type handoffEnvelope struct {
