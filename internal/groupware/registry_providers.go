@@ -137,7 +137,8 @@ func (r *Registry) calendarFor(ctx context.Context, account store.ExternalAccoun
 
 // TasksFor returns a tasks.Provider for the given account, reusing the cached
 // OAuth session so mail, calendar, and tasks share one token pipeline per
-// Google account. EWS tasks lands in a follow-up and returns tasks.ErrUnsupported.
+// Google account. EWS accounts get a *tasks.EWSProvider backed by the shared
+// ews.Client.
 func (r *Registry) TasksFor(ctx context.Context, accountID int64) (tasks.Provider, error) {
 	if r == nil {
 		return nil, errors.New("groupware: registry is nil")
@@ -152,7 +153,7 @@ func (r *Registry) TasksFor(ctx context.Context, accountID int64) (tasks.Provide
 	return r.tasksFor(ctx, account)
 }
 
-func (r *Registry) tasksFor(_ context.Context, account store.ExternalAccount) (tasks.Provider, error) {
+func (r *Registry) tasksFor(ctx context.Context, account store.ExternalAccount) (tasks.Provider, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if cached, ok := r.tasksProviders[account.ID]; ok {
@@ -172,7 +173,22 @@ func (r *Registry) tasksFor(_ context.Context, account store.ExternalAccount) (t
 		r.tasksProviders[account.ID] = provider
 		return provider, nil
 	case store.ExternalProviderExchangeEWS:
-		return nil, fmt.Errorf("%s tasks: %w", account.Provider, tasks.ErrUnsupported)
+		ewsCfg, err := decodeExchangeEWSAccountConfig(account)
+		if err != nil {
+			return nil, err
+		}
+		password, _, err := r.store.ResolveExternalAccountPasswordForAccount(ctx, account)
+		if err != nil {
+			return nil, err
+		}
+		ewsCfg.Password = password
+		client, err := r.ewsClientLocked(account, ewsCfg)
+		if err != nil {
+			return nil, err
+		}
+		provider := tasks.NewEWSProvider(client, "")
+		r.tasksProviders[account.ID] = provider
+		return provider, nil
 	default:
 		return nil, fmt.Errorf("tasks provider %s is not supported", account.Provider)
 	}
