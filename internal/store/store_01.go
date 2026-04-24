@@ -478,15 +478,3 @@ func IsEmailProvider(provider string) bool {
 func IsManagedEmailProvider(provider string) bool {
 	return providerkind.IsManagedEmail(provider)
 }
-
-func IsCalendarProvider(provider string) bool {
-	return providerkind.IsCalendar(provider)
-}
-
-func IsTaskProvider(provider string) bool {
-	return providerkind.IsTask(provider)
-}
-
-func ExternalProviderDisplayName(provider string) string {
-	return providerkind.DisplayName(provider)
-}
