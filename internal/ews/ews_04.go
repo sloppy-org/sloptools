@@ -331,6 +331,7 @@ type itemXML struct {
 	DisplayTo         string `xml:"DisplayTo"`
 	DisplayCc         string `xml:"DisplayCc"`
 	WebLink           string `xml:"WebClientReadFormQueryString"`
+	ICalUID           string `xml:"Uid"`
 	InternetMessageID string `xml:"InternetMessageId"`
 	DateTimeReceived  string `xml:"DateTimeReceived"`
 	DateTimeSent      string `xml:"DateTimeSent"`
@@ -440,15 +441,14 @@ func (i itemXML) toTask() Task {
 	start := parseTime(i.StartDate)
 	due := parseTime(i.DueDate)
 	complete := parseTime(i.CompleteDate)
-	return Task{ID: strings.TrimSpace(i.ItemID.ID), ChangeKey: strings.TrimSpace(i.ItemID.ChangeKey), ParentFolderID: strings.TrimSpace(i.ParentFolderID.ID), Subject: strings.TrimSpace(i.Subject), Body: strings.TrimSpace(i.Body.Value), BodyType: strings.TrimSpace(i.Body.Type), Status: strings.TrimSpace(i.Status), StartDate: timePtrIfSet(start), DueDate: timePtrIfSet(due), CompleteDate: timePtrIfSet(complete), IsComplete: strings.EqualFold(strings.TrimSpace(i.Status), "Completed") || !complete.IsZero()}
-}
-
-func timePtrIfSet(value time.Time) *time.Time {
-	if value.IsZero() {
-		return nil
+	tp := func(t time.Time) *time.Time {
+		if t.IsZero() {
+			return nil
+		}
+		v := t
+		return &v
 	}
-	v := value
-	return &v
+	return Task{ID: strings.TrimSpace(i.ItemID.ID), ChangeKey: strings.TrimSpace(i.ItemID.ChangeKey), ParentFolderID: strings.TrimSpace(i.ParentFolderID.ID), Subject: strings.TrimSpace(i.Subject), Body: strings.TrimSpace(i.Body.Value), BodyType: strings.TrimSpace(i.Body.Type), Status: strings.TrimSpace(i.Status), StartDate: tp(start), DueDate: tp(due), CompleteDate: tp(complete), IsComplete: strings.EqualFold(strings.TrimSpace(i.Status), "Completed") || !complete.IsZero()}
 }
 
 type getInboxRulesEnvelope struct {

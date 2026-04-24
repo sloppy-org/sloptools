@@ -152,7 +152,38 @@ func (r *Registry) googleSessionLocked(account store.ExternalAccount, cfg mailSy
 	if existing, ok := r.googleSessions[account.ID]; ok {
 		return existing, nil
 	}
-	session, err := googleauth.New(r.gmailCredentialsPath(cfg), r.gmailTokenPath(account, cfg), nil)
+	credsPath := func() string {
+		if p := strings.TrimSpace(cfg.CredentialsPath); p != "" {
+			clean := filepath.Clean(p)
+			if filepath.IsAbs(clean) {
+				return clean
+			}
+			return filepath.Join(r.configDir, clean)
+		}
+		if p := strings.TrimSpace(cfg.CredentialsFile); p != "" {
+			return filepath.Join(r.configDir, p)
+		}
+		if r.googleCreds != "" {
+			if info, err := os.Stat(r.googleCreds); err == nil && !info.IsDir() {
+				return r.googleCreds
+			}
+		}
+		return filepath.Join(r.configDir, "gmail_credentials.json")
+	}()
+	tokenPath := func() string {
+		if p := strings.TrimSpace(cfg.TokenPath); p != "" {
+			clean := filepath.Clean(p)
+			if filepath.IsAbs(clean) {
+				return clean
+			}
+			return filepath.Join(r.configDir, clean)
+		}
+		if p := strings.TrimSpace(cfg.TokenFile); p != "" {
+			return filepath.Join(r.configDir, "tokens", p)
+		}
+		return store.ExternalAccountTokenPath(r.configDir, account.Provider, account.AccountName)
+	}()
+	session, err := googleauth.New(credsPath, tokenPath, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -177,6 +208,23 @@ func (r *Registry) ewsClientLocked(account store.ExternalAccount, cfg email.Exch
 	}
 	r.ewsClients[account.ID] = client
 	return client, nil
+}
+
+func (r *Registry) ewsAccountClientLocked(ctx context.Context, account store.ExternalAccount) (*ews.Client, email.ExchangeEWSConfig, error) {
+	ewsCfg, err := decodeExchangeEWSAccountConfig(account)
+	if err != nil {
+		return nil, email.ExchangeEWSConfig{}, err
+	}
+	password, _, err := r.store.ResolveExternalAccountPasswordForAccount(ctx, account)
+	if err != nil {
+		return nil, email.ExchangeEWSConfig{}, err
+	}
+	ewsCfg.Password = password
+	client, err := r.ewsClientLocked(account, ewsCfg)
+	if err != nil {
+		return nil, email.ExchangeEWSConfig{}, err
+	}
+	return client, ewsCfg, nil
 }
 
 // GoogleSession exposes the cached OAuth session for an account. Returns nil
@@ -240,16 +288,7 @@ func (r *Registry) contactsFor(ctx context.Context, account store.ExternalAccoun
 		r.contactsProviders[account.ID] = provider
 		return provider, nil
 	case store.ExternalProviderExchangeEWS:
-		ewsCfg, err := decodeExchangeEWSAccountConfig(account)
-		if err != nil {
-			return nil, err
-		}
-		password, _, err := r.store.ResolveExternalAccountPasswordForAccount(ctx, account)
-		if err != nil {
-			return nil, err
-		}
-		ewsCfg.Password = password
-		client, err := r.ewsClientLocked(account, ewsCfg)
+		client, _, err := r.ewsAccountClientLocked(ctx, account)
 		if err != nil {
 			return nil, err
 		}
@@ -263,8 +302,7 @@ func (r *Registry) contactsFor(ctx context.Context, account store.ExternalAccoun
 
 // CalendarFor returns a calendar.Provider for the given account, reusing the
 // cached OAuth session so mail and calendar share one token pipeline per
-// Google account. EWS calendar is not supported yet and returns
-// calendar.ErrUnsupported.
+// Google account, or the cached EWS client for Exchange/EWS accounts.
 func (r *Registry) CalendarFor(ctx context.Context, accountID int64) (calendar.Provider, error) {
 	if r == nil {
 		return nil, errors.New("groupware: registry is nil")
@@ -279,7 +317,7 @@ func (r *Registry) CalendarFor(ctx context.Context, accountID int64) (calendar.P
 	return r.calendarFor(ctx, account)
 }
 
-func (r *Registry) calendarFor(_ context.Context, account store.ExternalAccount) (calendar.Provider, error) {
+func (r *Registry) calendarFor(ctx context.Context, account store.ExternalAccount) (calendar.Provider, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if cached, ok := r.calendarProviders[account.ID]; ok {
@@ -299,7 +337,13 @@ func (r *Registry) calendarFor(_ context.Context, account store.ExternalAccount)
 		r.calendarProviders[account.ID] = provider
 		return provider, nil
 	case store.ExternalProviderExchangeEWS:
-		return nil, fmt.Errorf("%s calendar: %w", account.Provider, calendar.ErrUnsupported)
+		client, _, err := r.ewsAccountClientLocked(ctx, account)
+		if err != nil {
+			return nil, err
+		}
+		provider := calendar.NewEWSProvider(client, "")
+		r.calendarProviders[account.ID] = provider
+		return provider, nil
 	default:
 		return nil, fmt.Errorf("calendar provider %s is not supported", account.Provider)
 	}
@@ -386,16 +430,7 @@ func (r *Registry) mailboxSettingsFor(ctx context.Context, account store.Externa
 		r.mailboxSettingsProviders[account.ID] = provider
 		return provider, nil
 	case store.ExternalProviderExchangeEWS:
-		ewsCfg, err := decodeExchangeEWSAccountConfig(account)
-		if err != nil {
-			return nil, err
-		}
-		password, _, err := r.store.ResolveExternalAccountPasswordForAccount(ctx, account)
-		if err != nil {
-			return nil, err
-		}
-		ewsCfg.Password = password
-		client, err := r.ewsClientLocked(account, ewsCfg)
+		client, ewsCfg, err := r.ewsAccountClientLocked(ctx, account)
 		if err != nil {
 			return nil, err
 		}
@@ -459,41 +494,4 @@ func decodeExchangeEWSAccountConfig(account store.ExternalAccount) (email.Exchan
 		}
 	}
 	return email.ExchangeEWSConfigFromMap(account.AccountName, config)
-}
-
-func (r *Registry) gmailTokenPath(account store.ExternalAccount, cfg mailSyncAccountConfig) string {
-	if path := emailConfigPath(r.configDir, cfg.TokenPath, ""); path != "" {
-		return path
-	}
-	if strings.TrimSpace(cfg.TokenFile) != "" {
-		return filepath.Join(r.configDir, "tokens", strings.TrimSpace(cfg.TokenFile))
-	}
-	return store.ExternalAccountTokenPath(r.configDir, account.Provider, account.AccountName)
-}
-
-func (r *Registry) gmailCredentialsPath(cfg mailSyncAccountConfig) string {
-	if path := emailConfigPath(r.configDir, cfg.CredentialsPath, cfg.CredentialsFile); path != "" {
-		return path
-	}
-	if r.googleCreds != "" {
-		if info, err := os.Stat(r.googleCreds); err == nil && !info.IsDir() {
-			return r.googleCreds
-		}
-	}
-	return filepath.Join(r.configDir, "gmail_credentials.json")
-}
-
-func emailConfigPath(configDir, explicitPath, fileName string) string {
-	switch {
-	case strings.TrimSpace(explicitPath) != "":
-		clean := filepath.Clean(strings.TrimSpace(explicitPath))
-		if filepath.IsAbs(clean) {
-			return clean
-		}
-		return filepath.Join(configDir, clean)
-	case strings.TrimSpace(fileName) != "":
-		return filepath.Join(configDir, strings.TrimSpace(fileName))
-	default:
-		return ""
-	}
 }
