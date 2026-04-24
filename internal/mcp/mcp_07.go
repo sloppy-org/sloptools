@@ -287,6 +287,18 @@ func mailCategoriesArg(args map[string]interface{}) ([]string, error) {
 	return cleaned, nil
 }
 
+func (s *Server) callMailboxSettingsTool(name string, args map[string]interface{}) (map[string]interface{}, error) {
+	switch name {
+	case "mail_oof_get":
+		return s.mailOOFGet(args)
+	case "mail_oof_set":
+		return s.mailOOFSet(args)
+	case "mail_delegate_list":
+		return s.mailDelegateList(args)
+	}
+	return nil, fmt.Errorf("unknown mailbox-settings tool: %s", name)
+}
+
 func (s *Server) mailboxSettingsProviderForTool(args map[string]interface{}) (store.ExternalAccount, mailboxsettings.OOFProvider, error) {
 	st, err := s.requireStore()
 	if err != nil {
@@ -355,6 +367,42 @@ func (s *Server) mailOOFSet(args map[string]interface{}) (map[string]interface{}
 	return map[string]interface{}{"account_id": account.ID, "provider": provider.ProviderName(), "set": true, "settings": oofSettingsToMap(settings)}, nil
 }
 
+func (s *Server) mailDelegateList(args map[string]interface{}) (map[string]interface{}, error) {
+	account, provider, err := s.mailboxSettingsProviderForTool(args)
+	if err != nil {
+		return nil, err
+	}
+	defer provider.Close()
+	delegator, ok := groupware.Supports[mailboxsettings.DelegationProvider](provider)
+	if !ok {
+		return map[string]interface{}{"account_id": account.ID, "provider": provider.ProviderName(), "error_code": "capability_unsupported", "capability": "mailboxsettings.DelegationProvider", "error_detail": fmt.Sprintf("provider %s does not expose mailbox delegation", provider.ProviderName())}, nil
+	}
+	ctx := context.Background()
+	delegates, err := delegator.ListDelegates(ctx)
+	if err != nil {
+		if errors.Is(err, mailboxsettings.ErrUnsupported) {
+			return map[string]interface{}{"account_id": account.ID, "provider": provider.ProviderName(), "error_code": "capability_unsupported", "capability": "mailboxsettings.DelegationProvider", "error_detail": err.Error()}, nil
+		}
+		return nil, err
+	}
+	shared, err := delegator.ListSharedMailboxes(ctx)
+	if err != nil {
+		if errors.Is(err, mailboxsettings.ErrUnsupported) {
+			return map[string]interface{}{"account_id": account.ID, "provider": provider.ProviderName(), "error_code": "capability_unsupported", "capability": "mailboxsettings.DelegationProvider", "error_detail": err.Error()}, nil
+		}
+		return nil, err
+	}
+	delegatePayload := make([]map[string]interface{}, 0, len(delegates))
+	for _, d := range delegates {
+		delegatePayload = append(delegatePayload, map[string]interface{}{"email": d.Email, "name": d.Name, "permissions": d.Permissions})
+	}
+	sharedPayload := make([]map[string]interface{}, 0, len(shared))
+	for _, m := range shared {
+		sharedPayload = append(sharedPayload, map[string]interface{}{"email": m.Email, "name": m.Name, "access_level": m.AccessLevel})
+	}
+	return map[string]interface{}{"account_id": account.ID, "provider": provider.ProviderName(), "delegates": delegatePayload, "shared_mailboxes": sharedPayload}, nil
+}
+
 func oofSettingsToMap(settings providerdata.OOFSettings) map[string]interface{} {
 	out := map[string]interface{}{"enabled": settings.Enabled, "scope": settings.Scope, "internal_reply": settings.InternalReply, "external_reply": settings.ExternalReply}
 	if settings.StartAt != nil {
@@ -406,72 +454,4 @@ func optionalTime(m map[string]interface{}, key string) (*time.Time, error) {
 		}
 	}
 	return nil, fmt.Errorf("%s must be RFC3339, YYYY-MM-DDTHH:MM, YYYY-MM-DD HH:MM, or YYYY-MM-DD", key)
-}
-
-func isPathWithinDir(path, dir string) bool {
-	rel, err := filepath.Rel(dir, path)
-	if err != nil {
-		return false
-	}
-	rel = filepath.Clean(rel)
-	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
-}
-
-func (s *Server) resolveTempArtifactsDir(cwdArg string) (string, string, error) {
-	cwd := strings.TrimSpace(cwdArg)
-	if cwd == "" {
-		cwd = s.adapter.ProjectDir()
-	}
-	if strings.TrimSpace(cwd) == "" {
-		cwd = "."
-	}
-	rootAbs, err := filepath.Abs(cwd)
-	if err != nil {
-		return "", "", err
-	}
-	tmpAbs := filepath.Clean(filepath.Join(rootAbs, tempArtifactsDirRel))
-	if !isPathWithinDir(tmpAbs, rootAbs) {
-		return "", "", errors.New("temp artifacts directory escapes project root")
-	}
-	return rootAbs, tmpAbs, nil
-}
-
-func (s *Server) tempFileCreate(args map[string]interface{}) (map[string]interface{}, error) {
-	rootAbs, tmpAbs, err := s.resolveTempArtifactsDir(strArg(args, "cwd"))
-	if err != nil {
-		return nil, err
-	}
-	if err := os.MkdirAll(tmpAbs, 0755); err != nil {
-		return nil, err
-	}
-	prefix := strings.TrimSpace(strArg(args, "prefix"))
-	if prefix == "" {
-		prefix = "tmp"
-	}
-	prefix = strings.ReplaceAll(prefix, string(os.PathSeparator), "-")
-	prefix = strings.ReplaceAll(prefix, "/", "-")
-	suffix := strings.TrimSpace(strArg(args, "suffix"))
-	if suffix == "" {
-		suffix = ".md"
-	}
-	suffix = strings.ReplaceAll(suffix, string(os.PathSeparator), "")
-	suffix = strings.ReplaceAll(suffix, "/", "")
-	pattern := prefix + "-*" + suffix
-	f, err := os.CreateTemp(tmpAbs, pattern)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	content := strArg(args, "content")
-	if content != "" {
-		if _, err := f.WriteString(content); err != nil {
-			return nil, err
-		}
-	}
-	absPath := filepath.Clean(f.Name())
-	relPath, err := filepath.Rel(rootAbs, absPath)
-	if err != nil {
-		return nil, err
-	}
-	return map[string]interface{}{"ok": true, "path": filepath.ToSlash(relPath), "abs_path": absPath}, nil
 }

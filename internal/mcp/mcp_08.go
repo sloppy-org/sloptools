@@ -18,6 +18,74 @@ import (
 	"unicode/utf8"
 )
 
+func isPathWithinDir(path, dir string) bool {
+	rel, err := filepath.Rel(dir, path)
+	if err != nil {
+		return false
+	}
+	rel = filepath.Clean(rel)
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+func (s *Server) resolveTempArtifactsDir(cwdArg string) (string, string, error) {
+	cwd := strings.TrimSpace(cwdArg)
+	if cwd == "" {
+		cwd = s.adapter.ProjectDir()
+	}
+	if strings.TrimSpace(cwd) == "" {
+		cwd = "."
+	}
+	rootAbs, err := filepath.Abs(cwd)
+	if err != nil {
+		return "", "", err
+	}
+	tmpAbs := filepath.Clean(filepath.Join(rootAbs, tempArtifactsDirRel))
+	if !isPathWithinDir(tmpAbs, rootAbs) {
+		return "", "", errors.New("temp artifacts directory escapes project root")
+	}
+	return rootAbs, tmpAbs, nil
+}
+
+func (s *Server) tempFileCreate(args map[string]interface{}) (map[string]interface{}, error) {
+	rootAbs, tmpAbs, err := s.resolveTempArtifactsDir(strArg(args, "cwd"))
+	if err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(tmpAbs, 0755); err != nil {
+		return nil, err
+	}
+	prefix := strings.TrimSpace(strArg(args, "prefix"))
+	if prefix == "" {
+		prefix = "tmp"
+	}
+	prefix = strings.ReplaceAll(prefix, string(os.PathSeparator), "-")
+	prefix = strings.ReplaceAll(prefix, "/", "-")
+	suffix := strings.TrimSpace(strArg(args, "suffix"))
+	if suffix == "" {
+		suffix = ".md"
+	}
+	suffix = strings.ReplaceAll(suffix, string(os.PathSeparator), "")
+	suffix = strings.ReplaceAll(suffix, "/", "")
+	pattern := prefix + "-*" + suffix
+	f, err := os.CreateTemp(tmpAbs, pattern)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	content := strArg(args, "content")
+	if content != "" {
+		if _, err := f.WriteString(content); err != nil {
+			return nil, err
+		}
+	}
+	absPath := filepath.Clean(f.Name())
+	relPath, err := filepath.Rel(rootAbs, absPath)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]interface{}{"ok": true, "path": filepath.ToSlash(relPath), "abs_path": absPath}, nil
+}
+
 func (s *Server) tempFileRemove(args map[string]interface{}) (map[string]interface{}, error) {
 	target := strings.TrimSpace(strArg(args, "path"))
 	if target == "" {

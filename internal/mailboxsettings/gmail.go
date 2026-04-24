@@ -23,7 +23,10 @@ type GmailProvider struct {
 	svcFn   func(ctx context.Context) (*gmail.Service, error)
 }
 
-var _ OOFProvider = (*GmailProvider)(nil)
+var (
+	_ OOFProvider        = (*GmailProvider)(nil)
+	_ DelegationProvider = (*GmailProvider)(nil)
+)
 
 // NewGmailProvider wraps an existing session. The default scope set
 // (googleauth.DefaultScopes) already grants Gmail modify access.
@@ -118,6 +121,73 @@ func (p *GmailProvider) SetOOF(ctx context.Context, settings providerdata.OOFSet
 		return fmt.Errorf("update gmail vacation responder: %w", err)
 	}
 	return nil
+}
+
+// ListDelegates returns the Gmail mailbox delegates. Gmail does not expose
+// per-folder permission levels; each delegate's VerificationStatus is
+// surfaced as its single Permissions entry.
+func (p *GmailProvider) ListDelegates(ctx context.Context) ([]providerdata.Delegate, error) {
+	svc, err := p.service(ctx)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := svc.Users.Settings.Delegates.List("me").Context(ctx).Do()
+	if err != nil {
+		return nil, fmt.Errorf("list gmail delegates: %w", err)
+	}
+	out := make([]providerdata.Delegate, 0, len(resp.Delegates))
+	for _, delegate := range resp.Delegates {
+		if delegate == nil {
+			continue
+		}
+		email := strings.TrimSpace(delegate.DelegateEmail)
+		if email == "" {
+			continue
+		}
+		permissions := []string{}
+		if status := strings.TrimSpace(delegate.VerificationStatus); status != "" {
+			permissions = append(permissions, "verification:"+status)
+		}
+		out = append(out, providerdata.Delegate{
+			Email:       email,
+			Permissions: permissions,
+		})
+	}
+	return out, nil
+}
+
+// ListSharedMailboxes surfaces Gmail forwarding addresses as shared mailboxes.
+// Gmail has no formal shared-mailbox concept; verified forwarding addresses
+// are the closest structured equivalent. Each entry's AccessLevel carries the
+// forwarding verification status ("forwarding:accepted", etc.).
+func (p *GmailProvider) ListSharedMailboxes(ctx context.Context) ([]providerdata.SharedMailbox, error) {
+	svc, err := p.service(ctx)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := svc.Users.Settings.ForwardingAddresses.List("me").Context(ctx).Do()
+	if err != nil {
+		return nil, fmt.Errorf("list gmail forwarding addresses: %w", err)
+	}
+	out := make([]providerdata.SharedMailbox, 0, len(resp.ForwardingAddresses))
+	for _, fwd := range resp.ForwardingAddresses {
+		if fwd == nil {
+			continue
+		}
+		email := strings.TrimSpace(fwd.ForwardingEmail)
+		if email == "" {
+			continue
+		}
+		access := "forwarding"
+		if status := strings.TrimSpace(fwd.VerificationStatus); status != "" {
+			access = "forwarding:" + status
+		}
+		out = append(out, providerdata.SharedMailbox{
+			Email:       email,
+			AccessLevel: access,
+		})
+	}
+	return out, nil
 }
 
 func pickReplyBody(plain, html string) string {
