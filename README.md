@@ -6,6 +6,10 @@ Provides domain tools for workspace management, items, artifacts, actors,
 email, calendar, handoffs, temporary files, and canvas relay via the
 [Model Context Protocol](https://modelcontextprotocol.io/).
 
+## Documentation
+
+- [`docs/groupware.md`](docs/groupware.md) — MCP tool reference and per-backend capability matrix.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).

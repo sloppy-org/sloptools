@@ -7,46 +7,6 @@ import (
 	"time"
 )
 
-// MeetingResponseKind maps to the EWS AcceptItem/TentativelyAcceptItem/DeclineItem elements.
-type MeetingResponseKind string
-
-const (
-	MeetingAccept            MeetingResponseKind = "accept"
-	MeetingTentativelyAccept MeetingResponseKind = "tentatively_accept"
-	MeetingDecline           MeetingResponseKind = "decline"
-)
-
-// MeetingInvitations controls whether meeting invitations are sent when
-// creating a calendar item.
-type MeetingInvitations string
-
-const (
-	SendToNone           MeetingInvitations = "SendToNone"
-	SendOnlyToAll        MeetingInvitations = "SendOnlyToAll"
-	SendToAllAndSaveCopy MeetingInvitations = "SendToAllAndSaveCopy"
-)
-
-// MeetingInvitationsOrCancellations controls whether meeting responses or
-// cancellations are sent when updating a calendar item.
-type MeetingInvitationsOrCancellations string
-
-const (
-	SendToNoneIOC           MeetingInvitationsOrCancellations = "SendToNone"
-	SendOnlyToChanged       MeetingInvitationsOrCancellations = "SendToAllChanged"
-	SendToAllAndSaveCopyIOC MeetingInvitationsOrCancellations = "SendToAllAndSaveCopy"
-)
-
-// MeetingCancellations controls whether meeting cancellations are sent when
-// deleting a calendar item.
-type MeetingCancellations string
-
-const (
-	SendToNoneCancel           MeetingCancellations = "SendToNone"
-	SendOnlyToAllCancel        MeetingCancellations = "SendToAll"
-	SendToAllAndSaveCopyCancel MeetingCancellations = "SendToAllAndSaveCopy"
-)
-
-// CalendarItemInput carries the fields needed to create a calendar item.
 type CalendarItemInput struct {
 	Subject           string
 	Body              string
@@ -55,63 +15,43 @@ type CalendarItemInput struct {
 	Start             time.Time
 	End               time.Time
 	IsAllDay          bool
-	Organizer         Mailbox
-	RequiredAttendees []Mailbox
-	OptionalAttendees []Mailbox
+	UID               string
+	OrganizerEmail    string
+	OrganizerName     string
+	RequiredAttendees []EventAttendee
+	OptionalAttendees []EventAttendee
 	Recurrence        string
-	ICSUID            string
-	ReminderMinutes   int
+	SendInvitations   string
 }
 
-// CalendarItem is the fully populated calendar item returned by EWS.
-type CalendarItem struct {
-	ID                string
-	ChangeKey         string
-	ParentFolderID    string
-	Subject           string
-	Body              string
-	BodyType          string
-	Location          string
-	Start             time.Time
-	End               time.Time
-	IsAllDay          bool
-	Organizer         Mailbox
-	RequiredAttendees []Mailbox
-	OptionalAttendees []Mailbox
-	Recurrence        string
-	ICSUID            string
-	Status            string
-	ReminderMinutes   int
-}
-
-// CalendarItemUpdate carries partial updates for an existing calendar item.
 type CalendarItemUpdate struct {
 	Subject           *string
 	Body              *string
+	BodyType          *string
 	Location          *string
 	Start             *time.Time
 	End               *time.Time
 	IsAllDay          *bool
-	RequiredAttendees *[]Mailbox
-	OptionalAttendees *[]Mailbox
-	ReminderMinutes   *int
+	OrganizerEmail    *string
+	RequiredAttendees *[]EventAttendee
+	OptionalAttendees *[]EventAttendee
+	Recurrence        *string
+	SendCancellations string
 }
 
-// TimeRange is a half-open [Start, End) window for calendar queries.
-type TimeRange struct {
-	Start time.Time
-	End   time.Time
-}
+type MeetingResponseKind string
 
-// CreateCalendarItem creates a calendar item on the server and returns the
-// new item ID and change key. sendInvitations controls whether meeting
-// invitations are dispatched to attendees.
-func (c *Client) CreateCalendarItem(ctx context.Context, parentFolderID string, item CalendarItemInput, sendInvitations MeetingInvitations) (itemID, changeKey string, err error) {
-	body := `<m:CreateItem MessageDisposition="SendOnly">`
-	body += `<m:SavedItemFolderId>` + folderIDXML(folderIDOrDistinguished(parentFolderID, "calendar")) + `</m:SavedItemFolderId>`
-	body += `<m:Items>` + calendarItemCreateXML(item) + `</m:Items>`
-	body += fmt.Sprintf(`<m:SendMeetingInvitations>%s</m:SendMeetingInvitations>`, sendInvitations)
-	body += `</m:CreateItem>`
+const (
+	MeetingAccept            MeetingResponseKind = "accept"
+	MeetingTentativelyAccept MeetingResponseKind = "tentative"
+	MeetingDecline           MeetingResponseKind = "decline"
+)
+
+func (c *Client) CreateCalendarItem(ctx context.Context, parentFolderID string, item CalendarItemInput, sendInvitations string) (string, string, error) {
+	body := `<m:CreateItem MessageDisposition="SaveOnly" ` +
+		`SendMeetingInvitations="` + xmlEscapeAttr(sendInvitations) + `">` +
+		`<m:SavedItemFolderId>` + folderIDXML(folderIDOrDistinguished(parentFolderID, "calendar")) +
+		`</m:SavedItemFolderId><m:Items>` + calendarItemCreateXML(item) + `</m:Items></m:CreateItem>`
 	var resp createItemEnvelope
 	if err := c.call(ctx, "CreateItem", body, &resp); err != nil {
 		return "", "", err
@@ -123,10 +63,7 @@ func (c *Client) CreateCalendarItem(ctx context.Context, parentFolderID string, 
 	return strings.TrimSpace(items[0].ItemID.ID), strings.TrimSpace(items[0].ItemID.ChangeKey), nil
 }
 
-// UpdateCalendarItem updates an existing calendar item and returns the new
-// change key. sendInvitationsOrCancellations controls meeting response
-// dispatch behaviour.
-func (c *Client) UpdateCalendarItem(ctx context.Context, itemID, changeKey string, updates CalendarItemUpdate, sendInvitationsOrCancellations MeetingInvitationsOrCancellations) (newChangeKey string, err error) {
+func (c *Client) UpdateCalendarItem(ctx context.Context, itemID, changeKey string, updates CalendarItemUpdate, sendInvitationsOrCancellations string) (string, error) {
 	itemID = strings.TrimSpace(itemID)
 	if itemID == "" {
 		return "", fmt.Errorf("ews UpdateCalendarItem: item id is required")
@@ -136,334 +73,339 @@ func (c *Client) UpdateCalendarItem(ctx context.Context, itemID, changeKey strin
 		return strings.TrimSpace(changeKey), nil
 	}
 	var b strings.Builder
-	b.WriteString(`<m:UpdateItem MessageDisposition="SaveOnly" ConflictResolution="AlwaysOverwrite">`)
-	b.WriteString(`<m:ItemChanges><t:ItemChange><t:ItemId Id="`)
+	b.WriteString(`<m:UpdateItem MessageDisposition="SaveOnly" ConflictResolution="AlwaysOverwrite" `)
+	b.WriteString(`SendMeetingInvitationsOrCancellations="`)
+	b.WriteString(xmlEscapeAttr(sendInvitationsOrCancellations))
+	b.WriteString(`"><m:ItemChanges><t:ItemChange><t:ItemId Id="`)
 	b.WriteString(xmlEscapeAttr(itemID))
+	b.WriteString(`"`)
 	if ck := strings.TrimSpace(changeKey); ck != "" {
-		b.WriteString(`" ChangeKey="`)
+		b.WriteString(` ChangeKey="`)
 		b.WriteString(xmlEscapeAttr(ck))
+		b.WriteString(`"`)
 	}
-	b.WriteString(`" /><t:Updates>`)
+	b.WriteString(` /><t:Updates>`)
 	b.WriteString(changes)
-	b.WriteString(`</t:Updates></t:ItemChange></m:ItemChanges>`)
-	b.WriteString(fmt.Sprintf(`<m:SendMeetingInvitationsOrCancellations>%s</m:SendMeetingInvitationsOrCancellations>`, sendInvitationsOrCancellations))
-	b.WriteString(`</m:UpdateItem>`)
-	var resp updateItemEnvelope
+	b.WriteString(`</t:Updates></t:ItemChange></m:ItemChanges></m:UpdateItem>`)
+	var resp updateCalendarItemEnvelope
 	if err := c.call(ctx, "UpdateItem", b.String(), &resp); err != nil {
 		return "", err
 	}
-	_ = resp
-	return strings.TrimSpace(changeKey), nil
+	items := resp.Body.UpdateItemResponse.ResponseMessages.Message.Items.Values
+	if len(items) == 0 {
+		return strings.TrimSpace(changeKey), nil
+	}
+	newKey := strings.TrimSpace(items[0].ItemID.ChangeKey)
+	if newKey == "" {
+		newKey = strings.TrimSpace(changeKey)
+	}
+	return newKey, nil
 }
 
-// DeleteCalendarItem removes a calendar item. sendCancellations controls
-// whether meeting cancellations are dispatched.
-func (c *Client) DeleteCalendarItem(ctx context.Context, itemID string, sendCancellations MeetingCancellations) error {
+func (c *Client) DeleteCalendarItem(ctx context.Context, itemID string, sendCancellations string) error {
 	itemID = strings.TrimSpace(itemID)
 	if itemID == "" {
 		return fmt.Errorf("ews DeleteCalendarItem: item id is required")
 	}
-	body := fmt.Sprintf(`<m:DeleteItem DeleteType="HardDelete" SendMeetingCancellations="%s" AffectedTaskOccurrences="AllOccurrences"><m:ItemIds><t:ItemId Id="%s" /></m:ItemIds></m:DeleteItem>`,
-		sendCancellations, xmlEscapeAttr(itemID))
+	body := `<m:DeleteItem DeleteType="HardDelete" ` +
+		`SendMeetingCancellations="` + xmlEscapeAttr(sendCancellations) + `" ` +
+		`AffectedTaskOccurrences="AllOccurrences">` +
+		`<m:ItemIds><t:ItemId Id="` + xmlEscapeAttr(itemID) + `" /></m:ItemIds></m:DeleteItem>`
 	var resp simpleResponseEnvelope
 	return c.call(ctx, "DeleteItem", body, &resp)
 }
 
-// GetCalendarItem fetches a single calendar item by id.
 func (c *Client) GetCalendarItem(ctx context.Context, itemID string) (CalendarItem, error) {
 	itemID = strings.TrimSpace(itemID)
 	if itemID == "" {
 		return CalendarItem{}, fmt.Errorf("ews GetCalendarItem: item id is required")
 	}
-	var resp getItemEnvelope
+	var resp getCalendarItemEnvelope
 	if err := c.call(ctx, "GetItem", getItemBody([]string{itemID}, true), &resp); err != nil {
 		return CalendarItem{}, err
 	}
-	items := resp.Body.GetItemResponse.ResponseMessages.Message.Items.Values
+	items := resp.Body.GetItemResponse.ResponseMessages.Message.Items.CalendarItems
 	if len(items) == 0 {
-		return CalendarItem{}, fmt.Errorf("ews GetCalendarItem: item %q not found", itemID)
+		return CalendarItem{}, fmt.Errorf("ews GetCalendarItem: calendar item %q not found", itemID)
 	}
 	return items[0].toCalendarItem(), nil
 }
 
-// ListCalendarItems enumerates calendar items in the given folder whose start
-// falls inside rng. It uses a CalendarView so the server expands recurring
-// occurrences within the window.
+type TimeRange struct {
+	Start time.Time
+	End   time.Time
+}
+
 func (c *Client) ListCalendarItems(ctx context.Context, folderID string, rng TimeRange) ([]CalendarItem, error) {
 	folderID = folderIDOrDistinguished(folderID, "calendar")
+	if rng.Start.IsZero() {
+		rng.Start = time.Now().AddDate(0, 0, -7)
+	}
+	if rng.End.IsZero() {
+		rng.End = rng.Start.Add(30 * 24 * time.Hour)
+	}
 	body := fmt.Sprintf(`<m:FindItem Traversal="Shallow">
-		<m:ItemShape><t:BaseShape>AllProperties</t:BaseShape><t:BodyType>Text</t:BodyType></m:ItemShape>
-		<m:CalendarView StartDate="%s" EndDate="%s" />
-		<m:ParentFolderIds>%s</m:ParentFolderIds>
-	</m:FindItem>`,
-		rng.Start.UTC().Format(time.RFC3339),
-		rng.End.UTC().Format(time.RFC3339),
-		folderIDXML(folderID))
-	var resp findItemEnvelope
+      <m:ItemShape><t:BaseShape>FullInformation</t:BaseShape></m:ItemShape>
+      <m:IndexedPageItemView MaxEntriesReturned="%d" Offset="0" BasePoint="Beginning" />
+      <m:CalendarView StartDate="%s" EndDate="%s" />
+      <m:ParentFolderIds>%s</m:ParentFolderIds>
+    </m:FindItem>`, c.cfg.BatchSize, rng.Start.UTC().Format(time.RFC3339), rng.End.UTC().Format(time.RFC3339), folderIDXML(folderID))
+	var resp findCalendarItemEnvelope
 	if err := c.call(ctx, "FindItem", body, &resp); err != nil {
 		return nil, err
 	}
-	root := resp.Body.FindItemResponse.ResponseMessages.Message.Root
-	items := root.Items.Items
+	items := resp.Body.FindItemResponse.ResponseMessages.Message.Root.CalendarItems.Items
 	out := make([]CalendarItem, 0, len(items))
 	for _, raw := range items {
-		if !strings.EqualFold(raw.XMLName.Local, "CalendarItem") {
-			continue
-		}
-		// Re-fetch with full properties via GetItem since FindItem with
-		// CalendarView may return id-only results depending on server config.
-		cal, err := c.GetCalendarItem(ctx, raw.ItemID.ID)
-		if err != nil {
-			continue
-		}
-		out = append(out, cal)
+		out = append(out, raw.toCalendarItem())
 	}
 	return out, nil
 }
 
-// CreateMeetingResponse sends an accept/decline/tentative response to a
-// meeting invitation identified by referenceItemID.
 func (c *Client) CreateMeetingResponse(ctx context.Context, referenceItemID, changeKey string, kind MeetingResponseKind, body string) error {
-	refID := strings.TrimSpace(referenceItemID)
-	if refID == "" {
+	referenceItemID = strings.TrimSpace(referenceItemID)
+	if referenceItemID == "" {
 		return fmt.Errorf("ews CreateMeetingResponse: reference item id is required")
 	}
-	var elementName string
+	var element string
 	switch kind {
 	case MeetingAccept:
-		elementName = "AcceptItem"
+		element = "AcceptItem"
 	case MeetingTentativelyAccept:
-		elementName = "TentativelyAcceptItem"
+		element = "TentativelyAcceptItem"
 	case MeetingDecline:
-		elementName = "DeclineItem"
+		element = "DeclineItem"
 	default:
 		return fmt.Errorf("ews CreateMeetingResponse: unknown kind %q", kind)
 	}
 	var b strings.Builder
-	b.WriteString(`<m:CreateItem MessageDisposition="SendOnly">`)
+	b.WriteString(`<m:CreateItem MessageDisposition="SaveOnly" SendMeetingCancellations="SendToNone">`)
+	b.WriteString(`<m:SavedItemFolderId><t:DistinguishedFolderId Id="calendar" /></m:SavedItemFolderId>`)
 	b.WriteString(`<m:Items>`)
-	b.WriteString(fmt.Sprintf(`<t:%s>`, elementName))
-	b.WriteString(`<t:ReferenceItemId>`)
-	b.WriteString(`<t:ItemId Id="`)
-	b.WriteString(xmlEscapeAttr(refID))
+	b.WriteString(`<t:`)
+	b.WriteString(element)
+	b.WriteString(`>`)
+	b.WriteString(`<ReferenceItemId Id="`)
+	b.WriteString(xmlEscapeAttr(referenceItemID))
 	if ck := strings.TrimSpace(changeKey); ck != "" {
 		b.WriteString(`" ChangeKey="`)
 		b.WriteString(xmlEscapeAttr(ck))
 	}
-	b.WriteString(`" /></t:ItemId></t:ReferenceItemId>`)
-	if strings.TrimSpace(body) != "" {
-		b.WriteString(`<t:Body BodyType="Text">`)
-		b.WriteString(xmlEscapeText(body))
+	b.WriteString(`" />`)
+	if clean := strings.TrimSpace(body); clean != "" {
+		b.WriteString(`<t:Body BodyType="HTML">`)
+		b.WriteString(xmlEscapeText(clean))
 		b.WriteString(`</t:Body>`)
 	}
-	b.WriteString(fmt.Sprintf(`</t:%s>`, elementName))
-	b.WriteString(`</m:Items></m:CreateItem>`)
-	var resp createItemEnvelope
+	b.WriteString(`</t:`)
+	b.WriteString(element)
+	b.WriteString(`></m:Items></m:CreateItem>`)
+	var resp simpleResponseEnvelope
 	return c.call(ctx, "CreateItem", b.String(), &resp)
+}
+
+type CalendarItem struct {
+	ID                string
+	ChangeKey         string
+	ParentFolderID    string
+	Subject           string
+	Body              string
+	BodyType          string
+	Location          string
+	Start             time.Time
+	End               time.Time
+	IsAllDay          bool
+	UID               string
+	Organizer         string
+	RequiredAttendees []EventAttendee
+	OptionalAttendees []EventAttendee
+	Recurrence        string
+	Status            string
 }
 
 func calendarItemCreateXML(item CalendarItemInput) string {
 	var b strings.Builder
 	b.WriteString(`<t:CalendarItem>`)
 	writeOptionalElement(&b, "Subject", item.Subject)
-	writeOptionalElement(&b, "Body", item.Body)
-	if item.BodyType != "" {
+	if clean := strings.TrimSpace(item.Body); clean != "" {
+		bodyType := "Text"
+		if item.BodyType != "" {
+			bodyType = item.BodyType
+		}
 		b.WriteString(`<t:Body BodyType="`)
-		b.WriteString(item.BodyType)
+		b.WriteString(bodyType)
 		b.WriteString(`">`)
-		b.WriteString(xmlEscapeText(item.Body))
+		b.WriteString(xmlEscapeText(clean))
 		b.WriteString(`</t:Body>`)
 	}
 	writeOptionalElement(&b, "Location", item.Location)
-	if !item.Start.IsZero() {
+	if !item.IsAllDay {
 		b.WriteString(`<t:Start>`)
 		b.WriteString(item.Start.UTC().Format(time.RFC3339))
 		b.WriteString(`</t:Start>`)
-	}
-	if !item.End.IsZero() {
 		b.WriteString(`<t:End>`)
 		b.WriteString(item.End.UTC().Format(time.RFC3339))
 		b.WriteString(`</t:End>`)
+	} else {
+		b.WriteString(`<t:Start>`)
+		b.WriteString(item.Start.UTC().Format("2006-01-02"))
+		b.WriteString(`</t:Start>`)
+		b.WriteString(`<t:End>`)
+		b.WriteString(item.End.UTC().Format("2006-01-02"))
+		b.WriteString(`</t:End>`)
+		b.WriteString(`<t:IsAllDayEvent>true</t:IsAllDayEvent>`)
 	}
-	if item.IsAllDay {
-		b.WriteString(`<t:IsAllDay>true</t:IsAllDay>`)
+	if clean := strings.TrimSpace(item.UID); clean != "" {
+		b.WriteString(`<t:UID>`)
+		b.WriteString(xmlEscapeText(clean))
+		b.WriteString(`</t:UID>`)
 	}
-	if item.Organizer.Email != "" {
-		b.WriteString(`<t:Organizer><t:Mailbox><t:EmailAddress>`)
-		b.WriteString(xmlEscapeText(item.Organizer.Email))
-		if item.Organizer.Name != "" {
-			b.WriteString(`</t:EmailAddress><t:Name>`)
-			b.WriteString(xmlEscapeText(item.Organizer.Name))
-		}
-		b.WriteString(`</t:Name></t:Mailbox></t:Organizer>`)
+	if clean := strings.TrimSpace(item.OrganizerEmail); clean != "" {
+		b.WriteString(`<t:Organizer><t:Mailbox><t:Name>`)
+		b.WriteString(xmlEscapeText(item.OrganizerName))
+		b.WriteString(`</t:Name><t:EmailAddress>`)
+		b.WriteString(xmlEscapeText(clean))
+		b.WriteString(`</t:EmailAddress></t:Mailbox></t:Organizer>`)
 	}
-	for _, att := range item.RequiredAttendees {
-		b.WriteString(`<t:RequiredAttendees><t:Mailbox><t:EmailAddress>`)
-		b.WriteString(xmlEscapeText(att.Email))
-		if att.Name != "" {
-			b.WriteString(`</t:EmailAddress><t:Name>`)
-			b.WriteString(xmlEscapeText(att.Name))
-		}
-		b.WriteString(`</t:Name></t:Mailbox></t:RequiredAttendees>`)
-	}
-	for _, att := range item.OptionalAttendees {
-		b.WriteString(`<t:OptionalAttendees><t:Mailbox><t:EmailAddress>`)
-		b.WriteString(xmlEscapeText(att.Email))
-		if att.Name != "" {
-			b.WriteString(`</t:EmailAddress><t:Name>`)
-			b.WriteString(xmlEscapeText(att.Name))
-		}
-		b.WriteString(`</t:Name></t:Mailbox></t:OptionalAttendees>`)
-	}
-	if item.Recurrence != "" {
+	writeEventAttendees(&b, "RequiredAttendees", item.RequiredAttendees)
+	writeEventAttendees(&b, "OptionalAttendees", item.OptionalAttendees)
+	if clean := strings.TrimSpace(item.Recurrence); clean != "" {
 		b.WriteString(`<t:Recurrence>`)
-		b.WriteString(item.Recurrence)
+		b.WriteString(xmlEscapeText(clean))
 		b.WriteString(`</t:Recurrence>`)
-	}
-	if item.ICSUID != "" {
-		b.WriteString(`<t:Uid>`)
-		b.WriteString(xmlEscapeText(item.ICSUID))
-		b.WriteString(`</t:Uid>`)
-	}
-	if item.ReminderMinutes > 0 {
-		b.WriteString(`<t:ReminderIsSet>true</t:ReminderIsSet>`)
-		b.WriteString(`<t:ReminderMinutesBeforeStart>`)
-		b.WriteString(fmt.Sprintf("%d", item.ReminderMinutes))
-		b.WriteString(`</t:ReminderMinutesBeforeStart>`)
 	}
 	b.WriteString(`</t:CalendarItem>`)
 	return b.String()
 }
 
+func writeEventAttendees(b *strings.Builder, name string, attendees []EventAttendee) {
+	clean := filterEventAttendees(attendees)
+	if len(clean) == 0 {
+		return
+	}
+	b.WriteString(`<t:`)
+	b.WriteString(name)
+	b.WriteString(`>`)
+	for _, a := range clean {
+		b.WriteString(`<t:Mailbox><t:Name>`)
+		b.WriteString(xmlEscapeText(strings.TrimSpace(a.Name)))
+		b.WriteString(`</t:Name><t:EmailAddress>`)
+		b.WriteString(xmlEscapeText(strings.TrimSpace(a.Email)))
+		b.WriteString(`</t:EmailAddress></t:Mailbox>`)
+	}
+	b.WriteString(`</t:`)
+	b.WriteString(name)
+	b.WriteString(`>`)
+}
+
 func calendarItemUpdateXML(updates CalendarItemUpdate) string {
 	var b strings.Builder
 	if updates.Subject != nil {
-		if clean := strings.TrimSpace(*updates.Subject); clean == "" {
-			b.WriteString(`<t:DeleteItemField><t:FieldURI FieldURI="calendar:Subject" /></t:DeleteItemField>`)
-		} else {
-			b.WriteString(`<t:SetItemField><t:FieldURI FieldURI="calendar:Subject" /><t:CalendarItem><t:Subject>`)
-			b.WriteString(xmlEscapeText(clean))
-			b.WriteString(`</t:Subject></t:CalendarItem></t:SetItemField>`)
-		}
+		writeSetItemField(&b, "Subject", "item:Subject", *updates.Subject)
 	}
 	if updates.Body != nil {
-		if clean := strings.TrimSpace(*updates.Body); clean == "" {
-			b.WriteString(`<t:DeleteItemField><t:FieldURI FieldURI="calendar:Body" /></t:DeleteItemField>`)
-		} else {
-			b.WriteString(`<t:SetItemField><t:FieldURI FieldURI="calendar:Body" /><t:CalendarItem><t:Body BodyType="Text">`)
-			b.WriteString(xmlEscapeText(clean))
-			b.WriteString(`</t:Body></t:CalendarItem></t:SetItemField>`)
+		bodyType := "Text"
+		if updates.BodyType != nil && *updates.BodyType != "" {
+			bodyType = *updates.BodyType
 		}
+		b.WriteString(`<t:SetItemField><t:FieldURI FieldURI="item:Body"><t:Body BodyType="`)
+		b.WriteString(bodyType)
+		b.WriteString(`">`)
+		b.WriteString(xmlEscapeText(*updates.Body))
+		b.WriteString(`</t:Body></t:CalendarItem></t:FieldURI></t:SetItemField>`)
 	}
 	if updates.Location != nil {
-		if clean := strings.TrimSpace(*updates.Location); clean == "" {
-			b.WriteString(`<t:DeleteItemField><t:FieldURI FieldURI="calendar:Location" /></t:DeleteItemField>`)
-		} else {
-			b.WriteString(`<t:SetItemField><t:FieldURI FieldURI="calendar:Location" /><t:CalendarItem><t:Location>`)
-			b.WriteString(xmlEscapeText(clean))
-			b.WriteString(`</t:Location></t:CalendarItem></t:SetItemField>`)
-		}
+		writeSetItemField(&b, "Location", "item:Location", *updates.Location)
 	}
 	if updates.Start != nil && !updates.Start.IsZero() {
-		b.WriteString(`<t:SetItemField><t:FieldURI FieldURI="calendar:Start" /><t:CalendarItem><t:Start>`)
+		b.WriteString(`<t:SetItemField><t:FieldURI FieldURI="calendar:Start"><t:CalendarItem><t:Start>`)
 		b.WriteString(updates.Start.UTC().Format(time.RFC3339))
-		b.WriteString(`</t:Start></t:CalendarItem></t:SetItemField>`)
+		b.WriteString(`</t:Start></t:CalendarItem></t:FieldURI></t:SetItemField>`)
 	}
 	if updates.End != nil && !updates.End.IsZero() {
-		b.WriteString(`<t:SetItemField><t:FieldURI FieldURI="calendar:End" /><t:CalendarItem><t:End>`)
+		b.WriteString(`<t:SetItemField><t:FieldURI FieldURI="calendar:End"><t:CalendarItem><t:End>`)
 		b.WriteString(updates.End.UTC().Format(time.RFC3339))
-		b.WriteString(`</t:End></t:CalendarItem></t:SetItemField>`)
+		b.WriteString(`</t:End></t:CalendarItem></t:FieldURI></t:SetItemField>`)
 	}
 	if updates.IsAllDay != nil {
 		val := "false"
 		if *updates.IsAllDay {
 			val = "true"
 		}
-		b.WriteString(`<t:SetItemField><t:FieldURI FieldURI="calendar:IsAllDayEvent" /><t:CalendarItem><t:IsAllDayEvent>`)
+		b.WriteString(`<t:SetItemField><t:FieldURI FieldURI="calendar:IsAllDayEvent"><t:CalendarItem><t:IsAllDayEvent>`)
 		b.WriteString(val)
-		b.WriteString(`</t:IsAllDayEvent></t:CalendarItem></t:SetItemField>`)
+		b.WriteString(`</t:IsAllDayEvent></t:CalendarItem></t:FieldURI></t:SetItemField>`)
 	}
 	if updates.RequiredAttendees != nil {
-		cleaned := filterMailboxes(*updates.RequiredAttendees)
-		if len(cleaned) == 0 {
-			b.WriteString(`<t:DeleteItemField><t:FieldURI FieldURI="calendar:RequiredAttendees" /></t:DeleteItemField>`)
-		} else {
-			b.WriteString(`<t:SetItemField><t:FieldURI FieldURI="calendar:RequiredAttendees" /><t:CalendarItem><t:RequiredAttendees>`)
-			for _, m := range cleaned {
-				b.WriteString(`<t:Mailbox><t:EmailAddress>`)
-				b.WriteString(xmlEscapeText(m.Email))
-				if m.Name != "" {
-					b.WriteString(`</t:EmailAddress><t:Name>`)
-					b.WriteString(xmlEscapeText(m.Name))
-				}
-				b.WriteString(`</t:Name></t:Mailbox>`)
-			}
-			b.WriteString(`</t:RequiredAttendees></t:CalendarItem></t:SetItemField>`)
-		}
+		writeAttendeesUpdate(&b, "RequiredAttendees", *updates.RequiredAttendees)
 	}
 	if updates.OptionalAttendees != nil {
-		cleaned := filterMailboxes(*updates.OptionalAttendees)
-		if len(cleaned) == 0 {
-			b.WriteString(`<t:DeleteItemField><t:FieldURI FieldURI="calendar:OptionalAttendees" /></t:DeleteItemField>`)
-		} else {
-			b.WriteString(`<t:SetItemField><t:FieldURI FieldURI="calendar:OptionalAttendees" /><t:CalendarItem><t:OptionalAttendees>`)
-			for _, m := range cleaned {
-				b.WriteString(`<t:Mailbox><t:EmailAddress>`)
-				b.WriteString(xmlEscapeText(m.Email))
-				if m.Name != "" {
-					b.WriteString(`</t:EmailAddress><t:Name>`)
-					b.WriteString(xmlEscapeText(m.Name))
-				}
-				b.WriteString(`</t:Name></t:Mailbox>`)
-			}
-			b.WriteString(`</t:OptionalAttendees></t:CalendarItem></t:SetItemField>`)
-		}
+		writeAttendeesUpdate(&b, "OptionalAttendees", *updates.OptionalAttendees)
 	}
-	if updates.ReminderMinutes != nil {
-		if *updates.ReminderMinutes <= 0 {
-			b.WriteString(`<t:SetItemField><t:FieldURI FieldURI="calendar:ReminderIsSet" /><t:CalendarItem><t:ReminderIsSet>false</t:ReminderIsSet></t:CalendarItem></t:SetItemField>`)
-		} else {
-			b.WriteString(`<t:SetItemField><t:FieldURI FieldURI="calendar:ReminderIsSet" /><t:CalendarItem><t:ReminderIsSet>true</t:ReminderIsSet></t:CalendarItem></t:SetItemField>`)
-			b.WriteString(`<t:SetItemField><t:FieldURI FieldURI="calendar:ReminderMinutesBeforeStart" /><t:CalendarItem><t:ReminderMinutesBeforeStart>`)
-			b.WriteString(fmt.Sprintf("%d", *updates.ReminderMinutes))
-			b.WriteString(`</t:ReminderMinutesBeforeStart></t:CalendarItem></t:SetItemField>`)
-		}
+	if updates.Recurrence != nil {
+		writeSetItemField(&b, "Recurrence", "calendar:Recurrence", *updates.Recurrence)
 	}
 	return b.String()
 }
 
-func filterMailboxes(mboxes []Mailbox) []Mailbox {
-	out := make([]Mailbox, 0, len(mboxes))
-	for _, m := range mboxes {
-		if strings.TrimSpace(m.Email) != "" {
-			out = append(out, m)
-		}
+func writeAttendeesUpdate(b *strings.Builder, name string, attendees []EventAttendee) {
+	clean := filterEventAttendees(attendees)
+	if len(clean) == 0 {
+		return
 	}
-	return out
+	b.WriteString(`<t:SetItemField><t:FieldURI FieldURI="calendar:`)
+	b.WriteString(name)
+	b.WriteString(`"><t:CalendarItem>`)
+	for _, a := range clean {
+		b.WriteString(`<t:`)
+		b.WriteString(name)
+		b.WriteString(`><t:Mailbox><t:Name>`)
+		b.WriteString(xmlEscapeText(strings.TrimSpace(a.Name)))
+		b.WriteString(`</t:Name><t:EmailAddress>`)
+		b.WriteString(xmlEscapeText(strings.TrimSpace(a.Email)))
+		b.WriteString(`</t:EmailAddress></t:Mailbox></t:`)
+		b.WriteString(name)
+		b.WriteString(`>`)
+	}
+	b.WriteString(`</t:CalendarItem></t:FieldURI></t:SetItemField>`)
 }
 
 func (i itemXML) toCalendarItem() CalendarItem {
-	return CalendarItem{
-		ID:                strings.TrimSpace(i.ItemID.ID),
-		ChangeKey:         strings.TrimSpace(i.ItemID.ChangeKey),
-		ParentFolderID:    strings.TrimSpace(i.ParentFolderID.ID),
-		Subject:           strings.TrimSpace(i.Subject),
-		Body:              strings.TrimSpace(i.Body.Value),
-		BodyType:          strings.TrimSpace(i.Body.Type),
-		Location:          strings.TrimSpace(i.Location),
-		Start:             parseTime(i.Start),
-		End:               parseTime(i.End),
-		IsAllDay:          parseBool(i.IsAllDayEvent),
-		Organizer:         i.From.Mailbox.toMailbox(),
-		RequiredAttendees: mailboxSlice(i.ToRecipients.Mailboxes),
-		OptionalAttendees: mailboxSlice(i.CcRecipients.Mailboxes),
-		ICSUID:            strings.TrimSpace(i.ICalUID),
-		Status:            strings.TrimSpace(i.Status),
+	ci := CalendarItem{
+		ID:             strings.TrimSpace(i.ItemID.ID),
+		ChangeKey:      strings.TrimSpace(i.ItemID.ChangeKey),
+		ParentFolderID: strings.TrimSpace(i.ParentFolderID.ID),
+		Subject:        strings.TrimSpace(i.Subject),
+		Body:           strings.TrimSpace(i.Body.Value),
+		BodyType:       strings.TrimSpace(i.Body.Type),
+		Location:       strings.TrimSpace(i.Location),
+		Start:          parseTime(i.Start),
+		End:            parseTime(i.End),
+		IsAllDay:       parseBool(i.IsAllDayEvent),
+		UID:            strings.TrimSpace(i.UID),
+		Status:         strings.TrimSpace(i.Status),
+		Recurrence:     strings.TrimSpace(i.Recurrence),
 	}
+	if clean := strings.TrimSpace(i.Organizer.Mailbox.Email); clean != "" {
+		ci.Organizer = clean
+	}
+	for _, m := range i.RequiredAttendees.Mailboxes {
+		ci.RequiredAttendees = append(ci.RequiredAttendees, EventAttendee{Email: m.Email, Name: m.Name, Required: true})
+	}
+	for _, m := range i.OptionalAttendees.Mailboxes {
+		ci.OptionalAttendees = append(ci.OptionalAttendees, EventAttendee{Email: m.Email, Name: m.Name, Required: false})
+	}
+	return ci
 }
 
-func (i itemXML) getICalUID() string {
-	return strings.TrimSpace(i.ICalUID)
+func filterEventAttendees(attendees []EventAttendee) []EventAttendee {
+	out := make([]EventAttendee, 0, len(attendees))
+	for _, a := range attendees {
+		if strings.TrimSpace(a.Email) != "" {
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 type getCalendarItemEnvelope struct {
@@ -473,7 +415,7 @@ type getCalendarItemEnvelope struct {
 				Message struct {
 					ResponseCode string `xml:"ResponseCode"`
 					Items        struct {
-						Values []itemXML `xml:",any"`
+						CalendarItems []itemXML `xml:",any"`
 					} `xml:"Items"`
 				} `xml:"GetItemResponseMessage"`
 			} `xml:"ResponseMessages"`
@@ -481,6 +423,66 @@ type getCalendarItemEnvelope struct {
 	} `xml:"Body"`
 }
 
-func (e *getCalendarItemEnvelope) responseCode() string {
-	return strings.TrimSpace(e.Body.GetItemResponse.ResponseMessages.Message.ResponseCode)
+type findCalendarItemEnvelope struct {
+	Body struct {
+		FindItemResponse struct {
+			ResponseMessages struct {
+				Message struct {
+					ResponseCode string         `xml:"ResponseCode"`
+					Root         findRootXMLCal `xml:"RootFolder"`
+				} `xml:"FindItemResponseMessage"`
+			} `xml:"ResponseMessages"`
+		} `xml:"FindItemResponse"`
+	} `xml:"Body"`
+}
+
+type findRootXMLCal struct {
+	IndexedPagingOffset     int                  `xml:"IndexedPagingOffset,attr"`
+	TotalItemsInView        int                  `xml:"TotalItemsInView,attr"`
+	IncludesLastItemInRange bool                 `xml:"IncludesLastItemInRange,attr"`
+	CalendarItems           calendarItemsWrapper `xml:"CalendarItems"`
+}
+
+type calendarItemsWrapper struct {
+	Items []itemXML `xml:",any"`
+}
+
+func (c calendarItemsWrapper) toCalendarItems() []itemXML {
+	return c.Items
+}
+
+type updateCalendarItemEnvelope struct {
+	Body struct {
+		UpdateItemResponse struct {
+			ResponseMessages struct {
+				Message struct {
+					ResponseCode string         `xml:"ResponseCode"`
+					Items        updateItemsCal `xml:"Items"`
+				} `xml:"UpdateItemResponseMessage"`
+			} `xml:"ResponseMessages"`
+		} `xml:"UpdateItemResponse"`
+	} `xml:"Body"`
+}
+
+type updateItemsCal struct {
+	Values []itemXML `xml:",any"`
+}
+
+func writeSetItemField(b *strings.Builder, name, fieldURI, value string) {
+	clean := strings.TrimSpace(value)
+	if clean == "" {
+		b.WriteString(`<t:DeleteItemField><t:FieldURI FieldURI="`)
+		b.WriteString(fieldURI)
+		b.WriteString(`" /></t:DeleteItemField>`)
+		return
+	}
+	b.WriteString(`<t:SetItemField><t:FieldURI FieldURI="`)
+	b.WriteString(fieldURI)
+	b.WriteString(`"><t:CalendarItem><t:`)
+	b.WriteString(name)
+	b.WriteString(`>`)
+	b.WriteString(xmlEscapeText(clean))
+	b.WriteString(`</t:`)
+	b.WriteString(name)
+	b.WriteString(`></t:CalendarItem></t:FieldURI></t:SetItemField>`)
 }

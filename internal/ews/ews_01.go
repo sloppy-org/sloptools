@@ -4,14 +4,15 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	ntlmssp "github.com/Azure/go-ntlmssp"
-	"net/http"
-	"net/http/cookiejar"
 	"regexp"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	ntlmssp "github.com/Azure/go-ntlmssp"
+	"net/http"
+	"net/http/cookiejar"
 )
 
 const (
@@ -199,6 +200,18 @@ type Event struct {
 	Start          time.Time
 	End            time.Time
 	IsAllDay       bool
+	UID            string
+	Organizer      string
+	Attendees      []EventAttendee
+	Recurrence     string
+	Status         string
+}
+
+type EventAttendee struct {
+	Email    string
+	Name     string
+	Response string
+	Required bool
 }
 
 type Task struct {

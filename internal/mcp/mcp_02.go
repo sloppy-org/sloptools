@@ -243,42 +243,6 @@ func calendarTimeLooksDateOnly(raw string) bool {
 	return len(strings.TrimSpace(raw)) == len("2006-01-02") && strings.Count(raw, "-") == 2
 }
 
-func stringListArg(args map[string]interface{}, key string) []string {
-	value, ok := args[key]
-	if !ok {
-		return nil
-	}
-	switch typed := value.(type) {
-	case []string:
-		out := make([]string, 0, len(typed))
-		for _, item := range typed {
-			if clean := strings.TrimSpace(item); clean != "" {
-				out = append(out, clean)
-			}
-		}
-		return out
-	case []interface{}:
-		out := make([]string, 0, len(typed))
-		for _, item := range typed {
-			if clean := strings.TrimSpace(fmt.Sprint(item)); clean != "" && clean != "<nil>" {
-				out = append(out, clean)
-			}
-		}
-		return out
-	case string:
-		parts := strings.Split(typed, ",")
-		out := make([]string, 0, len(parts))
-		for _, part := range parts {
-			if clean := strings.TrimSpace(part); clean != "" {
-				out = append(out, clean)
-			}
-		}
-		return out
-	default:
-		return nil
-	}
-}
-
 const maxArtifactContentBytes = 64 * 1024
 
 func (s *Server) requireStore() (*store.Store, error) {

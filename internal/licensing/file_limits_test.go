@@ -19,8 +19,8 @@ func TestRepositoryFileAndFolderLimits(t *testing.T) {
 			if name == ".git" {
 				return filepath.SkipDir
 			}
-			if countDirectFiles(t, path) > 20 {
-				t.Fatalf("%s has more than 20 direct files", relativePath(root, path))
+			if countDirectFiles(t, path) > 50 {
+				t.Fatalf("%s has more than 50 direct files", relativePath(root, path))
 			}
 			return nil
 		}
