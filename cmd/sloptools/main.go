@@ -47,6 +47,8 @@ func run(args []string) int {
 		return cmdMail(args[1:])
 	case "external-account":
 		return cmdExternalAccount(args[1:])
+	case "tools":
+		return cmdTools(args[1:])
 	case "version":
 		return cmdVersion()
 	default:
@@ -58,9 +60,10 @@ func run(args []string) int {
 
 func printHelp() {
 	fmt.Println("sloptools <command> [flags]")
-	fmt.Println("commands: bootstrap server mcp-server mail external-account version")
+	fmt.Println("commands: bootstrap server mcp-server mail external-account tools version")
 	fmt.Println("mail subcommands: send reply")
 	fmt.Println("external-account subcommands: list add update remove")
+	fmt.Println("tools subcommands: list call")
 }
 
 type serverConfig struct {
