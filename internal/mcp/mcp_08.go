@@ -27,6 +27,38 @@ func isPathWithinDir(path, dir string) bool {
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
+func (s *Server) dispatchCanvas(sid string, name string, args map[string]interface{}) (map[string]interface{}, error) {
+	switch name {
+	case "canvas_session_open", "canvas_activate":
+		return s.adapter.CanvasSessionOpen(sid, strArg(args, "mode_hint")), nil
+	case "canvas_artifact_show":
+		text := strArg(args, "markdown_or_text")
+		if text == "" {
+			text = strArg(args, "text")
+		}
+		return s.adapter.CanvasArtifactShow(sid, strArg(args, "kind"), strArg(args, "title"), text, strArg(args, "path"), intArg(args, "page", 0), strArg(args, "reason"), nil)
+	case "canvas_render_text":
+		text := strArg(args, "markdown_or_text")
+		if text == "" {
+			text = strArg(args, "text")
+		}
+		return s.adapter.CanvasArtifactShow(sid, "text", strArg(args, "title"), text, "", 0, "", nil)
+	case "canvas_render_image":
+		return s.adapter.CanvasArtifactShow(sid, "image", strArg(args, "title"), "", strArg(args, "path"), 0, "", nil)
+	case "canvas_render_pdf":
+		return s.adapter.CanvasArtifactShow(sid, "pdf", strArg(args, "title"), "", strArg(args, "path"), intArg(args, "page", 0), "", nil)
+	case "canvas_clear":
+		return s.adapter.CanvasArtifactShow(sid, "clear", "", "", "", 0, strArg(args, "reason"), nil)
+	case "canvas_status":
+		return s.adapter.CanvasStatus(sid), nil
+	case "canvas_history":
+		return s.adapter.CanvasHistory(sid, intArg(args, "limit", 20)), nil
+	case "canvas_import_handoff":
+		return s.canvasImportHandoff(sid, args)
+	}
+	return nil, fmt.Errorf("unknown canvas tool: %s", name)
+}
+
 func (s *Server) resolveTempArtifactsDir(cwdArg string) (string, string, error) {
 	cwd := strings.TrimSpace(cwdArg)
 	if cwd == "" {

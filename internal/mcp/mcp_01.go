@@ -14,6 +14,7 @@ import (
 	"github.com/sloppy-org/sloptools/internal/groupware"
 	"github.com/sloppy-org/sloptools/internal/mailboxsettings"
 	"github.com/sloppy-org/sloptools/internal/store"
+	"github.com/sloppy-org/sloptools/internal/tasks"
 	"io"
 	"os"
 	"sort"
@@ -49,6 +50,7 @@ type Server struct {
 	newEmailProvider           func(context.Context, store.ExternalAccount) (email.EmailProvider, error)
 	newMailboxSettingsProvider func(context.Context, store.ExternalAccount) (mailboxsettings.OOFProvider, error)
 	newContactsProvider        func(context.Context, store.ExternalAccount) (contacts.Provider, error)
+	newTasksProvider           func(context.Context, store.ExternalAccount) (tasks.Provider, error)
 }
 
 type handoffEnvelope struct {
@@ -69,6 +71,9 @@ func NewServerWithStore(projectDir string, st *store.Store) *Server {
 	srv := &Server{projectDir: projectDir, adapter: adapter, handoffs: newHandoffRegistry(), store: st, groupware: groupware.NewRegistry(st, "")}
 	srv.newCalendarProvider = func(ctx context.Context, account store.ExternalAccount) (tabcalendar.Provider, error) {
 		return srv.groupware.CalendarFor(ctx, account.ID)
+	}
+	srv.newTasksProvider = func(ctx context.Context, account store.ExternalAccount) (tasks.Provider, error) {
+		return srv.groupware.TasksFor(ctx, account.ID)
 	}
 	return srv
 }
@@ -160,32 +165,8 @@ func (s *Server) dispatchToolCall(params map[string]interface{}) (map[string]int
 func (s *Server) callTool(name string, args map[string]interface{}) (map[string]interface{}, error) {
 	sid := strArg(args, "session_id")
 	switch name {
-	case "canvas_session_open", "canvas_activate":
-		return s.adapter.CanvasSessionOpen(sid, strArg(args, "mode_hint")), nil
-	case "canvas_artifact_show":
-		text := strArg(args, "markdown_or_text")
-		if text == "" {
-			text = strArg(args, "text")
-		}
-		return s.adapter.CanvasArtifactShow(sid, strArg(args, "kind"), strArg(args, "title"), text, strArg(args, "path"), intArg(args, "page", 0), strArg(args, "reason"), nil)
-	case "canvas_render_text":
-		text := strArg(args, "markdown_or_text")
-		if text == "" {
-			text = strArg(args, "text")
-		}
-		return s.adapter.CanvasArtifactShow(sid, "text", strArg(args, "title"), text, "", 0, "", nil)
-	case "canvas_render_image":
-		return s.adapter.CanvasArtifactShow(sid, "image", strArg(args, "title"), "", strArg(args, "path"), 0, "", nil)
-	case "canvas_render_pdf":
-		return s.adapter.CanvasArtifactShow(sid, "pdf", strArg(args, "title"), "", strArg(args, "path"), intArg(args, "page", 0), "", nil)
-	case "canvas_clear":
-		return s.adapter.CanvasArtifactShow(sid, "clear", "", "", "", 0, strArg(args, "reason"), nil)
-	case "canvas_status":
-		return s.adapter.CanvasStatus(sid), nil
-	case "canvas_history":
-		return s.adapter.CanvasHistory(sid, intArg(args, "limit", 20)), nil
-	case "canvas_import_handoff":
-		return s.canvasImportHandoff(sid, args)
+	case "canvas_session_open", "canvas_activate", "canvas_artifact_show", "canvas_render_text", "canvas_render_image", "canvas_render_pdf", "canvas_clear", "canvas_status", "canvas_history", "canvas_import_handoff":
+		return s.dispatchCanvas(sid, name, args)
 	case "handoff.create":
 		return s.handoffCreate(args)
 	case "handoff.peek":
@@ -292,6 +273,8 @@ func (s *Server) callTool(name string, args map[string]interface{}) (map[string]
 		return s.contactGroupList(args)
 	case "contact_photo_get":
 		return s.contactPhotoGet(args)
+	case "task_list_list", "task_list_create", "task_list_delete", "task_list", "task_get", "task_create", "task_update", "task_complete", "task_delete":
+		return s.dispatchTasks(name, args)
 	default:
 		return nil, errors.New("unknown tool: " + name)
 	}
