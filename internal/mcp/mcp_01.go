@@ -463,7 +463,7 @@ func (s *Server) calendarEvents(args map[string]interface{}) (map[string]interfa
 				return nil, fmt.Errorf("list events for %q: %w", cal.Name, err)
 			}
 			for _, event := range items {
-				events = append(events, eventPayload(event, cal.Name, providerSphere, calendarProviderName(account, provider)))
+				events = append(events, eventListPayload(event, cal.Name, providerSphere, calendarProviderName(account, provider)))
 			}
 		}
 	}

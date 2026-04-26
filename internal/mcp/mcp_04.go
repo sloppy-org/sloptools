@@ -322,7 +322,7 @@ func (s *Server) mailMessageList(args map[string]interface{}) (map[string]interf
 		return nil, err
 	}
 	format := "metadata"
-	if len(ids) <= 10 {
+	if boolArg(args, "include_body") {
 		format = "full"
 	}
 	messages, err := provider.GetMessages(context.Background(), ids, format)
@@ -332,7 +332,7 @@ func (s *Server) mailMessageList(args map[string]interface{}) (map[string]interf
 	sort.Slice(messages, func(i, j int) bool {
 		return messages[i].Date.After(messages[j].Date)
 	})
-	return map[string]interface{}{"account": account, "messages": messages, "count": len(messages), "page_token": pageToken, "next_page_token": nextPageToken}, nil
+	return map[string]interface{}{"account": account, "messages": mailMessageListPayloads(messages, format == "full"), "count": len(messages), "page_token": pageToken, "next_page_token": nextPageToken}, nil
 }
 
 func (s *Server) mailMessageGet(args map[string]interface{}) (map[string]interface{}, error) {

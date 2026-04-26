@@ -20,28 +20,9 @@ func (s *Server) contactsProviderForTool(args map[string]interface{}) (store.Ext
 	if err != nil {
 		return store.ExternalAccount{}, nil, err
 	}
-	accountIDPtr, _, err := optionalInt64Arg(args, "account_id")
+	account, err := accountForTool(st, args, "contacts-capable", isContactsCapableProvider)
 	if err != nil {
 		return store.ExternalAccount{}, nil, err
-	}
-	var account store.ExternalAccount
-	if accountIDPtr != nil {
-		account, err = st.GetExternalAccount(*accountIDPtr)
-		if err != nil {
-			return store.ExternalAccount{}, nil, err
-		}
-		if !account.Enabled {
-			return store.ExternalAccount{}, nil, fmt.Errorf("account %d is disabled", account.ID)
-		}
-		if !isContactsCapableProvider(account.Provider) {
-			return store.ExternalAccount{}, nil, fmt.Errorf("account %d provider %q does not support contacts", account.ID, account.Provider)
-		}
-	} else {
-		sphere := strings.TrimSpace(strArg(args, "sphere"))
-		account, err = firstContactsCapableAccount(st, sphere)
-		if err != nil {
-			return store.ExternalAccount{}, nil, err
-		}
 	}
 	provider, err := s.contactsProviderForAccount(context.Background(), account)
 	if err != nil {
@@ -70,36 +51,7 @@ func isContactsCapableProvider(provider string) bool {
 }
 
 func firstContactsCapableAccount(st *store.Store, sphere string) (store.ExternalAccount, error) {
-	accounts, err := st.ListExternalAccounts(sphere)
-	if err != nil {
-		return store.ExternalAccount{}, err
-	}
-	matches := make([]store.ExternalAccount, 0, len(accounts))
-	for _, account := range accounts {
-		if !account.Enabled {
-			continue
-		}
-		if !isContactsCapableProvider(account.Provider) {
-			continue
-		}
-		matches = append(matches, account)
-	}
-	if len(matches) == 0 {
-		if sphere != "" {
-			return store.ExternalAccount{}, fmt.Errorf("no enabled contacts-capable account for sphere %q", sphere)
-		}
-		return store.ExternalAccount{}, errors.New("no enabled contacts-capable account is configured")
-	}
-	sort.Slice(matches, func(i, j int) bool {
-		if matches[i].Sphere != matches[j].Sphere {
-			return matches[i].Sphere < matches[j].Sphere
-		}
-		if matches[i].Provider != matches[j].Provider {
-			return matches[i].Provider < matches[j].Provider
-		}
-		return matches[i].ID < matches[j].ID
-	})
-	return matches[0], nil
+	return firstCapableAccount(st, sphere, "contacts-capable", isContactsCapableProvider)
 }
 
 func (s *Server) contactList(args map[string]interface{}) (map[string]interface{}, error) {

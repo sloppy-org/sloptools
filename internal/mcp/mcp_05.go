@@ -288,11 +288,7 @@ func (s *Server) mailProviderForTool(args map[string]interface{}) (store.Externa
 	if err != nil {
 		return store.ExternalAccount{}, nil, err
 	}
-	accountID, err := int64Arg(args, "account_id")
-	if err != nil {
-		return store.ExternalAccount{}, nil, err
-	}
-	account, err := st.GetExternalAccount(accountID)
+	account, err := accountForTool(st, args, "email", emailCapableProvider)
 	if err != nil {
 		return store.ExternalAccount{}, nil, err
 	}

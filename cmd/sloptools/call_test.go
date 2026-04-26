@@ -182,6 +182,25 @@ func TestToolsCallTempFileCreateProducesJSON(t *testing.T) {
 	}
 }
 
+func TestLoadEnvFilePreservesExistingValues(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "env")
+	t.Setenv("SLOPPY_EXISTING", "from-process")
+	if err := os.WriteFile(path, []byte("SLOPPY_EXISTING=from-file\nexport SLOPPY_NEW='new value'\n"), 0o644); err != nil {
+		t.Fatalf("write env file: %v", err)
+	}
+
+	if err := loadEnvFile(path); err != nil {
+		t.Fatalf("loadEnvFile failed: %v", err)
+	}
+	if got := os.Getenv("SLOPPY_EXISTING"); got != "from-process" {
+		t.Fatalf("SLOPPY_EXISTING = %q, want process value", got)
+	}
+	if got := os.Getenv("SLOPPY_NEW"); got != "new value" {
+		t.Fatalf("SLOPPY_NEW = %q, want parsed file value", got)
+	}
+}
+
 func TestToolsCallArgPairsParseJSONValues(t *testing.T) {
 	args, err := buildToolArguments("", "", []string{"foo=bar", "n=3", "flag=true", "obj={\"k\":1}"})
 	if err != nil {

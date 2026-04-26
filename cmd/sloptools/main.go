@@ -32,6 +32,10 @@ func main() {
 }
 
 func run(args []string) int {
+	if err := loadDefaultEnvFiles(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
 	if len(args) == 0 {
 		printHelp()
 		return 2

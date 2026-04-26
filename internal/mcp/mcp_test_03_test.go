@@ -426,6 +426,7 @@ type fakeMailProvider struct {
 	lastFolder    string
 	lastLabel     string
 	lastUntil     time.Time
+	lastFormat    string
 	supportsDefer bool
 }
 
@@ -451,7 +452,8 @@ func (p *fakeMailProvider) GetMessage(_ context.Context, messageID, _ string) (*
 	return p.messages[messageID], nil
 }
 
-func (p *fakeMailProvider) GetMessages(_ context.Context, messageIDs []string, _ string) ([]*providerdata.EmailMessage, error) {
+func (p *fakeMailProvider) GetMessages(_ context.Context, messageIDs []string, format string) ([]*providerdata.EmailMessage, error) {
+	p.lastFormat = format
 	out := make([]*providerdata.EmailMessage, 0, len(messageIDs))
 	for _, id := range messageIDs {
 		out = append(out, p.messages[id])

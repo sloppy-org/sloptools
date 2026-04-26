@@ -152,6 +152,16 @@ func eventPayload(event providerdata.Event, calendarName, sphere, providerName s
 	return payload
 }
 
+func eventListPayload(event providerdata.Event, calendarName, sphere, providerName string) map[string]interface{} {
+	payload := eventPayload(event, calendarName, sphere, providerName)
+	delete(payload, "description")
+	delete(payload, "attendees")
+	if len(event.Attendees) > 0 {
+		payload["attendee_count"] = len(event.Attendees)
+	}
+	return payload
+}
+
 func strFromAny(v any) string {
 	s, _ := v.(string)
 	return strings.TrimSpace(s)

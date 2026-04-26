@@ -136,6 +136,9 @@ func TestCalendarEventsReturnsStructuredEvents(t *testing.T) {
 	if strFromAny(events[0]["calendar_name"]) != "Work" {
 		t.Fatalf("calendar_name = %q, want Work", strFromAny(events[0]["calendar_name"]))
 	}
+	if _, ok := events[0]["description"]; ok {
+		t.Fatalf("calendar_events should omit descriptions by default: %#v", events[0])
+	}
 }
 
 func TestCalendarEventsAcceptsPastRange(t *testing.T) {
