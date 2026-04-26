@@ -30,6 +30,9 @@ func TestMailToolsListReadAndAttachment(t *testing.T) {
 	if provider.lastFormat != "metadata" {
 		t.Fatalf("list format = %q, want metadata", provider.lastFormat)
 	}
+	if provider.lastOpts.MaxResults != compactListLimit {
+		t.Fatalf("default list limit = %d, want %d", provider.lastOpts.MaxResults, compactListLimit)
+	}
 	message, err := s.callTool("mail_message_get", map[string]interface{}{"account_id": account.ID, "message_id": "m1"})
 	if err != nil {
 		t.Fatalf("mail_message_get failed: %v", err)

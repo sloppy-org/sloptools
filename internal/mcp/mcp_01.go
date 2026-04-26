@@ -433,9 +433,9 @@ func (s *Server) calendarEvents(args map[string]interface{}) (map[string]interfa
 	}
 	calendarID := strings.TrimSpace(strArg(args, "calendar_id"))
 	query := strings.TrimSpace(strArg(args, "query"))
-	limit := intArg(args, "limit", 100)
+	limit := intArg(args, "limit", compactListLimit)
 	if limit <= 0 {
-		limit = 100
+		limit = compactListLimit
 	}
 	rng, days, err := calendarEventsRange(args, time.Now())
 	if err != nil {
