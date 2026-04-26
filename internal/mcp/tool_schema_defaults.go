@@ -30,7 +30,7 @@ func applyToolSchemaDefaults(name string, schema map[string]interface{}) {
 func applyToolDefinitionDefaults(name string, def map[string]interface{}) {
 	switch name {
 	case "calendar_events":
-		def["description"] = "List upcoming Google Calendar events. Compact by default: descriptions and attendee lists are omitted; use limit 5-10 for triage/counts."
+		def["description"] = "List upcoming personal/work groupware calendar events. Compact by default: descriptions and attendee lists are omitted; use sphere plus limit 5-10 for triage/counts."
 	case "mail_message_list":
 		def["description"] = "List newest mail metadata without full bodies by default. Prefer sphere plus folder=INBOX and limit 5-10 for triage/counts; use mail_message_get for one chosen message body."
 	}
