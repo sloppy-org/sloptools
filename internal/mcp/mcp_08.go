@@ -425,7 +425,9 @@ func toolDefinitions() []map[string]interface{} {
 			schema["properties"] = props
 		}
 		applyToolSchemaDefaults(tool.Name, schema)
-		out = append(out, map[string]interface{}{"name": tool.Name, "description": tool.Description, "inputSchema": schema})
+		def := map[string]interface{}{"name": tool.Name, "description": tool.Description, "inputSchema": schema}
+		applyToolDefinitionDefaults(tool.Name, def)
+		out = append(out, def)
 	}
 	return out
 }
