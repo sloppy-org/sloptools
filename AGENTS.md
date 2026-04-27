@@ -42,8 +42,7 @@
 - `README.md`: user-facing project overview and license/disclaimer pointer.
 - `AGENTS.md`: contributor and agent navigation map for this repository.
 - `.github/workflows/test.yml`: canonical CI commands: `gofmt -s -l .`, `go vet ./...`, and `go test ./... -race`.
-- `deploy/systemd/user/sloptools.service`: systemd user deployment unit.
-- `deploy/launchd/io.sloptools.mcp.plist`: macOS launchd deployment unit.
+- `scripts/setup-{claude,codex,opencode,qwen}-mcp.sh`: per-tool stdio MCP installers; `scripts/setup-sloptools-mcp.sh` runs whichever are present on PATH.
 - `LICENSE`: MIT license text.
 
 ## Local Rules
