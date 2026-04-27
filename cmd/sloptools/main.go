@@ -76,6 +76,7 @@ type serverConfig struct {
 	mcpHost         string
 	mcpPort         int
 	unsafePublicMCP bool
+	mcpUnixSocket   string
 }
 
 func cmdBootstrap(args []string) int {
@@ -136,12 +137,13 @@ func parseServerConfig(args []string) (*serverConfig, int) {
 	fs.StringVar(&cfg.mcpHost, "mcp-host", "127.0.0.1", "mcp listener host")
 	fs.IntVar(&cfg.mcpPort, "mcp-port", serve.DefaultPort, "mcp listener port")
 	fs.BoolVar(&cfg.unsafePublicMCP, "unsafe-public-mcp", false, "allow non-loopback MCP bind (unsafe)")
+	fs.StringVar(&cfg.mcpUnixSocket, "mcp-unix-socket", "", "path to a Unix domain socket; when set, the MCP listener binds the socket (mode 0600) instead of a TCP port — only the file's owning user (and root) can connect")
 	if err := fs.Parse(args); err != nil {
 		return nil, 2
 	}
 	cfg.projectDir = *projectDir
-	if !cfg.unsafePublicMCP && !isLoopbackOnlyHost(cfg.mcpHost) {
-		fmt.Fprintln(os.Stderr, "refusing non-loopback MCP bind; use --unsafe-public-mcp to override")
+	if cfg.mcpUnixSocket == "" && !cfg.unsafePublicMCP && !isLoopbackOnlyHost(cfg.mcpHost) {
+		fmt.Fprintln(os.Stderr, "refusing non-loopback MCP bind; use --mcp-unix-socket /path or --unsafe-public-mcp to override")
 		return nil, 2
 	}
 	return cfg, 0
@@ -155,20 +157,32 @@ func runServer(cfg *serverConfig) int {
 	}
 	mcpApp := serve.NewApp(res.Paths.ProjectDir, cfg.dataDir)
 	mcpErrCh := make(chan error, 1)
-	go func() {
-		mcpErrCh <- mcpApp.Start(cfg.mcpHost, cfg.mcpPort)
-	}()
-	mcpURL := (&url.URL{
-		Scheme: "http",
-		Host:   net.JoinHostPort(cfg.mcpHost, fmt.Sprintf("%d", cfg.mcpPort)),
-		Path:   "/mcp",
-	}).String()
-	if err := waitForMCPReady(cfg.mcpHost, cfg.mcpPort, 10*time.Second, mcpErrCh); err != nil {
-		_ = mcpApp.Stop(context.Background())
-		fmt.Fprintf(os.Stderr, "failed to start local MCP listener: %v\n", err)
-		return 1
+	if cfg.mcpUnixSocket != "" {
+		go func() {
+			mcpErrCh <- mcpApp.StartUnix(cfg.mcpUnixSocket)
+		}()
+		if err := waitForMCPReadyUnix(cfg.mcpUnixSocket, 10*time.Second, mcpErrCh); err != nil {
+			_ = mcpApp.Stop(context.Background())
+			fmt.Fprintf(os.Stderr, "failed to start local MCP listener: %v\n", err)
+			return 1
+		}
+		fmt.Printf("sloptools MCP server ready at http+unix://%s/mcp\n", cfg.mcpUnixSocket)
+	} else {
+		go func() {
+			mcpErrCh <- mcpApp.Start(cfg.mcpHost, cfg.mcpPort)
+		}()
+		mcpURL := (&url.URL{
+			Scheme: "http",
+			Host:   net.JoinHostPort(cfg.mcpHost, fmt.Sprintf("%d", cfg.mcpPort)),
+			Path:   "/mcp",
+		}).String()
+		if err := waitForMCPReady(cfg.mcpHost, cfg.mcpPort, 10*time.Second, mcpErrCh); err != nil {
+			_ = mcpApp.Stop(context.Background())
+			fmt.Fprintf(os.Stderr, "failed to start local MCP listener: %v\n", err)
+			return 1
+		}
+		fmt.Printf("sloptools MCP server ready at %s\n", mcpURL)
 	}
-	fmt.Printf("sloptools MCP server ready at %s\n", mcpURL)
 	select {
 	case mcpErr := <-mcpErrCh:
 		if mcpErr != nil {
@@ -193,6 +207,44 @@ func isLoopbackOnlyHost(host string) bool {
 	}
 	ip := net.ParseIP(trimmed)
 	return ip != nil && ip.IsLoopback()
+}
+
+func waitForMCPReadyUnix(socketPath string, timeout time.Duration, mcpErrCh <-chan error) error {
+	deadline := time.Now().Add(timeout)
+	dial := func(_ context.Context, _, _ string) (net.Conn, error) {
+		return net.Dial("unix", socketPath)
+	}
+	client := &http.Client{
+		Timeout:   750 * time.Millisecond,
+		Transport: &http.Transport{DialContext: dial},
+	}
+	for time.Now().Before(deadline) {
+		select {
+		case err := <-mcpErrCh:
+			if err == nil {
+				return errors.New("mcp listener exited before becoming healthy")
+			}
+			return fmt.Errorf("mcp listener failed to start: %w", err)
+		default:
+		}
+		resp, err := client.Get("http://unix/health")
+		if err == nil {
+			_ = resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				return nil
+			}
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	select {
+	case err := <-mcpErrCh:
+		if err == nil {
+			return errors.New("mcp listener exited before becoming healthy")
+		}
+		return fmt.Errorf("mcp listener failed to start: %w", err)
+	default:
+	}
+	return errors.New("mcp health check timeout")
 }
 
 func waitForMCPReady(host string, port int, timeout time.Duration, mcpErrCh <-chan error) error {
