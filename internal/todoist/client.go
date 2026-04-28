@@ -112,11 +112,7 @@ func inferMoveBaseURL(baseURL string) string {
 }
 
 func (c *Client) ListProjects(ctx context.Context) ([]Project, error) {
-	var projects []Project
-	if err := c.doJSON(ctx, http.MethodGet, c.baseURL+"/projects", nil, nil, &projects, http.StatusOK); err != nil {
-		return nil, err
-	}
-	return projects, nil
+	return listPaginated[Project](ctx, c, c.baseURL+"/projects", url.Values{})
 }
 
 func (c *Client) ListTasks(ctx context.Context, opts ListTasksOptions) ([]Task, error) {
@@ -124,11 +120,7 @@ func (c *Client) ListTasks(ctx context.Context, opts ListTasksOptions) ([]Task, 
 	if err != nil {
 		return nil, err
 	}
-	var tasks []Task
-	if err := c.doJSON(ctx, http.MethodGet, c.baseURL+"/tasks", query, nil, &tasks, http.StatusOK); err != nil {
-		return nil, err
-	}
-	return tasks, nil
+	return listPaginated[Task](ctx, c, c.baseURL+"/tasks", query)
 }
 
 func (c *Client) GetTask(ctx context.Context, id string) (TaskDetail, error) {

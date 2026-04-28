@@ -42,7 +42,7 @@ func (s *Server) tasksProviderForAccount(ctx context.Context, account store.Exte
 
 func isTasksCapableProvider(provider string) bool {
 	switch strings.ToLower(strings.TrimSpace(provider)) {
-	case store.ExternalProviderGmail, store.ExternalProviderGoogleCalendar, store.ExternalProviderExchangeEWS:
+	case store.ExternalProviderGmail, store.ExternalProviderGoogleCalendar, store.ExternalProviderExchangeEWS, store.ExternalProviderTodoist:
 		return true
 	default:
 		return false
@@ -70,6 +70,12 @@ func taskPayload(item providerdata.TaskItem, providerName string) map[string]int
 	}
 	if item.Due != nil {
 		payload["due"] = item.Due.UTC().Format(time.RFC3339)
+	}
+	if item.StartAt != nil {
+		payload["start_at"] = item.StartAt.UTC().Format(time.RFC3339)
+	}
+	if item.EndAt != nil {
+		payload["end_at"] = item.EndAt.UTC().Format(time.RFC3339)
 	}
 	if item.CompletedAt != nil {
 		payload["completed_at"] = item.CompletedAt.UTC().Format(time.RFC3339)

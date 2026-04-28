@@ -122,12 +122,14 @@ func TestTaskItemZeroValue(t *testing.T) {
 		zero.Completed || zero.Priority != "" || zero.ProviderRef != "" {
 		t.Fatalf("zero TaskItem has populated scalars: %+v", zero)
 	}
-	if zero.Due != nil || zero.CompletedAt != nil {
+	if zero.StartAt != nil || zero.EndAt != nil || zero.Due != nil || zero.CompletedAt != nil {
 		t.Fatalf("zero TaskItem has populated pointers: %+v", zero)
 	}
 }
 
 func TestTaskItemJSONRoundTrip(t *testing.T) {
+	start := time.Date(2026, time.April, 29, 9, 0, 0, 0, time.UTC)
+	end := start.Add(30 * time.Minute)
 	due := time.Date(2026, time.April, 30, 17, 0, 0, 0, time.UTC)
 	completed := due.Add(-time.Hour)
 	in := TaskItem{
@@ -135,6 +137,8 @@ func TestTaskItemJSONRoundTrip(t *testing.T) {
 		ListID:      "tl-1",
 		Title:       "ship release",
 		Notes:       "cut the tag and push",
+		StartAt:     &start,
+		EndAt:       &end,
 		Due:         &due,
 		CompletedAt: &completed,
 		Completed:   true,
@@ -149,6 +153,12 @@ func TestTaskItemJSONRoundTrip(t *testing.T) {
 	}
 	if got.Due == nil || !got.Due.Equal(due) {
 		t.Fatalf("Due mismatch: %+v", got.Due)
+	}
+	if got.StartAt == nil || !got.StartAt.Equal(start) {
+		t.Fatalf("StartAt mismatch: %+v", got.StartAt)
+	}
+	if got.EndAt == nil || !got.EndAt.Equal(end) {
+		t.Fatalf("EndAt mismatch: %+v", got.EndAt)
 	}
 	if got.CompletedAt == nil || !got.CompletedAt.Equal(completed) {
 		t.Fatalf("CompletedAt mismatch: %+v", got.CompletedAt)

@@ -1,6 +1,6 @@
 # Groupware MCP reference
 
-MCP tool reference and per-backend capability matrix for the groupware surface (mail, contacts, calendar, tasks, mailbox settings).
+MCP tool reference and per-backend capability matrix for the groupware surface (mail, contacts, calendar, tasks, mailbox settings, notes).
 
 Out of scope: Canvas, Handoff, Temp files, Workspace, Items, Artifacts, and Actors tools.
 
@@ -25,38 +25,39 @@ Authoritative interface declarations (Go file:line):
 
 ## Capability matrix
 
-| Capability | Gmail | IMAP | Exchange (EWS) | Google Calendar | ICS | Google Tasks |
-|---|---|---|---|---|---|---|
-| **Calendar: Provider** | ✓ | ✗ | ✓ | ✓ | ✗ | — |
-| **Calendar: EventMutator** | ✓ | ✗ | ✓ | ✓ | ✗ | — |
-| **Calendar: InviteResponder** | ✓ | ✗ | ✓ | ✓ | ✗ | — |
-| **Calendar: FreeBusyLooker** | ✓ | ✗ | ✓ | ✓ | ✗ | — |
-| **Calendar: ICSExporter** | ✓ | partial | ✓ | ✓ | ✗ | — |
-| **Calendar: EventSearcher** | ✓ | ✗ | ✓ | ✓ | ✗ | — |
-| **Contacts: Provider** | ✓ | ✗ | ✓ | — | — | — |
-| **Contacts: Searcher** | ✓ | ✗ | partial | — | — | — |
-| **Contacts: Mutator** | ✓ | ✗ | ✓ | — | — | — |
-| **Contacts: Grouper** | ✓ | ✗ | partial | — | — | — |
-| **Contacts: PhotoFetcher** | ✓ | ✗ | ✗ | — | — | — |
-| **Tasks: Provider** | ✓ | ✗ | ✓ | — | — | ✓ |
-| **Tasks: Mutator** | ✓ | ✗ | ✓ | — | — | ✓ |
-| **Tasks: Completer** | ✓ | ✗ | ✓ | — | — | ✓ |
-| **Tasks: ListManager** | partial | ✗ | ✓ | — | — | partial |
-| **Mail: EmailProvider** | ✓ | ✓ | ✓ | — | — | — |
-| **Mail: FlagMutator** | ✓ | ✓ | ✓ | — | — | — |
-| **Mail: CategoryMutator** | ✓ | ✗ | ✓ | — | — | — |
-| **Mail: AttachmentProvider** | ✓ | ✓ | ✓ | — | — | — |
-| **Mail: DraftProvider** | ✓ | ✓ | ✓ | — | — | — |
-| **Mail: ExistingDraftSender** | ✓ | partial | ✓ | — | — | — |
-| **Mail: ServerFilterProvider** | ✓ | ✗ | ✓ | — | — | — |
-| **Mail: NamedFolderProvider** | ✓ | ✓ | ✓ | — | — | — |
-| **Mail: NamedLabelProvider** | ✓ | ✗ | partial | — | — | — |
-| **Mail: MessageActionProvider** | ✓ | ✗ | ✓ | — | — | — |
-| **Mail: ResolvedArchiveProvider** | ✓ | ✓ | ✓ | — | — | — |
-| **Mail: ResolvedMoveToInboxProvider** | ✓ | ✓ | ✓ | — | — | — |
-| **Mail: ResolvedTrashProvider** | ✓ | ✓ | ✓ | — | — | — |
-| **Mailbox: OOFProvider** | ✓ | ✗ | ✓ | — | — | — |
-| **Mailbox: DelegationProvider** | ✓ | ✗ | ✓ | — | — | — |
+| Capability | Gmail | IMAP | Exchange (EWS) | Google Calendar | ICS | Google Tasks | Todoist | Evernote |
+|---|---|---|---|---|---|---|---|---|
+| **Calendar: Provider** | ✓ | ✗ | ✓ | ✓ | ✗ | — | — | — |
+| **Calendar: EventMutator** | ✓ | ✗ | ✓ | ✓ | ✗ | — | — | — |
+| **Calendar: InviteResponder** | ✓ | ✗ | ✓ | ✓ | ✗ | — | — | — |
+| **Calendar: FreeBusyLooker** | ✓ | ✗ | ✓ | ✓ | ✗ | — | — | — |
+| **Calendar: ICSExporter** | ✓ | partial | ✓ | ✓ | ✗ | — | — | — |
+| **Calendar: EventSearcher** | ✓ | ✗ | ✓ | ✓ | ✗ | — | — | — |
+| **Contacts: Provider** | ✓ | ✗ | ✓ | — | — | — | — | — |
+| **Contacts: Searcher** | ✓ | ✗ | partial | — | — | — | — | — |
+| **Contacts: Mutator** | ✓ | ✗ | ✓ | — | — | — | — | — |
+| **Contacts: Grouper** | ✓ | ✗ | partial | — | — | — | — | — |
+| **Contacts: PhotoFetcher** | ✓ | ✗ | ✗ | — | — | — | — | — |
+| **Tasks: Provider** | ✓ | ✗ | ✓ | — | — | ✓ | ✓ | — |
+| **Tasks: Mutator** | ✓ | ✗ | ✓ | — | — | ✓ | ✗ | — |
+| **Tasks: Completer** | ✓ | ✗ | ✓ | — | — | ✓ | ✗ | — |
+| **Tasks: ListManager** | partial | ✗ | ✓ | — | — | partial | ✗ | — |
+| **Notes: read-only** | — | — | — | — | — | — | — | ✓ |
+| **Mail: EmailProvider** | ✓ | ✓ | ✓ | — | — | — | — | — |
+| **Mail: FlagMutator** | ✓ | ✓ | ✓ | — | — | — | — | — |
+| **Mail: CategoryMutator** | ✓ | ✗ | ✓ | — | — | — | — | — |
+| **Mail: AttachmentProvider** | ✓ | ✓ | ✓ | — | — | — | — | — |
+| **Mail: DraftProvider** | ✓ | ✓ | ✓ | — | — | — | — | — |
+| **Mail: ExistingDraftSender** | ✓ | partial | ✓ | — | — | — | — | — |
+| **Mail: ServerFilterProvider** | ✓ | ✗ | ✓ | — | — | — | — | — |
+| **Mail: NamedFolderProvider** | ✓ | ✓ | ✓ | — | — | — | — | — |
+| **Mail: NamedLabelProvider** | ✓ | ✗ | partial | — | — | — | — | — |
+| **Mail: MessageActionProvider** | ✓ | ✗ | ✓ | — | — | — | — | — |
+| **Mail: ResolvedArchiveProvider** | ✓ | ✓ | ✓ | — | — | — | — | — |
+| **Mail: ResolvedMoveToInboxProvider** | ✓ | ✓ | ✓ | — | — | — | — | — |
+| **Mail: ResolvedTrashProvider** | ✓ | ✓ | ✓ | — | — | — | — | — |
+| **Mailbox: OOFProvider** | ✓ | ✗ | ✓ | — | — | — | — | — |
+| **Mailbox: DelegationProvider** | ✓ | ✗ | ✓ | — | — | — | — | — |
 
 Key: `✓` = fully supported, `partial` = supported with limitations, `✗` = not supported, `—` = not applicable.
 
@@ -214,7 +215,8 @@ Queries free/busy windows for participants. Required: `account_id`. Optional: `p
 
 ### `task_list_list`
 
-Lists task lists (Google Tasks lists or EWS Tasks folders). Required: `account_id`. Returns the containers available for task operations.
+Lists task lists (Google Tasks lists, Todoist projects, or EWS Tasks folders).
+Required: `account_id`. Returns the containers available for task operations.
 
 ### `task_list_create`
 
@@ -226,7 +228,12 @@ Deletes a task list. Required: `account_id`, `list_id`. Returns error_code=`capa
 
 ### `task_list`
 
-Lists tasks inside a task list. Required: `account_id`. Optional: `list_id`, `state` (filter by state), `limit`. Returns tasks from the specified list. When `account_id` is omitted, the first enabled tasks-capable account for the sphere is used.
+Lists tasks inside a task list. Required: `account_id`. Optional: `list_id`,
+`state` (filter by state), `limit`. Returns tasks from the specified list. The
+payload includes `start_at` for defer/start dates when the backend exposes one,
+and `due` only for hard deadlines. For Todoist, scheduled `due` maps to
+`start_at`, and `deadline` maps to `due`. When `account_id` is omitted, the
+first enabled tasks-capable account for the sphere is used.
 
 ### `task_get`
 
@@ -247,6 +254,23 @@ Toggles the completed state on a task. Required: `account_id`, `task_id`. Option
 ### `task_delete`
 
 Deletes a task. Required: `account_id`, `task_id`. Returns error_code=`capability_unsupported` when the backend is read-only.
+
+## Evernote tools
+
+### `evernote_notebook_list`
+
+Lists Evernote notebooks from a configured Evernote account. Optional:
+`account_id`, `sphere`.
+
+### `evernote_note_search`
+
+Searches Evernote notes without mutating them. Optional: `account_id`,
+`sphere`, `notebook_id`, `query`, `tag`, `updated_after`, `limit` capped at 50.
+
+### `evernote_note_get`
+
+Fetches one Evernote note as text, Markdown, and parsed checkbox tasks.
+Required: `id`. Optional: `account_id`, `sphere`.
 
 ## Error codes
 

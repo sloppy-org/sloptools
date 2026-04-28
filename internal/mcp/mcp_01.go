@@ -275,6 +275,8 @@ func (s *Server) callTool(name string, args map[string]interface{}) (map[string]
 		return s.contactPhotoGet(args)
 	case "task_list_list", "task_list_create", "task_list_delete", "task_list", "task_get", "task_create", "task_update", "task_complete", "task_delete":
 		return s.dispatchTasks(name, args)
+	case "evernote_notebook_list", "evernote_note_search", "evernote_note_get":
+		return s.dispatchEvernote(name, args)
 	default:
 		return nil, errors.New("unknown tool: " + name)
 	}

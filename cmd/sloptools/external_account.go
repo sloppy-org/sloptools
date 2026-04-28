@@ -46,6 +46,7 @@ func printExternalAccountHelp() {
 	fmt.Println("list flags:")
 	fmt.Println("  --sphere work|private    filter by sphere")
 	fmt.Println("  --provider NAME          filter by provider (gmail, exchange_ews, ...)")
+	fmt.Println("  --json                   print machine-readable JSON")
 	fmt.Println()
 	fmt.Println("add flags:")
 	fmt.Println("  --sphere work|private    required")
@@ -92,6 +93,7 @@ func cmdExternalAccountList(args []string) int {
 	dataDir := fs.String("data-dir", defaultDataDir(), "sloppy data dir")
 	sphere := fs.String("sphere", "", "filter by sphere (work|private)")
 	provider := fs.String("provider", "", "filter by provider")
+	jsonOut := fs.Bool("json", false, "print JSON")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -122,6 +124,13 @@ func cmdExternalAccountList(args []string) int {
 			}
 		}
 		accounts = filtered
+	}
+	if *jsonOut {
+		if err := json.NewEncoder(os.Stdout).Encode(map[string]any{"accounts": accounts}); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		return 0
 	}
 	printExternalAccountTable(accounts)
 	return 0

@@ -94,6 +94,63 @@ func TestListProjectsAndTasks(t *testing.T) {
 	}
 }
 
+func TestListProjectsAndTasksUsesV1Pagination(t *testing.T) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/rest/v2/projects":
+			if got := r.URL.Query().Get("limit"); got != "200" {
+				t.Fatalf("project limit = %q, want 200", got)
+			}
+			if r.URL.Query().Get("cursor") == "" {
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"results":     []Project{{ID: "proj-1", Name: "Inbox", InboxProject: true}},
+					"next_cursor": "next-page",
+				})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"results":     []Project{{ID: "proj-2", Name: "Work"}},
+				"next_cursor": "",
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/rest/v2/tasks":
+			if got := r.URL.Query().Get("limit"); got != "200" {
+				t.Fatalf("task limit = %q, want 200", got)
+			}
+			if got := r.URL.Query().Get("project_id"); got != "proj-1" {
+				t.Fatalf("project_id = %q, want proj-1", got)
+			}
+			if r.URL.Query().Get("cursor") == "" {
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"results":     []Task{{ID: "task-1", Content: "Follow up"}},
+					"next_cursor": "next-page",
+				})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"results":     []Task{{ID: "task-2", Content: "Send notes"}},
+				"next_cursor": "",
+			})
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.String())
+		}
+	})
+
+	projects, err := client.ListProjects(context.Background())
+	if err != nil {
+		t.Fatalf("ListProjects() error: %v", err)
+	}
+	if len(projects) != 2 || projects[0].ID != "proj-1" || projects[1].ID != "proj-2" {
+		t.Fatalf("projects = %#v", projects)
+	}
+	tasks, err := client.ListTasks(context.Background(), ListTasksOptions{ProjectID: "proj-1"})
+	if err != nil {
+		t.Fatalf("ListTasks() error: %v", err)
+	}
+	if len(tasks) != 2 || tasks[0].ID != "task-1" || tasks[1].ID != "task-2" {
+		t.Fatalf("tasks = %#v", tasks)
+	}
+}
+
 func TestGetTaskIncludesComments(t *testing.T) {
 	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		switch {

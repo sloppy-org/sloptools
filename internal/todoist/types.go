@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	defaultBaseURL     = "https://api.todoist.com/rest/v2"
+	defaultBaseURL     = "https://api.todoist.com/api/v1"
 	defaultMoveBaseURL = "https://api.todoist.com/api/v1"
 )
 
@@ -36,6 +36,7 @@ type Project struct {
 	IsShared       bool    `json:"is_shared"`
 	IsFavorite     bool    `json:"is_favorite"`
 	IsInboxProject bool    `json:"is_inbox_project"`
+	InboxProject   bool    `json:"inbox_project"`
 	IsTeamInbox    bool    `json:"is_team_inbox"`
 	ViewStyle      string  `json:"view_style"`
 	URL            string  `json:"url"`
@@ -67,6 +68,7 @@ type Task struct {
 	AssignerID   *string   `json:"assigner_id,omitempty"`
 	CommentCount int       `json:"comment_count"`
 	IsCompleted  bool      `json:"is_completed"`
+	Checked      bool      `json:"checked"`
 	Content      string    `json:"content"`
 	Description  string    `json:"description"`
 	Due          *Due      `json:"due,omitempty"`
@@ -79,6 +81,10 @@ type Task struct {
 	SectionID    *string   `json:"section_id,omitempty"`
 	ParentID     *string   `json:"parent_id,omitempty"`
 	URL          string    `json:"url"`
+	AddedAt      *string   `json:"added_at,omitempty"`
+	UpdatedAt    *string   `json:"updated_at,omitempty"`
+	CompletedAt  *string   `json:"completed_at,omitempty"`
+	NoteCount    int       `json:"note_count"`
 }
 
 type CommentAttachment struct {

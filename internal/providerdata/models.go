@@ -141,6 +141,8 @@ type TaskItem struct {
 	ListID      string
 	Title       string
 	Notes       string
+	StartAt     *time.Time
+	EndAt       *time.Time
 	Due         *time.Time
 	CompletedAt *time.Time
 	Completed   bool

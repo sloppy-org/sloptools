@@ -22,9 +22,9 @@ func TestGroupwareDocListsEveryMCPTool(t *testing.T) {
 
 	// Extract tool names from the doc. The doc uses backtick-quoted names
 	// like `mail_send`, `calendar_events`, etc. Only match names that
-	// look like actual MCP tools (mail/contact/calendar/task prefix), not
+	// look like actual MCP tools (mail/contact/calendar/task/evernote prefix), not
 	// parameter references like `task_id` or `contact_id`.
-	docRe := regexp.MustCompile("`((?:mail|contact|calendar|task)_[a-z][a-z0-9_]*)`")
+	docRe := regexp.MustCompile("`((?:mail|contact|calendar|task|evernote)_[a-z][a-z0-9_]*)`")
 	docNames := make(map[string]bool)
 	for _, m := range docRe.FindAllStringSubmatch(doc, -1) {
 		docNames[m[1]] = true

@@ -15,6 +15,7 @@ import (
 	"github.com/sloppy-org/sloptools/internal/mailboxsettings"
 	"github.com/sloppy-org/sloptools/internal/store"
 	"github.com/sloppy-org/sloptools/internal/tasks"
+	"github.com/sloppy-org/sloptools/internal/todoist"
 )
 
 // ContactsFor returns a contacts.Provider for the given account, reusing the
@@ -187,6 +188,18 @@ func (r *Registry) tasksFor(ctx context.Context, account store.ExternalAccount) 
 			return nil, err
 		}
 		provider := tasks.NewEWSProvider(client, "")
+		r.tasksProviders[account.ID] = provider
+		return provider, nil
+	case store.ExternalProviderTodoist:
+		token, _, err := r.store.ResolveExternalAccountPasswordForAccount(ctx, account)
+		if err != nil {
+			return nil, err
+		}
+		client, err := todoist.NewClient(token)
+		if err != nil {
+			return nil, err
+		}
+		provider := tasks.NewTodoistProvider(client)
 		r.tasksProviders[account.ID] = provider
 		return provider, nil
 	default:

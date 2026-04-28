@@ -3,3 +3,4 @@
 /sloptools
 build/
 dist/
+.sloptools/

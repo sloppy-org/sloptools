@@ -226,8 +226,9 @@ func taskItemFromEWS(t ews.Task, listID string) providerdata.TaskItem {
 		ProviderRef: t.ID,
 	}
 	if t.StartDate != nil && !t.StartDate.IsZero() {
-		out.Priority = mapEWSStatus(t.Status)
+		out.StartAt = t.StartDate
 	}
+	out.Priority = mapEWSStatus(t.Status)
 	if t.DueDate != nil && !t.DueDate.IsZero() {
 		out.Due = t.DueDate
 	}
