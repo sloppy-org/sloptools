@@ -426,6 +426,9 @@ func (p *ExchangeEWSMailProvider) searchFolders(ctx context.Context, opts Search
 		if err != nil {
 			return nil, err
 		}
+		if strings.TrimSpace(ref) == "" {
+			return nil, fmt.Errorf("exchange ews folder %q not found", strings.TrimSpace(opts.Folder))
+		}
 		return []string{ref}, nil
 	}
 	folders, err := p.client.ListFolders(ctx)
