@@ -47,6 +47,8 @@ func run(args []string) int {
 		return cmdServer(args[1:])
 	case "mcp-server":
 		return cmdMCPServer(args[1:])
+	case "brain":
+		return cmdBrain(args[1:])
 	case "mail":
 		return cmdMail(args[1:])
 	case "external-account":
@@ -64,7 +66,8 @@ func run(args []string) int {
 
 func printHelp() {
 	fmt.Println("sloptools <command> [flags]")
-	fmt.Println("commands: bootstrap server mcp-server mail external-account tools version")
+	fmt.Println("commands: bootstrap server mcp-server brain mail external-account tools version")
+	fmt.Println("brain subcommands: search backlinks")
 	fmt.Println("mail subcommands: send reply")
 	fmt.Println("external-account subcommands: list add update remove")
 	fmt.Println("tools subcommands: list call")

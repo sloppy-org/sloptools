@@ -41,6 +41,7 @@ func TestGroupwareDocListsEveryMCPTool(t *testing.T) {
 		"item_",
 		"artifact_",
 		"actor_",
+		"brain_",
 	}
 
 	codeNames := make(map[string]bool)

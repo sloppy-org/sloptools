@@ -1,0 +1,129 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"os"
+	"strings"
+
+	"github.com/sloppy-org/sloptools/internal/brain"
+)
+
+func cmdBrain(args []string) int {
+	if len(args) == 0 {
+		printBrainHelp()
+		return 2
+	}
+	switch args[0] {
+	case "search":
+		return cmdBrainSearch(args[1:])
+	case "backlinks":
+		return cmdBrainBacklinks(args[1:])
+	case "help", "-h", "--help":
+		printBrainHelp()
+		return 0
+	default:
+		fmt.Fprintf(os.Stderr, "unknown brain subcommand: %s\n", args[0])
+		printBrainHelp()
+		return 2
+	}
+}
+
+func printBrainHelp() {
+	fmt.Println("sloptools brain <search|backlinks> [flags]")
+	fmt.Println()
+	fmt.Println("search flags:")
+	fmt.Println("  --config PATH   vault config path (default ~/.config/sloptools/vaults.toml)")
+	fmt.Println("  --sphere NAME   vault sphere: work or private")
+	fmt.Println("  --query TEXT    search query")
+	fmt.Println("  --mode MODE     text, regex, wikilink, markdown_link, or alias")
+	fmt.Println("  --limit N       maximum results (default 50)")
+	fmt.Println()
+	fmt.Println("backlinks flags:")
+	fmt.Println("  --config PATH   vault config path (default ~/.config/sloptools/vaults.toml)")
+	fmt.Println("  --sphere NAME   vault sphere: work or private")
+	fmt.Println("  --target PATH   target note path")
+	fmt.Println("  --limit N       maximum results (default 50)")
+}
+
+func cmdBrainSearch(args []string) int {
+	fs := flag.NewFlagSet("brain search", flag.ContinueOnError)
+	configPath := fs.String("config", "", "vault config path")
+	sphere := fs.String("sphere", "", "vault sphere")
+	query := fs.String("query", "", "search query")
+	mode := fs.String("mode", string(brain.SearchText), "search mode")
+	limit := fs.Int("limit", 50, "maximum results")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if strings.TrimSpace(*sphere) == "" {
+		fmt.Fprintln(os.Stderr, "--sphere is required")
+		return 2
+	}
+	if strings.TrimSpace(*query) == "" {
+		fmt.Fprintln(os.Stderr, "--query is required")
+		return 2
+	}
+	cfg, err := brain.LoadConfig(*configPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	results, err := brain.Search(context.Background(), cfg, brain.SearchOptions{
+		Sphere: brain.Sphere(*sphere),
+		Query:  *query,
+		Mode:   brain.SearchMode(*mode),
+		Limit:  *limit,
+	})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	return printBrainJSON(map[string]interface{}{"sphere": *sphere, "mode": *mode, "query": *query, "results": results, "count": len(results)})
+}
+
+func cmdBrainBacklinks(args []string) int {
+	fs := flag.NewFlagSet("brain backlinks", flag.ContinueOnError)
+	configPath := fs.String("config", "", "vault config path")
+	sphere := fs.String("sphere", "", "vault sphere")
+	target := fs.String("target", "", "target note path")
+	limit := fs.Int("limit", 50, "maximum results")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if strings.TrimSpace(*sphere) == "" {
+		fmt.Fprintln(os.Stderr, "--sphere is required")
+		return 2
+	}
+	if strings.TrimSpace(*target) == "" {
+		fmt.Fprintln(os.Stderr, "--target is required")
+		return 2
+	}
+	cfg, err := brain.LoadConfig(*configPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	results, err := brain.Backlinks(context.Background(), cfg, brain.BacklinkOptions{
+		Sphere: brain.Sphere(*sphere),
+		Target: *target,
+		Limit:  *limit,
+	})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	return printBrainJSON(map[string]interface{}{"sphere": *sphere, "target": *target, "results": results, "count": len(results)})
+}
+
+func printBrainJSON(value interface{}) int {
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(value); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	return 0
+}

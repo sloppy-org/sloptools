@@ -15,6 +15,9 @@ jobs:
           go-version: 1.24.x
           cache: true
 
+      - name: install ripgrep
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+
       - name: gofmt
         run: |
           offenders="$(gofmt -s -l .)"
