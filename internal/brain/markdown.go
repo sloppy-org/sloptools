@@ -11,8 +11,8 @@ import (
 )
 
 type MarkdownDiagnostic struct {
-	Line    int
-	Message string
+	Line    int    `json:"line,omitempty"`
+	Message string `json:"message,omitempty"`
 }
 
 type MarkdownParseOptions struct {
@@ -25,18 +25,18 @@ type MarkdownNote struct {
 }
 
 type MarkdownFrontMatter struct {
-	StartLine int
-	EndLine   int
-	Raw       string
-	Node      *yaml.Node
+	StartLine int        `json:"start_line,omitempty"`
+	EndLine   int        `json:"end_line,omitempty"`
+	Raw       string     `json:"raw,omitempty"`
+	Node      *yaml.Node `json:"-"`
 }
 
 type MarkdownSection struct {
-	Level     int
-	Name      string
-	StartLine int
-	EndLine   int
-	Body      string
+	Level     int    `json:"level,omitempty"`
+	Name      string `json:"name,omitempty"`
+	StartLine int    `json:"start_line,omitempty"`
+	EndLine   int    `json:"end_line,omitempty"`
+	Body      string `json:"body,omitempty"`
 }
 
 type markdownFrontMatter struct {

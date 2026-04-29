@@ -55,7 +55,7 @@ var (
 	folderStatuses          = stringSet("active", "stale", "frozen", "unknown")
 	attentionFocus          = stringSet("core", "active", "watch", "parked")
 	attentionCadence        = stringSet("daily", "weekly", "monthly", "quarterly", "annual", "none")
-	attentionKinds          = stringSet("human", "project", "topic", "institution")
+	attentionKinds          = stringSet("attention", "human", "project", "topic", "institution")
 )
 
 func ParseFolderNote(src string) (FolderNote, []MarkdownDiagnostic) {
