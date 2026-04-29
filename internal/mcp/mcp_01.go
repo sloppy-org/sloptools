@@ -282,7 +282,7 @@ func (s *Server) callTool(name string, args map[string]interface{}) (map[string]
 		return s.dispatchTasks(name, args)
 	case "evernote_notebook_list", "evernote_note_search", "evernote_note_get":
 		return s.dispatchEvernote(name, args)
-	case "brain.note.parse", "brain.note.validate", "brain.vault.validate", "brain.links.resolve", "brain_search", "brain_backlinks", "brain.gtd.bind", "brain.gtd.dedup_scan", "brain.gtd.dedup_review_apply", "brain.gtd.dedup_history", "brain.gtd.set_status", "brain.gtd.sync":
+	case "brain.note.parse", "brain.note.validate", "brain.vault.validate", "brain.links.resolve", "brain_search", "brain_backlinks", "brain.gtd.bind", "brain.gtd.dedup_scan", "brain.gtd.dedup_review_apply", "brain.gtd.dedup_history", "brain.gtd.set_status", "brain.gtd.sync", "brain.people.dashboard", "brain.people.render":
 		return s.dispatchBrain(name, args)
 	default:
 		return nil, errors.New("unknown tool: " + name)
