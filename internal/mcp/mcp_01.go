@@ -165,128 +165,20 @@ func (s *Server) dispatchToolCall(params map[string]interface{}) (map[string]int
 
 func (s *Server) callTool(name string, args map[string]interface{}) (map[string]interface{}, error) {
 	sid := strArg(args, "session_id")
-	switch name {
-	case "canvas_session_open", "canvas_activate", "canvas_artifact_show", "canvas_render_text", "canvas_render_image", "canvas_render_pdf", "canvas_clear", "canvas_status", "canvas_history", "canvas_import_handoff":
-		return s.dispatchCanvas(sid, name, args)
-	case "handoff.create":
-		return s.handoffCreate(args)
-	case "handoff.peek":
-		return s.handoffPeek(args)
-	case "handoff.consume":
-		return s.handoffConsume(args)
-	case "handoff.revoke":
-		return s.handoffRevoke(args)
-	case "handoff.status":
-		return s.handoffStatus(args)
-	case "temp_file_create":
-		return s.tempFileCreate(args)
-	case "temp_file_remove":
-		return s.tempFileRemove(args)
-	case "workspace_list":
-		return s.workspaceList(args)
-	case "workspace_activate":
-		return s.workspaceActivate(args)
-	case "workspace_get":
-		return s.workspaceGet(args)
-	case "workspace_watch_start":
-		return s.workspaceWatchStart(args)
-	case "workspace_watch_stop":
-		return s.workspaceWatchStop(args)
-	case "workspace_watch_status":
-		return s.workspaceWatchStatus(args)
-	case "item_list":
-		return s.itemList(args)
-	case "item_get":
-		return s.itemGet(args)
-	case "item_create":
-		return s.itemCreate(args)
-	case "item_triage":
-		return s.itemTriage(args)
-	case "item_assign":
-		return s.itemAssign(args)
-	case "item_update":
-		return s.itemUpdate(args)
-	case "artifact_get":
-		return s.artifactGet(args)
-	case "artifact_list":
-		return s.artifactList(args)
-	case "actor_list":
-		return s.actorList(args)
-	case "actor_create":
-		return s.actorCreate(args)
-	case "calendar_list":
-		return s.calendarList(args)
-	case "calendar_events":
-		return s.calendarEvents(args)
-	case "calendar_event_create":
-		return s.calendarEventCreate(args)
-	case "calendar_freebusy":
-		return s.calendarFreeBusy(args)
-	case "calendar_event_get", "calendar_event_update", "calendar_event_delete", "calendar_event_respond", "calendar_event_ics_export":
-		return s.dispatchCalendarEvent(name, args)
-	case "mail_account_list":
-		return s.mailAccountList(args)
-	case "mail_label_list":
-		return s.mailLabelList(args)
-	case "mail_message_list":
-		return s.mailMessageList(args)
-	case "mail_message_get":
-		return s.mailMessageGet(args)
-	case "mail_commitment_list":
-		return s.mailCommitmentList(args)
-	case "mail_commitment_close":
-		return s.mailCommitmentClose(args)
-	case "mail_attachment_get":
-		return s.mailAttachmentGet(args)
-	case "mail_action":
-		return s.mailAction(args)
-	case "mail_send":
-		return s.mailSend(args)
-	case "mail_draft_send":
-		return s.mailDraftSend(args)
-	case "mail_reply":
-		return s.mailReply(args)
-	case "mail_message_copy":
-		return s.mailMessageCopy(args)
-	case "mail_server_filter_list":
-		return s.mailServerFilterList(args)
-	case "mail_server_filter_upsert":
-		return s.mailServerFilterUpsert(args)
-	case "mail_server_filter_delete":
-		return s.mailServerFilterDelete(args)
-	case "mail_flag_set":
-		return s.mailFlagSet(args)
-	case "mail_flag_clear":
-		return s.mailFlagClear(args)
-	case "mail_categories_set":
-		return s.mailCategoriesSet(args)
-	case "mail_oof_get", "mail_oof_set", "mail_delegate_list":
-		return s.callMailboxSettingsTool(name, args)
-	case "contact_list":
-		return s.contactList(args)
-	case "contact_get":
-		return s.contactGet(args)
-	case "contact_search":
-		return s.contactSearch(args)
-	case "contact_create":
-		return s.contactCreate(args)
-	case "contact_update":
-		return s.contactUpdate(args)
-	case "contact_delete":
-		return s.contactDelete(args)
-	case "contact_group_list":
-		return s.contactGroupList(args)
-	case "contact_photo_get":
-		return s.contactPhotoGet(args)
-	case "task_list_list", "task_list_create", "task_list_delete", "task_list", "task_get", "task_create", "task_update", "task_complete", "task_delete":
-		return s.dispatchTasks(name, args)
-	case "evernote_notebook_list", "evernote_note_search", "evernote_note_get":
-		return s.dispatchEvernote(name, args)
-	case "brain.note.parse", "brain.note.validate", "brain.vault.validate", "brain.links.resolve", "brain_search", "brain_backlinks", "brain.gtd.bind", "brain.gtd.dedup_scan", "brain.gtd.dedup_review_apply", "brain.gtd.dedup_history", "brain.gtd.set_status", "brain.gtd.sync", "brain.people.dashboard", "brain.people.render":
-		return s.dispatchBrain(name, args)
-	default:
-		return nil, errors.New("unknown tool: " + name)
+	for _, dispatch := range []func(string, string, map[string]interface{}) toolDispatchResult{
+		s.callCanvasTool,
+		s.callCoreTool,
+		s.callCalendarTool,
+		s.callMailTool,
+		s.callContactTool,
+		s.callAuxTool,
+	} {
+		result := dispatch(sid, name, args)
+		if result.ok {
+			return result.payload, result.err
+		}
 	}
+	return nil, errors.New("unknown tool: " + name)
 }
 
 func RunStdio(projectDir string) int {
