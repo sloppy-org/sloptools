@@ -86,7 +86,7 @@ func (s *Server) brainGTDSync(args map[string]interface{}) (map[string]interface
 				skipped++
 				continue
 			}
-			action, err := s.pushClosedBinding(note, binding, args, dryRun)
+			changed, action, err := s.pushClosedBinding(note, binding, args, dryRun)
 			if action.Binding != "" {
 				actions = append(actions, action)
 			}
@@ -94,7 +94,11 @@ func (s *Server) brainGTDSync(args map[string]interface{}) (map[string]interface
 				syncErrs = append(syncErrs, syncError(note, binding, err))
 				continue
 			}
-			reconciled++
+			if changed {
+				reconciled++
+			} else {
+				skipped++
+			}
 		}
 	}
 	return map[string]interface{}{
@@ -177,26 +181,35 @@ func (s *Server) loadSyncNotes(args map[string]interface{}) ([]dedupNote, error)
 	return nil, fmt.Errorf("commitment %q not found", path)
 }
 
-func (s *Server) pushClosedBinding(note dedupNote, binding braingtd.SourceBinding, args map[string]interface{}, dryRun bool) (gtdSyncAction, error) {
+func (s *Server) pushClosedBinding(note dedupNote, binding braingtd.SourceBinding, args map[string]interface{}, dryRun bool) (bool, gtdSyncAction, error) {
 	action := syncAction(note, binding, "close_upstream", dryRun)
 	if dryRun {
-		return action, nil
+		return true, action, nil
 	}
-	switch gtdSyncProvider(binding.Provider) {
-	case "manual":
-		return syncAction(note, binding, "manual_noop", false), nil
+	provider := gtdSyncProvider(binding.Provider)
+	if provider == "manual" {
+		return false, syncAction(note, binding, "manual_noop", false), nil
+	}
+	state, err := s.readBindingState(note, binding)
+	if err != nil {
+		return false, gtdSyncAction{}, err
+	}
+	if state.Status == "closed" {
+		return false, syncAction(note, binding, "upstream_already_closed", false), nil
+	}
+	switch provider {
 	case "meetings":
-		return action, closeMeetingBinding(note, binding)
+		return true, action, closeMeetingBinding(note, binding)
 	case "mail":
-		return action, s.closeMailBinding(note, binding, args)
+		return true, action, s.closeMailBinding(note, binding, args)
 	case "todoist":
-		return action, s.closeTodoistBinding(note, binding, args)
+		return true, action, s.closeTodoistBinding(note, binding, args)
 	case "github":
-		return action, closeGitHubBinding(binding)
+		return true, action, closeGitHubBinding(binding)
 	case "gitlab":
-		return action, closeGitLabBinding(binding)
+		return true, action, closeGitLabBinding(binding)
 	default:
-		return action, fmt.Errorf("unsupported writeable binding provider %q", binding.Provider)
+		return false, action, fmt.Errorf("unsupported writeable binding provider %q", binding.Provider)
 	}
 }
 

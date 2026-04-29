@@ -217,7 +217,11 @@ func TestBrainGTDSyncPushesIssueBindingsAndManualNoop(t *testing.T) {
 	writeGTDSyncManualCommitment(t, root)
 	var calls []string
 	restore := stubGTDSyncCommand(t, func(_ context.Context, name string, args ...string) ([]byte, error) {
-		calls = append(calls, name+" "+strings.Join(args, " "))
+		call := name + " " + strings.Join(args, " ")
+		calls = append(calls, call)
+		if strings.Contains(call, " view ") {
+			return []byte(`{"state":"open"}`), nil
+		}
 		return nil, nil
 	})
 	defer restore()
@@ -226,14 +230,20 @@ func TestBrainGTDSyncPushesIssueBindingsAndManualNoop(t *testing.T) {
 	if err != nil {
 		t.Fatalf("brain.gtd.sync issue push: %v", err)
 	}
-	if got["reconciled"] != 3 {
-		t.Fatalf("reconciled = %#v, want 3: %#v", got["reconciled"], got)
+	if got["reconciled"] != 2 {
+		t.Fatalf("reconciled = %#v, want 2: %#v", got["reconciled"], got)
 	}
 	actions := got["actions"].([]gtdSyncAction)
 	if !hasGTDSyncAction(actions, "manual:local-note", "manual_noop") {
 		t.Fatalf("actions missing manual no-op: %#v", actions)
 	}
-	if len(calls) != 2 || calls[0] != "gh issue close 7 -R sloppy-org/sloptools" || calls[1] != "glab issue close 8 -R group/project" {
+	wantCalls := []string{
+		"gh issue view 7 -R sloppy-org/sloptools --json state,closedAt",
+		"gh issue close 7 -R sloppy-org/sloptools",
+		"glab issue view 8 -R group/project --output json",
+		"glab issue close 8 -R group/project",
+	}
+	if strings.Join(calls, "\n") != strings.Join(wantCalls, "\n") {
 		t.Fatalf("calls = %#v", calls)
 	}
 }
