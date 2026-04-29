@@ -51,6 +51,31 @@ Free prose.
 	}
 }
 
+func TestParseCommitmentDroppedOverlay(t *testing.T) {
+	src := `---
+title: Hide stale upstream item
+status: next
+source_bindings:
+  - provider: github
+    ref: sloppy-org/slopshell#51
+local_overlay:
+  status: dropped
+  closed_via: cli
+---
+# Context
+
+Free prose.
+`
+
+	commitment, _, diags := ParseCommitmentMarkdown(src)
+	if len(diags) != 0 {
+		t.Fatalf("ParseCommitmentMarkdown() diagnostics: %v", diags)
+	}
+	if commitment.LocalOverlay.Status != "dropped" || commitment.LocalOverlay.ClosedVia != "cli" {
+		t.Fatalf("overlay = %#v", commitment.LocalOverlay)
+	}
+}
+
 func TestParseCommitmentLegacySourceRefs(t *testing.T) {
 	src := `---
 title: Legacy task
@@ -113,6 +138,50 @@ Intro prose.
 		if !strings.Contains(rendered, want) {
 			t.Fatalf("rendered note missing %q:\n%s", want, rendered)
 		}
+	}
+}
+
+func TestApplyCommitmentIsIdempotent(t *testing.T) {
+	src := `---
+title: Preserve me
+source_bindings:
+  - provider: github
+    ref: sloppy-org/slopshell#51
+---
+Intro prose.
+
+# Checklist
+
+- [ ] one
+`
+
+	commitment, note, diags := ParseCommitmentMarkdown(src)
+	if len(diags) != 0 {
+		t.Fatalf("ParseCommitmentMarkdown() diagnostics: %v", diags)
+	}
+	commitment.LocalOverlay = LocalOverlay{Status: "dropped", ClosedVia: "cli"}
+	if err := ApplyCommitment(note, *commitment); err != nil {
+		t.Fatalf("first ApplyCommitment() error: %v", err)
+	}
+	first, err := note.Render()
+	if err != nil {
+		t.Fatalf("first Render() error: %v", err)
+	}
+	if err := ApplyCommitment(note, *commitment); err != nil {
+		t.Fatalf("second ApplyCommitment() error: %v", err)
+	}
+	second, err := note.Render()
+	if err != nil {
+		t.Fatalf("second Render() error: %v", err)
+	}
+	if first != second {
+		t.Fatalf("rendered note changed on repeat apply:\nfirst:\n%s\nsecond:\n%s", first, second)
+	}
+	if strings.Count(second, "source_bindings:") != 1 {
+		t.Fatalf("rendered note duplicated source_bindings:\n%s", second)
+	}
+	if !strings.Contains(second, "status: dropped") {
+		t.Fatalf("rendered note missing dropped overlay:\n%s", second)
 	}
 }
 

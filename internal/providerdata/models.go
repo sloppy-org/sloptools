@@ -188,6 +188,26 @@ type TaskCommentAttachment struct {
 	ResourceType string
 }
 
+// SourceItem is a normalized GitHub/GitLab issue-like entry that can be
+// reviewed without materializing Markdown by default.
+type SourceItem struct {
+	Provider     string // github or gitlab
+	Kind         string // issue, pull_request, merge_request
+	Container    string // owner/repo or group/project
+	Number       int64
+	Title        string
+	URL          string
+	State        string
+	Labels       []string
+	Assignees    []string
+	Author       string
+	ReviewStatus string
+	Reviewers    []string
+	SourceRef    string
+	UpdatedAt    *time.Time
+	ClosedAt     *time.Time
+}
+
 // Contact is the canonical address-book entry shared by Google People and Exchange contacts.
 type Contact struct {
 	ProviderRef  string
