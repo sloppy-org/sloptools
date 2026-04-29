@@ -9,8 +9,9 @@ import (
 )
 
 func TestForbiddenTokensLintCatchesSyntheticHomePath(t *testing.T) {
+	syntheticPath := filepath.Join("/", "home", "example", "Nextcloud", "secret.pdf")
 	repo := initForbiddenTokensRepo(t, map[string]string{
-		"cmd/example/main.go": "package main\n\n// /home/example/Nextcloud/secret.pdf\n",
+		"cmd/example/main.go": "package main\n\n// " + syntheticPath + "\n",
 	})
 
 	script := findForbiddenTokensScript(t)
@@ -21,7 +22,7 @@ func TestForbiddenTokensLintCatchesSyntheticHomePath(t *testing.T) {
 	if !strings.Contains(out, "FORBIDDEN") {
 		t.Fatalf("expected FORBIDDEN in output, got:\n%s", out)
 	}
-	if !strings.Contains(out, "/home/example/Nextcloud/secret.pdf") {
+	if !strings.Contains(out, syntheticPath) {
 		t.Fatalf("expected synthetic path in output, got:\n%s", out)
 	}
 }
