@@ -121,6 +121,17 @@ func gtdSyncProvider(provider string) string {
 	return clean
 }
 
+func mailBindingAccountProvider(binding braingtd.SourceBinding) string {
+	provider := strings.ToLower(strings.TrimSpace(binding.Provider))
+	if provider == "mail" {
+		return ""
+	}
+	if emailCapableProvider(provider) {
+		return provider
+	}
+	return ""
+}
+
 type issueBindingRef struct {
 	container string
 	kind      string

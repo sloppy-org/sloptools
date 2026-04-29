@@ -338,7 +338,7 @@ func matchingCheckboxLine(lines []string, binding braingtd.SourceBinding) (int, 
 }
 
 func (s *Server) closeMailBinding(note dedupNote, binding braingtd.SourceBinding, args map[string]interface{}) error {
-	account, provider, err := s.mailProviderForSync(note, args)
+	account, provider, err := s.mailProviderForSync(note, binding, args)
 	if err != nil {
 		return err
 	}
@@ -359,7 +359,7 @@ func (s *Server) closeMailBinding(note dedupNote, binding braingtd.SourceBinding
 }
 
 func (s *Server) readMailBindingState(note dedupNote, binding braingtd.SourceBinding) (gtdSyncState, error) {
-	_, provider, err := s.mailProviderForSync(note, nil)
+	_, provider, err := s.mailProviderForSync(note, binding, nil)
 	if err != nil {
 		return gtdSyncState{}, err
 	}
@@ -414,11 +414,12 @@ func (s *Server) readTodoistBindingState(note dedupNote, binding braingtd.Source
 	return gtdSyncState{Status: "open"}, nil
 }
 
-func (s *Server) mailProviderForSync(note dedupNote, args map[string]interface{}) (store.ExternalAccount, email.EmailProvider, error) {
+func (s *Server) mailProviderForSync(note dedupNote, binding braingtd.SourceBinding, args map[string]interface{}) (store.ExternalAccount, email.EmailProvider, error) {
 	st, err := s.requireStore()
 	if err != nil {
 		return store.ExternalAccount{}, nil, err
 	}
+	requiredProvider := mailBindingAccountProvider(binding)
 	if args != nil {
 		accountID, _, err := optionalInt64Arg(args, "account_id")
 		if err != nil {
@@ -432,6 +433,9 @@ func (s *Server) mailProviderForSync(note dedupNote, args map[string]interface{}
 			if !account.Enabled || !emailCapableProvider(account.Provider) {
 				return store.ExternalAccount{}, nil, fmt.Errorf("account %d does not support email sync", account.ID)
 			}
+			if requiredProvider != "" && !strings.EqualFold(account.Provider, requiredProvider) {
+				return store.ExternalAccount{}, nil, fmt.Errorf("account %d provider %q does not match binding provider %q", account.ID, account.Provider, requiredProvider)
+			}
 			provider, err := s.emailProviderForAccount(context.Background(), account)
 			if err != nil {
 				return store.ExternalAccount{}, nil, err
@@ -439,7 +443,7 @@ func (s *Server) mailProviderForSync(note dedupNote, args map[string]interface{}
 			return account, provider, nil
 		}
 	}
-	account, err := firstProviderAccount(st, string(note.Resolved.Sphere), "", emailCapableProvider)
+	account, err := firstProviderAccount(st, string(note.Resolved.Sphere), requiredProvider, emailCapableProvider)
 	if err != nil {
 		return store.ExternalAccount{}, nil, err
 	}

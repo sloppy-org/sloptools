@@ -281,8 +281,11 @@ func newGTDSyncFixture(t *testing.T) (*Server, string, string, string, *gtdSyncM
 		t.Fatalf("store.New: %v", err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
+	if _, err := st.CreateExternalAccount(store.SphereWork, store.ExternalProviderIMAP, "IMAP", map[string]any{}); err != nil {
+		t.Fatalf("CreateExternalAccount(imap): %v", err)
+	}
 	if _, err := st.CreateExternalAccount(store.SphereWork, store.ExternalProviderGmail, "Gmail", map[string]any{}); err != nil {
-		t.Fatalf("CreateExternalAccount(mail): %v", err)
+		t.Fatalf("CreateExternalAccount(gmail): %v", err)
 	}
 	if _, err := st.CreateExternalAccount(store.SphereWork, store.ExternalProviderTodoist, "Todoist", map[string]any{}); err != nil {
 		t.Fatalf("CreateExternalAccount(todoist): %v", err)
@@ -290,11 +293,17 @@ func newGTDSyncFixture(t *testing.T) (*Server, string, string, string, *gtdSyncM
 	mailProvider := &gtdSyncMailProvider{fakeMailProvider: &fakeMailProvider{messages: map[string]*providerdata.EmailMessage{
 		"m1": {ID: "m1", Subject: "Budget", IsRead: false, Labels: []string{"INBOX"}},
 	}}}
+	decoyProvider := &gtdSyncMailProvider{fakeMailProvider: &fakeMailProvider{messages: map[string]*providerdata.EmailMessage{
+		"m1": {ID: "m1", Subject: "Budget", IsRead: false, Labels: []string{"INBOX"}},
+	}}}
 	taskProvider := &fakeTasksProvider{name: "todoist", hasCompleter: true, getTaskByID: map[string]providerdata.TaskItem{
 		"task-1": {ID: "task-1", ListID: "project", Completed: false},
 	}}
 	s := NewServerWithStoreAndBrainConfig(t.TempDir(), st, configPath)
-	s.newEmailProvider = func(context.Context, store.ExternalAccount) (email.EmailProvider, error) {
+	s.newEmailProvider = func(_ context.Context, account store.ExternalAccount) (email.EmailProvider, error) {
+		if account.Provider == store.ExternalProviderIMAP {
+			return decoyProvider, nil
+		}
 		return mailProvider, nil
 	}
 	s.newTasksProvider = func(context.Context, store.ExternalAccount) (tasks.Provider, error) {
