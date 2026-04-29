@@ -5,6 +5,7 @@
 - `cmd/sloptools`: CLI entrypoint and command wiring.
 - `internal/appserver`: app-session client, approval, input, and session state helpers.
 - `internal/bear`: Bear notes adapter.
+- `internal/brain`: brain vault config loading and guarded path/link resolution.
 - `internal/calendar`: calendar provider resolution plus Google Calendar and ICS account support.
 - `internal/canvas`: canvas event and adapter types.
 - `internal/contacts`: contact provider adapters.
