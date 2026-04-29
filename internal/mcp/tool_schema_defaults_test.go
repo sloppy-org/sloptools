@@ -12,7 +12,7 @@ func TestMailReadToolDefinitionsAllowSphereDefault(t *testing.T) {
 		name, _ := def["name"].(string)
 		names[name] = def
 	}
-	for _, name := range []string{"mail_label_list", "mail_message_list", "mail_message_get", "mail_attachment_get"} {
+	for _, name := range []string{"mail_label_list", "mail_message_list", "mail_message_get", "mail_attachment_get", "mail_commitment_list"} {
 		schema, _ := names[name]["inputSchema"].(map[string]interface{})
 		props, _ := schema["properties"].(map[string]interface{})
 		if props["sphere"] == nil {
@@ -23,6 +23,9 @@ func TestMailReadToolDefinitionsAllowSphereDefault(t *testing.T) {
 			if required == "account_id" {
 				t.Fatalf("%s still requires account_id: %#v", name, schema["required"])
 			}
+		}
+		if name == "mail_commitment_list" && props["body_limit"] == nil {
+			t.Fatalf("%s schema lacks body_limit property: %#v", name, props)
 		}
 	}
 }
@@ -43,5 +46,10 @@ func TestToolDefinitionsAdvertiseCompactDefaults(t *testing.T) {
 	if !strings.Contains(mailDesc, "folder=INBOX") ||
 		!strings.Contains(mailDesc, "without full bodies") {
 		t.Fatalf("mail_message_list description should steer compact mail routing: %q", mailDesc)
+	}
+	commitmentDesc, _ := names["mail_commitment_list"]["description"].(string)
+	if !strings.Contains(commitmentDesc, "commitments") ||
+		!strings.Contains(commitmentDesc, "body_limit") {
+		t.Fatalf("mail_commitment_list description should mention bounded commitment derivation: %q", commitmentDesc)
 	}
 }

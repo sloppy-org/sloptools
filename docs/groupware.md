@@ -79,6 +79,10 @@ Lists messages from a mail account, newest first, with mailbox filters and pagin
 
 Gets one full message from a mail account. Required: `account_id`, `message_id`. Optional: `format` (`full` or `metadata`). All backends support metadata format; `full` returns body content when available.
 
+### `mail_commitment_list`
+
+Derives GTD commitments from mail messages and links each result back to the underlying email artifact. Required: `account_id`. Optional: `sphere`, `limit`, `body_limit`. The tool inspects mailbox metadata first and only fetches a bounded number of full bodies for confirmation.
+
 ### `mail_attachment_get`
 
 Downloads one mail attachment to disk. Required: `account_id`, `message_id`, `attachment_id`. Optional: `dest_dir` (defaults to `~/Downloads/sloppy-attachments`). All backends support this.

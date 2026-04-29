@@ -231,6 +231,8 @@ func (s *Server) callTool(name string, args map[string]interface{}) (map[string]
 		return s.mailMessageList(args)
 	case "mail_message_get":
 		return s.mailMessageGet(args)
+	case "mail_commitment_list":
+		return s.mailCommitmentList(args)
 	case "mail_attachment_get":
 		return s.mailAttachmentGet(args)
 	case "mail_action":
