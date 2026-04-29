@@ -12,6 +12,7 @@ require (
 	github.com/xuri/excelize/v2 v2.10.0
 	golang.org/x/oauth2 v0.34.0
 	google.golang.org/api v0.260.0
+	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.39.1
 )
 
