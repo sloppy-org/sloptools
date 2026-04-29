@@ -27,7 +27,18 @@ func applyToolSchemaDefaults(name string, schema map[string]interface{}) {
 		if name == "mail_commitment_list" {
 			props["limit"] = map[string]interface{}{"type": "integer", "description": "Maximum messages to inspect. Use 5-10 for triage/counts; only request more when the user asks for breadth."}
 			props["body_limit"] = map[string]interface{}{"type": "integer", "description": "Maximum number of matching messages whose full bodies may be fetched to confirm a commitment. Defaults to 5."}
+			props["project_config"] = map[string]interface{}{"type": "string", "description": "Optional path to per-user project matching rules."}
+			props["vault_config"] = map[string]interface{}{"type": "string", "description": "Optional vault config path used for person-note diagnostics."}
+			props["writeable"] = map[string]interface{}{"type": "boolean", "description": "When true, returned source bindings opt into upstream sync-back."}
 		}
+	case "mail_commitment_close":
+		props, _ := schema["properties"].(map[string]interface{})
+		if props == nil {
+			props = map[string]interface{}{}
+			schema["properties"] = props
+		}
+		props["writeable"] = map[string]interface{}{"type": "boolean", "description": "Must be true, copied from the source binding."}
+		props["action"] = map[string]interface{}{"type": "string", "description": "Mail action to apply. Defaults to archive."}
 	}
 }
 
@@ -39,6 +50,8 @@ func applyToolDefinitionDefaults(name string, def map[string]interface{}) {
 		def["description"] = "List newest mail metadata without full bodies by default. Prefer sphere plus folder=INBOX and limit 5-10 for triage/counts; use mail_message_get for one chosen message body."
 	case "mail_commitment_list":
 		def["description"] = "Derive GTD commitments from mail messages without fetching every body. Prefer sphere plus limit 5-10 for triage/counts; use body_limit to bound confirmation fetches."
+	case "mail_commitment_close":
+		def["description"] = "Close a writeable mail-bound commitment by applying an upstream mail action. Requires writeable=true from the binding."
 	}
 }
 

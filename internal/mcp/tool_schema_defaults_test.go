@@ -28,6 +28,21 @@ func TestMailReadToolDefinitionsAllowSphereDefault(t *testing.T) {
 			t.Fatalf("%s schema lacks body_limit property: %#v", name, props)
 		}
 	}
+	closeSchema, _ := names["mail_commitment_close"]["inputSchema"].(map[string]interface{})
+	closeProps, _ := closeSchema["properties"].(map[string]interface{})
+	if closeProps["writeable"] == nil {
+		t.Fatalf("mail_commitment_close schema lacks writeable property: %#v", closeProps)
+	}
+	requiredFields, _ := closeSchema["required"].([]string)
+	hasAccountID := false
+	for _, required := range requiredFields {
+		if required == "account_id" {
+			hasAccountID = true
+		}
+	}
+	if !hasAccountID {
+		t.Fatalf("mail_commitment_close should require account_id for sync-back: %#v", closeSchema["required"])
+	}
 }
 
 func TestToolDefinitionsAdvertiseCompactDefaults(t *testing.T) {
@@ -51,5 +66,9 @@ func TestToolDefinitionsAdvertiseCompactDefaults(t *testing.T) {
 	if !strings.Contains(commitmentDesc, "commitments") ||
 		!strings.Contains(commitmentDesc, "body_limit") {
 		t.Fatalf("mail_commitment_list description should mention bounded commitment derivation: %q", commitmentDesc)
+	}
+	closeDesc, _ := names["mail_commitment_close"]["description"].(string)
+	if !strings.Contains(closeDesc, "writeable") {
+		t.Fatalf("mail_commitment_close description should mention writeable sync-back: %q", closeDesc)
 	}
 }

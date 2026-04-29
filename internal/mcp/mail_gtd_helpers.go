@@ -5,12 +5,26 @@ import (
 	"fmt"
 	"net/mail"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/BurntSushi/toml"
+	"github.com/sloppy-org/sloptools/internal/brain"
 	"github.com/sloppy-org/sloptools/internal/providerdata"
 	"github.com/sloppy-org/sloptools/internal/store"
 )
+
+type mailProjectRule struct {
+	Name     string   `toml:"name"`
+	Keywords []string `toml:"keywords"`
+	People   []string `toml:"people"`
+}
+
+type mailProjectConfig struct {
+	Projects []mailProjectRule `toml:"project"`
+}
 
 func cloneMailMessage(message *providerdata.EmailMessage) *providerdata.EmailMessage {
 	if message == nil {
@@ -162,9 +176,14 @@ func mailContext(message *providerdata.EmailMessage) string {
 	return "mail"
 }
 
-func mailProjectForMessage(message *providerdata.EmailMessage) string {
+func mailProjectForMessage(message *providerdata.EmailMessage, candidate mailCommitmentCandidate, rules []mailProjectRule) string {
 	if message == nil {
 		return ""
+	}
+	for _, rule := range rules {
+		if rule.matches(message, candidate) {
+			return "[[projects/" + rule.Name + "]]"
+		}
 	}
 	for _, label := range message.Labels {
 		clean := strings.TrimSpace(label)
@@ -180,6 +199,30 @@ func mailProjectForMessage(message *providerdata.EmailMessage) string {
 		}
 	}
 	return ""
+}
+
+func (r mailProjectRule) matches(message *providerdata.EmailMessage, candidate mailCommitmentCandidate) bool {
+	name := strings.TrimSpace(r.Name)
+	if name == "" || message == nil {
+		return false
+	}
+	peer := strings.ToLower(strings.TrimSpace(candidate.peer))
+	sender := strings.ToLower(mailPersonLabel(message.Sender))
+	recipients := strings.ToLower(strings.Join(message.Recipients, " "))
+	for _, person := range r.People {
+		clean := strings.ToLower(strings.TrimSpace(person))
+		if clean != "" && (strings.Contains(peer, clean) || strings.Contains(sender, clean) || strings.Contains(recipients, clean)) {
+			return true
+		}
+	}
+	text := strings.ToLower(strings.Join([]string{message.Subject, message.Snippet, strings.Join(message.Labels, " "), mailCommitmentText(message)}, " "))
+	for _, keyword := range r.Keywords {
+		clean := strings.ToLower(strings.TrimSpace(keyword))
+		if clean != "" && strings.Contains(text, clean) {
+			return true
+		}
+	}
+	return false
 }
 
 func mailAccountAddresses(account store.ExternalAccount) []string {
@@ -291,6 +334,96 @@ func mailSourceURL(account store.ExternalAccount, messageID string) string {
 		Host:   "mail",
 		Path:   fmt.Sprintf("/%s/%d/%s", url.PathEscape(strings.TrimSpace(account.Provider)), account.ID, url.PathEscape(strings.TrimSpace(messageID))),
 	}).String()
+}
+
+func loadMailProjectRules(path string) ([]mailProjectRule, error) {
+	resolved, explicit, err := sloptoolsConfigPath(path, "projects.toml")
+	if err != nil {
+		return nil, err
+	}
+	var cfg mailProjectConfig
+	if _, err := toml.DecodeFile(resolved, &cfg); err != nil {
+		if !explicit && os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("load mail project rules: %w", err)
+	}
+	out := make([]mailProjectRule, 0, len(cfg.Projects))
+	for _, rule := range cfg.Projects {
+		rule.Name = strings.TrimSpace(rule.Name)
+		if rule.Name == "" {
+			continue
+		}
+		rule.Name = strings.Trim(rule.Name, "/")
+		rule.Keywords = compactStringList(rule.Keywords)
+		rule.People = compactStringList(rule.People)
+		out = append(out, rule)
+	}
+	return out, nil
+}
+
+func loadMailBrainConfig(path string) (*brain.Config, error) {
+	if strings.TrimSpace(path) == "" {
+		cfg, err := brain.LoadConfig("")
+		if err != nil {
+			return nil, nil
+		}
+		return cfg, nil
+	}
+	cfg, err := brain.LoadConfig(path)
+	if err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+func mailPersonNoteDiagnostic(cfg *brain.Config, sphere, person string) string {
+	target, ok := mailPersonNoteTarget(person)
+	if !ok || cfg == nil {
+		return ""
+	}
+	vault, ok := cfg.Vault(brain.Sphere(sphere))
+	if !ok {
+		return ""
+	}
+	path := filepath.Join(vault.BrainRoot(), "people", target+".md")
+	if _, err := os.Stat(path); err == nil {
+		return ""
+	}
+	return "needs_person_note: " + target
+}
+
+func mailPersonNoteTarget(person string) (string, bool) {
+	clean := strings.TrimSpace(person)
+	if clean == "" {
+		return "", false
+	}
+	if strings.Contains(clean, "@") && !strings.Contains(clean, " ") {
+		return "", false
+	}
+	clean = strings.Trim(clean, "/")
+	clean = strings.ReplaceAll(clean, string(filepath.Separator), " ")
+	clean = strings.Join(strings.Fields(clean), " ")
+	return clean, clean != ""
+}
+
+func sloptoolsConfigPath(path, name string) (string, bool, error) {
+	clean := strings.TrimSpace(path)
+	if clean != "" {
+		if strings.HasPrefix(clean, "~/") {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return "", true, err
+			}
+			clean = filepath.Join(home, strings.TrimPrefix(clean, "~/"))
+		}
+		return filepath.Clean(clean), true, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", false, err
+	}
+	return filepath.Join(home, ".config", "sloptools", name), false, nil
 }
 
 func stringPtr(value string) *string {

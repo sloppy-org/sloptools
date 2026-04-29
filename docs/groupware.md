@@ -81,7 +81,11 @@ Gets one full message from a mail account. Required: `account_id`, `message_id`.
 
 ### `mail_commitment_list`
 
-Derives GTD commitments from mail messages and links each result back to the underlying email artifact. Required: `account_id`. Optional: `sphere`, `limit`, `body_limit`. The tool inspects mailbox metadata first and only fetches a bounded number of full bodies for confirmation.
+Derives GTD commitments from mail messages and links each result back to the underlying email artifact. Required: `account_id`. Optional: `sphere`, `limit`, `body_limit`, `project_config`, `vault_config`, `writeable`. The tool inspects mailbox metadata first and only fetches a bounded number of full bodies for confirmation. Project matching uses per-user TOML rules and person-note diagnostics use the configured vault when available.
+
+### `mail_commitment_close`
+
+Closes a writeable mail-bound commitment by applying an upstream mail action. Required: `account_id`, `message_id`, `writeable=true`. Optional: `action` (defaults to `archive`), `folder`, `label`. This refuses non-writeable bindings instead of silently changing mail state.
 
 ### `mail_attachment_get`
 

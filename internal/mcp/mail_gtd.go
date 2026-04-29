@@ -2,10 +2,12 @@ package mcp
 
 import (
 	"context"
+	"fmt"
 	"regexp"
 	"sort"
 	"strings"
 
+	"github.com/sloppy-org/sloptools/internal/brain"
 	braingtd "github.com/sloppy-org/sloptools/internal/brain/gtd"
 	"github.com/sloppy-org/sloptools/internal/providerdata"
 	"github.com/sloppy-org/sloptools/internal/store"
@@ -35,10 +37,16 @@ type mailCommitmentCandidate struct {
 	diagnostics []string
 }
 
+type mailCommitmentOptions struct {
+	projectRules []mailProjectRule
+	brainConfig  *brain.Config
+	writeable    bool
+}
+
 var (
 	mailDeadlinePattern = regexp.MustCompile(`(?i)\b(?:by|until|due)\s+((?:\d{4}-\d{2}-\d{2})(?:[ tT]\d{2}:\d{2}(?::\d{2})?(?:z|[+-]\d{2}:?\d{2})?)?)`)
 	mailAskPattern      = regexp.MustCompile(`(?i)\b(could you|can you|would you|please|please let me know|need you to|could you please|can you please|would you please)\b`)
-	mailMachinePattern  = regexp.MustCompile(`(?i)\b(no-?reply|noreply|mailer-daemon|do-?not-?reply|notification|automated|system|support|robot|bot|daemon)\b`)
+	mailMachinePattern  = regexp.MustCompile(`(?i)\b(no-?reply|noreply|mailer-daemon|do-?not-?reply|notification|automated|auto-?reply|newsletter|digest|system|support|robot|bot|daemon)\b`)
 )
 
 func (s *Server) mailCommitmentList(args map[string]interface{}) (map[string]interface{}, error) {
@@ -72,11 +80,20 @@ func (s *Server) mailCommitmentList(args map[string]interface{}) (map[string]int
 	if bodyLimit < 0 {
 		bodyLimit = 0
 	}
+	projectRules, err := loadMailProjectRules(strArg(args, "project_config"))
+	if err != nil {
+		return nil, err
+	}
+	brainConfig, err := loadMailBrainConfig(strArg(args, "vault_config"))
+	if err != nil {
+		return nil, err
+	}
+	options := mailCommitmentOptions{projectRules: projectRules, brainConfig: brainConfig, writeable: boolArg(args, "writeable")}
 
 	analysis := make([]mailCommitmentCandidate, 0, len(orderedMetadata))
 	bodyIDs := make([]string, 0, minInt(bodyLimit, len(orderedMetadata)))
 	for _, message := range orderedMetadata {
-		candidate := analyzeMailCommitmentCandidate(account, selfAddresses, message)
+		candidate := analyzeMailCommitmentCandidate(selfAddresses, message)
 		if candidate.status == "" {
 			continue
 		}
@@ -107,7 +124,7 @@ func (s *Server) mailCommitmentList(args map[string]interface{}) (map[string]int
 	records := make([]mailCommitmentRecord, 0, len(analysis))
 	for _, candidate := range analysis {
 		body := bodyByID[strings.TrimSpace(candidate.message.ID)]
-		record, ok := buildMailCommitmentRecord(account, candidate.message, body, candidate, selfAddresses)
+		record, ok := buildMailCommitmentRecord(account, candidate.message, body, candidate, options)
 		if !ok {
 			continue
 		}
@@ -139,7 +156,42 @@ func (s *Server) mailCommitmentList(args map[string]interface{}) (map[string]int
 	}, nil
 }
 
-func analyzeMailCommitmentCandidate(account store.ExternalAccount, selfAddresses []string, message *providerdata.EmailMessage) mailCommitmentCandidate {
+func (s *Server) mailCommitmentClose(args map[string]interface{}) (map[string]interface{}, error) {
+	if !boolArg(args, "writeable") {
+		return nil, fmt.Errorf("writeable=true is required for mail commitment sync-back")
+	}
+	messageID := strings.TrimSpace(strArg(args, "message_id"))
+	if messageID == "" {
+		return nil, fmt.Errorf("message_id is required")
+	}
+	action := strings.TrimSpace(strings.ToLower(strArg(args, "action")))
+	if action == "" {
+		action = "archive"
+	}
+	actionArgs := map[string]interface{}{
+		"account_id":   args["account_id"],
+		"message_ids":  []interface{}{messageID},
+		"action":       action,
+		"source":       "mail_commitment_close",
+		"source_ref":   messageID,
+		"binding_sync": true,
+	}
+	for _, key := range []string{"folder", "label", "archive"} {
+		if value, ok := args[key]; ok {
+			actionArgs[key] = value
+		}
+	}
+	result, err := s.mailAction(actionArgs)
+	if err != nil {
+		return nil, err
+	}
+	result["closed"] = true
+	result["message_id"] = messageID
+	result["writeable"] = true
+	return result, nil
+}
+
+func analyzeMailCommitmentCandidate(selfAddresses []string, message *providerdata.EmailMessage) mailCommitmentCandidate {
 	candidate := mailCommitmentCandidate{message: message, context: "mail"}
 	if message == nil {
 		return candidate
@@ -186,7 +238,7 @@ func analyzeMailCommitmentCandidate(account store.ExternalAccount, selfAddresses
 	return candidate
 }
 
-func buildMailCommitmentRecord(account store.ExternalAccount, metadata, body *providerdata.EmailMessage, candidate mailCommitmentCandidate, selfAddresses []string) (mailCommitmentRecord, bool) {
+func buildMailCommitmentRecord(account store.ExternalAccount, metadata, body *providerdata.EmailMessage, candidate mailCommitmentCandidate, options mailCommitmentOptions) (mailCommitmentRecord, bool) {
 	message := cloneMailMessage(metadata)
 	bodyFetched := false
 	if body != nil {
@@ -223,10 +275,10 @@ func buildMailCommitmentRecord(account store.ExternalAccount, metadata, body *pr
 	if followUp == "" && candidate.status == "waiting" {
 		followUp = message.Date.UTC().AddDate(0, 0, 7).Format("2006-01-02")
 	}
-	if candidate.status == "next" && !hasAsk && !hasDeadline && !bodyFetched {
+	if candidate.status == "next" && !hasAsk && !hasDeadline {
 		return mailCommitmentRecord{}, false
 	}
-	if candidate.status == "waiting" && !hasAsk && !hasDeadline && !bodyFetched {
+	if candidate.status == "waiting" && !hasAsk && !hasDeadline {
 		return mailCommitmentRecord{}, false
 	}
 	commitment := braingtd.Commitment{
@@ -239,7 +291,7 @@ func buildMailCommitmentRecord(account store.ExternalAccount, metadata, body *pr
 		FollowUp:       followUp,
 		Actor:          candidate.actor,
 		WaitingFor:     candidate.waitingFor,
-		Project:        mailProjectForMessage(message),
+		Project:        mailProjectForMessage(message, candidate, options.projectRules),
 		Labels:         mailCommitmentLabels(message),
 		People:         mailCommitmentPeople(candidate.status, peer),
 		LastEvidenceAt: evidenceTimestamp(message.Date),
@@ -247,7 +299,7 @@ func buildMailCommitmentRecord(account store.ExternalAccount, metadata, body *pr
 			Provider:         account.Provider,
 			Ref:              strings.TrimSpace(message.ID),
 			URL:              mailSourceURL(account, message.ID),
-			Writeable:        false,
+			Writeable:        options.writeable,
 			AuthoritativeFor: []string{"status", "next_action", "waiting_for", "follow_up"},
 			Summary:          strings.TrimSpace(message.Subject),
 			CreatedAt:        evidenceTimestamp(message.Date),
@@ -269,8 +321,8 @@ func buildMailCommitmentRecord(account store.ExternalAccount, metadata, body *pr
 		}
 	}
 	diagnostics := append([]string(nil), candidate.diagnostics...)
-	if mailPersonLabel(message.Sender) == mailPersonEmail(message.Sender) {
-		diagnostics = append(diagnostics, "person stub: "+mailPersonEmail(message.Sender))
+	if diagnostic := mailPersonNoteDiagnostic(options.brainConfig, account.Sphere, peer); diagnostic != "" {
+		diagnostics = append(diagnostics, diagnostic)
 	}
 	if len(diagnostics) == 0 && candidate.status == "next" && !hasAsk {
 		diagnostics = append(diagnostics, "body review bounded before confirming request language")
