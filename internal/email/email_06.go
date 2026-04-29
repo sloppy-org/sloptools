@@ -15,19 +15,11 @@ func (p *ExchangeEWSMailProvider) resolveFolderRef(ctx context.Context, folder s
 	if clean == "" {
 		return "inbox", nil
 	}
-	switch strings.ToLower(clean) {
-	case "inbox", "posteingang":
-		return "inbox", nil
-	case "drafts", "entwürfe", "entwuerfe":
-		return "drafts", nil
-	case "sent", "sentitems", "gesendete elemente":
-		return "sentitems", nil
-	case "trash", "deleteditems", "gelöschte elemente", "geloschte elemente":
-		return "deleteditems", nil
-	case "junk", "spam", "junkemail", "junk-e-mail":
-		return "junkemail", nil
-	case "archive":
+	if strings.EqualFold(clean, "archive") {
 		return p.resolveArchiveFolderID(ctx)
+	}
+	if ref, ok := exchangeEWSDistinguishedFolderRef(clean); ok {
+		return ref, nil
 	}
 	folderInfo, err := p.client.FindFolderByName(ctx, clean)
 	if err != nil {
@@ -61,11 +53,47 @@ func (p *ExchangeEWSMailProvider) normalizeDraftInput(input DraftInput, requireR
 }
 
 func (p *ExchangeEWSMailProvider) resolveArchiveFolderID(ctx context.Context) (string, error) {
+	if ref, ok := exchangeEWSArchiveFolderRef(p.cfg.ArchiveFolder); ok {
+		return ref, nil
+	}
 	folder, err := p.client.FindFolderByName(ctx, p.cfg.ArchiveFolder)
 	if err != nil || folder == nil {
+		if strings.EqualFold(strings.TrimSpace(p.cfg.ArchiveFolder), "Archive") {
+			return "archivemsgfolderroot", nil
+		}
 		return "", err
 	}
 	return folder.ID, nil
+}
+
+func exchangeEWSDistinguishedFolderRef(folder string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(folder)) {
+	case "inbox", "posteingang":
+		return "inbox", true
+	case "draft", "drafts", "entwürfe", "entwuerfe":
+		return "drafts", true
+	case "sent", "sentitems", "sent items", "gesendete elemente":
+		return "sentitems", true
+	case "trash", "deleted", "deleteditems", "deleted items", "gelöschte elemente", "geloschte elemente":
+		return "deleteditems", true
+	case "junk", "spam", "junkemail", "junk email", "junk-e-mail":
+		return "junkemail", true
+	default:
+		return exchangeEWSArchiveFolderRef(folder)
+	}
+}
+
+func exchangeEWSArchiveFolderRef(folder string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(folder)) {
+	case "archivemsgfolderroot", "archive root":
+		return "archivemsgfolderroot", true
+	case "archiveinbox", "archive inbox":
+		return "archiveinbox", true
+	case "archivedeleteditems", "archive deleted items":
+		return "archivedeleteditems", true
+	default:
+		return "", false
+	}
 }
 
 func compactMessageIDs(values []string) []string {

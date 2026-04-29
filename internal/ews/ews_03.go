@@ -354,12 +354,10 @@ func folderIDXML(folderID string) string {
 	if folderID == "" {
 		return `<t:DistinguishedFolderId Id="inbox" />`
 	}
-	switch strings.ToLower(folderID) {
-	case "inbox", "calendar", "contacts", "tasks", "drafts", "sentitems", "deleteditems", "junkemail", "msgfolderroot":
-		return fmt.Sprintf(`<t:DistinguishedFolderId Id="%s" />`, xmlEscapeAttr(strings.ToLower(folderID)))
-	default:
-		return fmt.Sprintf(`<t:FolderId Id="%s" />`, xmlEscapeAttr(folderID))
+	if canonical, ok := canonicalDistinguishedFolderID(folderID); ok {
+		return fmt.Sprintf(`<t:DistinguishedFolderId Id="%s" />`, xmlEscapeAttr(canonical))
 	}
+	return fmt.Sprintf(`<t:FolderId Id="%s" />`, xmlEscapeAttr(folderID))
 }
 
 func folderRefXML(folderID string) string {
@@ -367,12 +365,10 @@ func folderRefXML(folderID string) string {
 	if folderID == "" {
 		return ""
 	}
-	switch strings.ToLower(folderID) {
-	case "inbox", "calendar", "contacts", "tasks", "drafts", "sentitems", "deleteditems", "junkemail", "msgfolderroot":
-		return fmt.Sprintf(`<t:DistinguishedFolderId Id="%s" />`, xmlEscapeAttr(strings.ToLower(folderID)))
-	default:
-		return fmt.Sprintf(`<t:FolderId Id="%s" />`, xmlEscapeAttr(folderID))
+	if canonical, ok := canonicalDistinguishedFolderID(folderID); ok {
+		return fmt.Sprintf(`<t:DistinguishedFolderId Id="%s" />`, xmlEscapeAttr(canonical))
 	}
+	return fmt.Sprintf(`<t:FolderId Id="%s" />`, xmlEscapeAttr(folderID))
 }
 
 func streamingConnectionTimeoutMinutes(value time.Duration) int {
