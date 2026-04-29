@@ -55,6 +55,8 @@ func run(args []string) int {
 		return cmdExternalAccount(args[1:])
 	case "tools":
 		return cmdTools(args[1:])
+	case "source":
+		return cmdSource(args[1:])
 	case "version":
 		return cmdVersion()
 	default:
@@ -71,6 +73,7 @@ func printHelp() {
 	fmt.Println("mail subcommands: send reply")
 	fmt.Println("external-account subcommands: list add update remove")
 	fmt.Println("tools subcommands: list call")
+	fmt.Println("source subcommands: list comment close")
 }
 
 type serverConfig struct {

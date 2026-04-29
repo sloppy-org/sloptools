@@ -254,6 +254,59 @@ func TestTaskCommentJSONRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSourceItemZeroValue(t *testing.T) {
+	var zero SourceItem
+	if zero.Provider != "" || zero.Kind != "" || zero.Container != "" || zero.Number != 0 ||
+		zero.Title != "" || zero.URL != "" || zero.State != "" || zero.Author != "" ||
+		zero.ReviewStatus != "" || zero.SourceRef != "" {
+		t.Fatalf("zero SourceItem has populated fields: %+v", zero)
+	}
+	if len(zero.Labels) != 0 || len(zero.Assignees) != 0 || len(zero.Reviewers) != 0 {
+		t.Fatalf("zero SourceItem has populated slices: %+v", zero)
+	}
+	if zero.UpdatedAt != nil || zero.ClosedAt != nil {
+		t.Fatalf("zero SourceItem has populated timestamps: %+v", zero)
+	}
+}
+
+func TestSourceItemJSONRoundTrip(t *testing.T) {
+	updated := time.Date(2026, time.April, 29, 11, 30, 0, 0, time.UTC)
+	closed := time.Date(2026, time.April, 29, 12, 0, 0, 0, time.UTC)
+	in := SourceItem{
+		Provider:     "github",
+		Kind:         "pull_request",
+		Container:    "sloppy-org/slopshell",
+		Number:       51,
+		Title:        "Add GitHub and GitLab source adapters",
+		URL:          "https://github.com/sloppy-org/slopshell/pull/51",
+		State:        "open",
+		Labels:       []string{"gtd", "review"},
+		Assignees:    []string{"ada"},
+		Author:       "grace",
+		ReviewStatus: "review_requested",
+		Reviewers:    []string{"octocat"},
+		SourceRef:    "github:sloppy-org/slopshell#51",
+		UpdatedAt:    &updated,
+		ClosedAt:     &closed,
+	}
+	got := roundTripJSON(t, in)
+	if got.Provider != in.Provider || got.Kind != in.Kind || got.Container != in.Container ||
+		got.Number != in.Number || got.Title != in.Title || got.URL != in.URL ||
+		got.State != in.State || got.Author != in.Author || got.ReviewStatus != in.ReviewStatus ||
+		got.SourceRef != in.SourceRef {
+		t.Fatalf("scalar mismatch: in=%+v got=%+v", in, got)
+	}
+	if !reflect.DeepEqual(got.Labels, in.Labels) || !reflect.DeepEqual(got.Assignees, in.Assignees) || !reflect.DeepEqual(got.Reviewers, in.Reviewers) {
+		t.Fatalf("slice mismatch: in=%+v got=%+v", in, got)
+	}
+	if got.UpdatedAt == nil || !got.UpdatedAt.Equal(updated) {
+		t.Fatalf("UpdatedAt mismatch: %+v", got.UpdatedAt)
+	}
+	if got.ClosedAt == nil || !got.ClosedAt.Equal(closed) {
+		t.Fatalf("ClosedAt mismatch: %+v", got.ClosedAt)
+	}
+}
+
 func TestPostalAddressZeroValue(t *testing.T) {
 	var zero PostalAddress
 	if zero.Type != "" || zero.Street != "" || zero.City != "" ||
