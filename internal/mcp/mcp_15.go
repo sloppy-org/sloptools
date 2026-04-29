@@ -30,6 +30,10 @@ func (s *Server) dispatchBrain(method string, args map[string]interface{}) (map[
 		return s.brainGTDSetStatus(args)
 	case "brain.gtd.sync":
 		return s.brainGTDSync(args)
+	case "brain.people.dashboard":
+		return s.brainPeopleDashboard(args)
+	case "brain.people.render":
+		return s.brainPeopleRender(args)
 	case "brain_search":
 		return s.brainSearch(args)
 	case "brain_backlinks":
