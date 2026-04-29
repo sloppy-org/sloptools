@@ -129,6 +129,54 @@ esac
 	}
 }
 
+func TestSourceListAutoDetectsGitLabRemote(t *testing.T) {
+	tmp := t.TempDir()
+	projectDir := filepath.Join(tmp, "project")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatalf("mkdir project: %v", err)
+	}
+	if err := initGitRepoDir(projectDir, "https://gitlab.com/sloppy-org/slopshell.git"); err != nil {
+		t.Fatalf("init git repo: %v", err)
+	}
+	scriptDir := filepath.Join(tmp, "bin")
+	if err := os.MkdirAll(scriptDir, 0o755); err != nil {
+		t.Fatalf("mkdir script dir: %v", err)
+	}
+	writeScript(t, scriptDir, "glab", `#!/bin/sh
+case "$*" in
+  *"issue list"*)
+    printf '%s' '[{"iid":12,"title":"Fix bug","web_url":"https://gitlab.com/sloppy-org/slopshell/-/issues/12","state":"opened","labels":["gtd"],"assignees":[{"username":"ada"}],"author":{"username":"ada"},"updated_at":"2026-04-29T12:00:00Z"}]'
+    ;;
+  *"mr list"*)
+    printf '%s' '[]'
+    ;;
+  *)
+    echo unexpected glab call >&2
+    exit 1
+    ;;
+esac
+`)
+	writeScript(t, scriptDir, "gh", `#!/bin/sh
+echo gh should not be used for GitLab remotes >&2
+exit 1
+`)
+	t.Setenv("PATH", scriptDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	stdout, stderr, code := captureRun(t, []string{
+		"source", "list",
+		"--project-dir", projectDir,
+	})
+	if code != 0 {
+		t.Fatalf("exit code = %d, stderr=%q", code, stderr)
+	}
+	if strings.Contains(stderr, "gh should not be used") {
+		t.Fatalf("auto-detect used gh for GitLab remote: stderr=%q", stderr)
+	}
+	if !strings.Contains(stdout, "gitlab:sloppy-org/slopshell#12") {
+		t.Fatalf("stdout missing GitLab source ref: %q", stdout)
+	}
+}
+
 func initGitRepoDir(dir, remote string) error {
 	run := func(args ...string) error {
 		c := exec.Command("git", args...)

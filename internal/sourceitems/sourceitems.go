@@ -3,9 +3,7 @@ package sourceitems
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"net/url"
 	"os/exec"
 	"sort"
 	"strconv"
@@ -31,110 +29,6 @@ type commandRunner func(ctx context.Context, name string, args ...string) *exec.
 
 func defaultCommandRunner(ctx context.Context, name string, args ...string) *exec.Cmd {
 	return exec.CommandContext(ctx, name, args...)
-}
-
-func loadRemote(projectDir string) (string, error) {
-	out, err := exec.Command("git", "-C", projectDir, "remote", "get-url", "origin").CombinedOutput()
-	if err != nil {
-		msg := strings.TrimSpace(string(out))
-		if msg != "" {
-			return "", fmt.Errorf("git remote get-url origin: %s", msg)
-		}
-		return "", fmt.Errorf("git remote get-url origin: %w", err)
-	}
-	remote := strings.TrimSpace(string(out))
-	if remote == "" {
-		return "", errors.New("git remote origin is empty")
-	}
-	return remote, nil
-}
-
-func containerFromGitRemote(remote string) string {
-	remote = strings.TrimSpace(remote)
-	if remote == "" {
-		return ""
-	}
-	if strings.Contains(remote, "://") {
-		parsed, err := url.Parse(remote)
-		if err == nil {
-			host := strings.TrimSpace(parsed.Host)
-			path := strings.Trim(strings.TrimPrefix(parsed.Path, "/"), "/")
-			path = strings.TrimSuffix(path, ".git")
-			if host != "" && path != "" {
-				if strings.EqualFold(host, "github.com") || strings.EqualFold(host, "gitlab.com") {
-					return path
-				}
-				return host + "/" + path
-			}
-		}
-	}
-	if strings.HasPrefix(remote, "git@") && strings.Contains(remote, ":") {
-		parts := strings.SplitN(strings.TrimPrefix(remote, "git@"), ":", 2)
-		if len(parts) == 2 {
-			host := strings.TrimSuffix(parts[0], ".git")
-			path := strings.TrimSuffix(parts[1], ".git")
-			if strings.EqualFold(host, "github.com") {
-				return path
-			}
-			if host != "" && path != "" {
-				return host + "/" + path
-			}
-		}
-	}
-	return strings.TrimSuffix(remote, ".git")
-}
-
-func githubRepoArg(remote string) string {
-	remote = strings.TrimSpace(remote)
-	if remote == "" {
-		return ""
-	}
-	if strings.Contains(remote, "://") {
-		parsed, err := url.Parse(remote)
-		if err == nil {
-			host := strings.TrimSpace(parsed.Host)
-			path := strings.Trim(strings.TrimPrefix(parsed.Path, "/"), "/")
-			path = strings.TrimSuffix(path, ".git")
-			if strings.EqualFold(host, "github.com") && path != "" {
-				return path
-			}
-			if strings.Count(path, "/") >= 1 {
-				return path
-			}
-		}
-	}
-	if strings.HasPrefix(remote, "git@") && strings.Contains(remote, ":") {
-		after := strings.SplitN(strings.TrimPrefix(remote, "git@"), ":", 2)[1]
-		after = strings.TrimSuffix(after, ".git")
-		return after
-	}
-	trimmed := strings.TrimSuffix(remote, ".git")
-	if strings.Count(trimmed, "/") >= 2 && !strings.Contains(trimmed, "://") {
-		return trimmed
-	}
-	return strings.TrimPrefix(strings.TrimPrefix(trimmed, "https://github.com/"), "http://github.com/")
-}
-
-func gitlabRepoArg(remote string) string {
-	remote = strings.TrimSpace(remote)
-	if remote == "" {
-		return ""
-	}
-	if strings.Contains(remote, "://") {
-		parsed, err := url.Parse(remote)
-		if err == nil {
-			path := strings.Trim(strings.TrimPrefix(parsed.Path, "/"), "/")
-			path = strings.TrimSuffix(path, ".git")
-			if path != "" {
-				return path
-			}
-		}
-	}
-	if strings.HasPrefix(remote, "git@") && strings.Contains(remote, ":") {
-		after := strings.SplitN(strings.TrimPrefix(remote, "git@"), ":", 2)[1]
-		return strings.TrimSuffix(after, ".git")
-	}
-	return strings.TrimSuffix(remote, ".git")
 }
 
 func normalizeList(items []providerdata.SourceItem) []providerdata.SourceItem {

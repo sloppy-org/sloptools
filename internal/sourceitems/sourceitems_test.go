@@ -196,3 +196,28 @@ func TestSourceItemMapIncludesCompactFields(t *testing.T) {
 		t.Fatalf("payload updated_at = %#v", payload["updated_at"])
 	}
 }
+
+func TestDetectProviderUsesRemoteHost(t *testing.T) {
+	tests := []struct {
+		name   string
+		remote string
+		want   string
+	}{
+		{name: "github https", remote: "https://github.com/sloppy-org/sloptools.git", want: GitHubProviderName},
+		{name: "github ssh", remote: "git@github.com:sloppy-org/sloptools.git", want: GitHubProviderName},
+		{name: "gitlab https", remote: "https://gitlab.com/sloppy-org/sloptools.git", want: GitLabProviderName},
+		{name: "gitlab enterprise", remote: "git@gitlab.tugraz.at:plasma/sloptools.git", want: GitLabProviderName},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			projectDir := initGitRepo(t, tc.remote)
+			got, err := DetectProvider(projectDir)
+			if err != nil {
+				t.Fatalf("DetectProvider() error: %v", err)
+			}
+			if got != tc.want {
+				t.Fatalf("DetectProvider() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

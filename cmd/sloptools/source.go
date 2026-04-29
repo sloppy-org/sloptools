@@ -70,13 +70,11 @@ func bindSourceCommonFlags(fs *flag.FlagSet, c *sourceCommonFlags) {
 func newSourceProvider(projectDir, provider string) (sourceitems.Provider, error) {
 	switch strings.ToLower(strings.TrimSpace(provider)) {
 	case "", "auto":
-		if p, err := sourceitems.NewGitHubProvider(projectDir); err == nil {
-			return p, nil
+		detected, err := sourceitems.DetectProvider(projectDir)
+		if err != nil {
+			return nil, fmt.Errorf("unable to detect GitHub or GitLab remote from %q: %w", projectDir, err)
 		}
-		if p, err := sourceitems.NewGitLabProvider(projectDir); err == nil {
-			return p, nil
-		}
-		return nil, fmt.Errorf("unable to detect GitHub or GitLab remote from %q", projectDir)
+		return newSourceProvider(projectDir, detected)
 	case sourceitems.GitHubProviderName:
 		return sourceitems.NewGitHubProvider(projectDir)
 	case sourceitems.GitLabProviderName:
