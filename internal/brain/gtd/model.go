@@ -9,10 +9,20 @@ import (
 
 type Commitment struct {
 	Title          string          `json:"title,omitempty" yaml:"title,omitempty"`
+	Kind           string          `json:"kind,omitempty" yaml:"kind,omitempty"`
+	Sphere         string          `json:"sphere,omitempty" yaml:"sphere,omitempty"`
 	Status         string          `json:"status,omitempty" yaml:"status,omitempty"`
+	Outcome        string          `json:"outcome,omitempty" yaml:"outcome,omitempty"`
+	NextAction     string          `json:"next_action,omitempty" yaml:"next_action,omitempty"`
+	Context        string          `json:"context,omitempty" yaml:"context,omitempty"`
 	FollowUp       string          `json:"follow_up,omitempty" yaml:"follow_up,omitempty"`
 	Due            string          `json:"due,omitempty" yaml:"due,omitempty"`
 	Actor          string          `json:"actor,omitempty" yaml:"actor,omitempty"`
+	WaitingFor     string          `json:"waiting_for,omitempty" yaml:"waiting_for,omitempty"`
+	Project        string          `json:"project,omitempty" yaml:"project,omitempty"`
+	LastEvidenceAt string          `json:"last_evidence_at,omitempty" yaml:"last_evidence_at,omitempty"`
+	ReviewState    string          `json:"review_state,omitempty" yaml:"review_state,omitempty"`
+	People         []string        `json:"people,omitempty" yaml:"people,omitempty"`
 	Labels         []string        `json:"labels,omitempty" yaml:"labels,omitempty"`
 	SourceBindings []SourceBinding `json:"source_bindings,omitempty" yaml:"source_bindings,omitempty"`
 	LocalOverlay   LocalOverlay    `json:"local_overlay,omitempty" yaml:"local_overlay,omitempty"`
@@ -48,11 +58,26 @@ type LocalOverlay struct {
 func ParseCommitmentMarkdown(src string) (*Commitment, *brain.MarkdownNote, []brain.MarkdownDiagnostic) {
 	note, diags := brain.ParseMarkdownNote(src, brain.MarkdownParseOptions{})
 	commitment := &Commitment{}
+	if node, ok := note.FrontMatterField("kind"); ok {
+		commitment.Kind = strings.TrimSpace(node.Value)
+	}
 	if node, ok := note.FrontMatterField("title"); ok {
 		commitment.Title = strings.TrimSpace(node.Value)
 	}
+	if node, ok := note.FrontMatterField("sphere"); ok {
+		commitment.Sphere = strings.TrimSpace(node.Value)
+	}
 	if node, ok := note.FrontMatterField("status"); ok {
 		commitment.Status = strings.TrimSpace(node.Value)
+	}
+	if node, ok := note.FrontMatterField("outcome"); ok {
+		commitment.Outcome = strings.TrimSpace(node.Value)
+	}
+	if node, ok := note.FrontMatterField("next_action"); ok {
+		commitment.NextAction = strings.TrimSpace(node.Value)
+	}
+	if node, ok := note.FrontMatterField("context"); ok {
+		commitment.Context = strings.TrimSpace(node.Value)
 	}
 	if node, ok := note.FrontMatterField("follow_up"); ok {
 		commitment.FollowUp = strings.TrimSpace(node.Value)
@@ -63,6 +88,19 @@ func ParseCommitmentMarkdown(src string) (*Commitment, *brain.MarkdownNote, []br
 	if node, ok := note.FrontMatterField("actor"); ok {
 		commitment.Actor = strings.TrimSpace(node.Value)
 	}
+	if node, ok := note.FrontMatterField("waiting_for"); ok {
+		commitment.WaitingFor = strings.TrimSpace(node.Value)
+	}
+	if node, ok := note.FrontMatterField("project"); ok {
+		commitment.Project = strings.TrimSpace(node.Value)
+	}
+	if node, ok := note.FrontMatterField("last_evidence_at"); ok {
+		commitment.LastEvidenceAt = strings.TrimSpace(node.Value)
+	}
+	if node, ok := note.FrontMatterField("review_state"); ok {
+		commitment.ReviewState = strings.TrimSpace(node.Value)
+	}
+	commitment.People = stringSliceField(note, "people")
 	commitment.Labels = stringSliceField(note, "labels")
 	commitment.SourceBindings, diags = appendBindingDiagnostics(diags, note)
 	commitment.LocalOverlay, diags = appendOverlayDiagnostics(diags, note)
