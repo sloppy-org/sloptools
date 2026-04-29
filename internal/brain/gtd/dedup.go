@@ -93,6 +93,10 @@ func ApplyMerge(winner, loser *CommitmentEntry, id, outcome, decidedAt string) {
 	loser.Commitment.Dedup.EquivalentTo = winner.Path
 }
 
+func MergeSourceBindings(base, extra []SourceBinding) []SourceBinding {
+	return mergeBindings(base, extra)
+}
+
 func MarkNotDuplicate(a, b *CommitmentEntry, id string) {
 	a.Commitment.Dedup.NotDuplicates = appendUnique(a.Commitment.Dedup.NotDuplicates, id)
 	b.Commitment.Dedup.NotDuplicates = appendUnique(b.Commitment.Dedup.NotDuplicates, id)

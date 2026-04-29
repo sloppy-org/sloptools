@@ -35,6 +35,14 @@ func init() {
 			"target":      {Type: "string", Description: "Target note path, relative to the brain root or absolute inside the vault."},
 			"limit":       {Type: "integer", Description: "Maximum results to return. Defaults to 50."},
 		}},
+		Tool{Name: "brain.gtd.bind", Description: "Attach source bindings to a GTD commitment or collapse same-outcome commitments into one local aggregate overlay.", Required: []string{"sphere", "winner_path"}, Properties: map[string]ToolProperty{
+			"config_path":     {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},
+			"sphere":          {Type: "string", Description: "Vault sphere to update.", Enum: []string{"work", "private"}},
+			"winner_path":     {Type: "string", Description: "Commitment path whose outcome and local overlay survive."},
+			"paths":           {Type: "array", Description: "Commitment paths to bind. Same-outcome non-winners become equivalent to winner."},
+			"outcome":         {Type: "string", Description: "Optional winning outcome text."},
+			"source_bindings": {Type: "array", Description: "Optional source binding objects with provider/ref to attach to the winner."},
+		}},
 		Tool{Name: "brain.gtd.dedup_scan", Description: "Reconcile GTD commitments by stable source binding and return non-destructive duplicate review candidates.", Required: []string{"sphere"}, Properties: map[string]ToolProperty{
 			"config_path":             {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},
 			"sphere":                  {Type: "string", Description: "Vault sphere to scan.", Enum: []string{"work", "private"}},

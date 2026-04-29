@@ -93,6 +93,76 @@ func TestBrainGTDDedupMergePreservesBindings(t *testing.T) {
 	}
 }
 
+func TestBrainGTDBindCollapsesCrossSourceCommitments(t *testing.T) {
+	tmp := t.TempDir()
+	configPath := writeMCPBrainConfig(t, tmp)
+	writeDedupCommitment(t, tmp, "work", "brain/gtd/meeting.md", "Send alpha budget", "meetings", "alpha-standup")
+	writeDedupCommitment(t, tmp, "work", "brain/gtd/mail.md", "Send alpha budget", "mail", "m1")
+	writeDedupCommitment(t, tmp, "work", "brain/gtd/todo.md", "Send alpha budget", "todoist", "t1")
+	writeDedupCommitment(t, tmp, "work", "brain/gtd/github.md", "Send alpha budget", "github", "org/repo#7")
+
+	s := NewServer(t.TempDir())
+	got, err := s.callTool("brain.gtd.bind", map[string]interface{}{
+		"config_path": configPath,
+		"sphere":      "work",
+		"winner_path": "brain/gtd/meeting.md",
+		"paths":       []interface{}{"brain/gtd/meeting.md", "brain/gtd/mail.md", "brain/gtd/todo.md", "brain/gtd/github.md"},
+		"outcome":     "Send alpha budget",
+	})
+	if err != nil {
+		t.Fatalf("brain.gtd.bind: %v", err)
+	}
+	if got["binding_count"] != 4 {
+		t.Fatalf("binding_count = %v, want 4: %#v", got["binding_count"], got)
+	}
+	parsed, err := s.callTool("brain.note.parse", map[string]interface{}{"config_path": configPath, "sphere": "work", "path": "brain/gtd/meeting.md"})
+	if err != nil {
+		t.Fatalf("parse winner: %v", err)
+	}
+	winner := parsed["commitment"].(*braingtd.Commitment)
+	want := map[string]bool{"meetings:alpha-standup": false, "mail:m1": false, "todoist:t1": false, "github:org/repo#7": false}
+	for _, binding := range winner.SourceBindings {
+		if _, ok := want[binding.StableID()]; ok {
+			want[binding.StableID()] = true
+		}
+	}
+	for id, seen := range want {
+		if !seen {
+			t.Fatalf("winner missing binding %s: %#v", id, winner.SourceBindings)
+		}
+	}
+	loser := parseDedupCommitment(t, s, configPath, "brain/gtd/github.md")
+	if loser.LocalOverlay.Status != "dropped" || loser.Dedup.EquivalentTo != "brain/gtd/meeting.md" {
+		t.Fatalf("loser state = %#v", loser)
+	}
+}
+
+func TestBrainGTDBindAttachesNewSourceBinding(t *testing.T) {
+	tmp := t.TempDir()
+	configPath := writeMCPBrainConfig(t, tmp)
+	writeDedupCommitment(t, tmp, "work", "brain/gtd/meeting.md", "Send alpha budget", "meetings", "alpha-standup")
+
+	s := NewServer(t.TempDir())
+	got, err := s.callTool("brain.gtd.bind", map[string]interface{}{
+		"config_path": configPath,
+		"sphere":      "work",
+		"winner_path": "brain/gtd/meeting.md",
+		"source_bindings": []interface{}{
+			map[string]interface{}{"provider": "mail", "ref": "m1"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("brain.gtd.bind attach: %v", err)
+	}
+	if got["binding_count"] != 2 {
+		t.Fatalf("binding_count = %v, want 2: %#v", got["binding_count"], got)
+	}
+	winner := parseDedupCommitment(t, s, configPath, "brain/gtd/meeting.md")
+	if len(winner.SourceBindings) != 2 {
+		t.Fatalf("winner bindings = %#v", winner.SourceBindings)
+	}
+}
+
 func TestBrainGTDDedupScanUsesLocalLLMCommand(t *testing.T) {
 	tmp := t.TempDir()
 	configPath := writeMCPBrainConfig(t, tmp)
@@ -113,6 +183,15 @@ func TestBrainGTDDedupScanUsesLocalLLMCommand(t *testing.T) {
 	if len(candidates) != 1 || candidates[0].Detector != "llm" || candidates[0].Reasoning == "" {
 		t.Fatalf("candidates = %#v", candidates)
 	}
+}
+
+func parseDedupCommitment(t *testing.T, s *Server, configPath, path string) *braingtd.Commitment {
+	t.Helper()
+	parsed, err := s.callTool("brain.note.parse", map[string]interface{}{"config_path": configPath, "sphere": "work", "path": path})
+	if err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+	return parsed["commitment"].(*braingtd.Commitment)
 }
 
 func writeDedupCommitment(t *testing.T, root, sphere, rel, outcome, provider, ref string) {

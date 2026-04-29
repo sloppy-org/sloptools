@@ -74,6 +74,71 @@ func (s *Server) brainGTDDedupHistory(args map[string]interface{}) (map[string]i
 	return map[string]interface{}{"sphere": strArg(args, "sphere"), "history": history, "count": len(history)}, nil
 }
 
+func (s *Server) brainGTDBind(args map[string]interface{}) (map[string]interface{}, error) {
+	notes, _, err := s.loadDedupNotes(args)
+	if err != nil {
+		return nil, err
+	}
+	paths := stringListArg(args, "paths")
+	winnerPath := strings.TrimSpace(strArg(args, "winner_path"))
+	if winnerPath == "" {
+		winnerPath = strings.TrimSpace(strArg(args, "path"))
+	}
+	if winnerPath == "" && len(paths) > 0 {
+		winnerPath = paths[0]
+	}
+	if winnerPath == "" {
+		return nil, errors.New("winner_path or path is required")
+	}
+	if !containsPath(paths, winnerPath) {
+		paths = append([]string{winnerPath}, paths...)
+	}
+	byPath := dedupNotesByPath(notes)
+	winner, ok := byPath[winnerPath]
+	if !ok {
+		return nil, fmt.Errorf("winner_path %q not found", winnerPath)
+	}
+	outcome := strings.TrimSpace(strArg(args, "outcome"))
+	if outcome == "" {
+		outcome = winner.Entry.Commitment.Outcome
+	}
+	extraBindings, err := sourceBindingsArg(args, "source_bindings")
+	if err != nil {
+		return nil, err
+	}
+	changed := map[string]dedupNote{winner.Entry.Path: winner}
+	var merged []string
+	for _, path := range paths {
+		note, ok := byPath[path]
+		if !ok {
+			return nil, fmt.Errorf("path %q not found", path)
+		}
+		if note.Entry.Path == winner.Entry.Path {
+			continue
+		}
+		if !sameBindOutcome(winner.Entry.Commitment, note.Entry.Commitment) {
+			return nil, fmt.Errorf("path %q does not match winner outcome", path)
+		}
+		braingtd.ApplyMerge(&winner.Entry, &note.Entry, braingtd.CandidateID(winner.Entry.Path, note.Entry.Path), outcome, "")
+		changed[note.Entry.Path] = note
+		merged = append(merged, note.Entry.Path)
+	}
+	winner.Entry.Commitment.SourceBindings = braingtd.MergeSourceBindings(winner.Entry.Commitment.SourceBindings, extraBindings)
+	if strings.TrimSpace(outcome) != "" {
+		winner.Entry.Commitment.Outcome = strings.TrimSpace(outcome)
+	}
+	changed[winner.Entry.Path] = winner
+	if err := writeDedupNotes(mapValues(changed)...); err != nil {
+		return nil, err
+	}
+	return map[string]interface{}{
+		"sphere":        strArg(args, "sphere"),
+		"winner_path":   winner.Entry.Path,
+		"merged_paths":  merged,
+		"binding_count": len(winner.Entry.Commitment.SourceBindings),
+	}, nil
+}
+
 func (s *Server) loadDedupNotes(args map[string]interface{}) ([]dedupNote, braingtd.ScanOptions, error) {
 	cfg, err := brain.LoadConfig(strArg(args, "config_path"))
 	if err != nil {
@@ -146,6 +211,14 @@ func readDedupNotes(vault brain.Vault) ([]dedupNote, error) {
 	return notes, err
 }
 
+func dedupNotesByPath(notes []dedupNote) map[string]dedupNote {
+	out := make(map[string]dedupNote, len(notes))
+	for _, note := range notes {
+		out[note.Entry.Path] = note
+	}
+	return out
+}
+
 func dedupEntries(notes []dedupNote) []braingtd.CommitmentEntry {
 	entries := make([]braingtd.CommitmentEntry, 0, len(notes))
 	for _, note := range notes {
@@ -156,16 +229,71 @@ func dedupEntries(notes []dedupNote) []braingtd.CommitmentEntry {
 
 func candidatePair(notes []dedupNote, opts braingtd.ScanOptions, id string) ([2]dedupNote, error) {
 	result := braingtd.Scan(dedupEntries(notes), opts)
-	byPath := map[string]dedupNote{}
-	for _, note := range notes {
-		byPath[note.Entry.Path] = note
-	}
+	byPath := dedupNotesByPath(notes)
 	for _, candidate := range result.Candidates {
 		if candidate.ID == id && len(candidate.Paths) == 2 {
 			return [2]dedupNote{byPath[candidate.Paths[0]], byPath[candidate.Paths[1]]}, nil
 		}
 	}
 	return [2]dedupNote{}, fmt.Errorf("dedup candidate %q not found", id)
+}
+
+func sameBindOutcome(a, b braingtd.Commitment) bool {
+	return bindOutcome(a) != "" && bindOutcome(a) == bindOutcome(b)
+}
+
+func bindOutcome(commitment braingtd.Commitment) string {
+	value := strings.TrimSpace(commitment.Outcome)
+	if value == "" {
+		value = commitment.Title
+	}
+	return strings.ToLower(strings.Join(strings.Fields(value), " "))
+}
+
+func sourceBindingsArg(args map[string]interface{}, key string) ([]braingtd.SourceBinding, error) {
+	raw, ok := args[key]
+	if !ok {
+		return nil, nil
+	}
+	items, ok := raw.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("%s must be an array", key)
+	}
+	bindings := make([]braingtd.SourceBinding, 0, len(items))
+	for _, item := range items {
+		fields, ok := item.(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("%s entries must be objects", key)
+		}
+		binding := braingtd.SourceBinding{
+			Provider: strArg(fields, "provider"),
+			Ref:      strArg(fields, "ref"),
+			URL:      strArg(fields, "url"),
+			Summary:  strArg(fields, "summary"),
+		}
+		if binding.StableID() == "" {
+			return nil, fmt.Errorf("%s entries require provider and ref", key)
+		}
+		bindings = append(bindings, binding)
+	}
+	return bindings, nil
+}
+
+func containsPath(paths []string, want string) bool {
+	for _, path := range paths {
+		if path == want {
+			return true
+		}
+	}
+	return false
+}
+
+func mapValues(values map[string]dedupNote) []dedupNote {
+	out := make([]dedupNote, 0, len(values))
+	for _, value := range values {
+		out = append(out, value)
+	}
+	return out
 }
 
 func applyDedupMerge(pair [2]dedupNote, args map[string]interface{}, id string) (map[string]interface{}, error) {
