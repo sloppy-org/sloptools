@@ -4,6 +4,7 @@ go 1.24.0
 
 require (
 	github.com/Azure/go-ntlmssp v0.1.0
+	github.com/BurntSushi/toml v1.5.0
 	github.com/emersion/go-imap/v2 v2.0.0-beta.7
 	github.com/emersion/go-message v0.18.2
 	github.com/go-chi/chi/v5 v5.2.3
