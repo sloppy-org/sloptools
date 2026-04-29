@@ -10,6 +10,14 @@ import (
 
 func (s *Server) dispatchBrain(method string, args map[string]interface{}) (map[string]interface{}, error) {
 	switch method {
+	case "brain.note.parse":
+		return s.brainNoteParse(args)
+	case "brain.note.validate":
+		return s.brainNoteValidate(args)
+	case "brain.vault.validate":
+		return s.brainVaultValidate(args)
+	case "brain.links.resolve":
+		return s.brainLinksResolve(args)
 	case "brain_search":
 		return s.brainSearch(args)
 	case "brain_backlinks":

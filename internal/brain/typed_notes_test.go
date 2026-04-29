@@ -133,6 +133,23 @@ memorial: 01.01
 	}
 }
 
+func TestValidateAttentionFieldsAcceptsAttentionKindAlias(t *testing.T) {
+	src := `---
+kind: attention
+focus: watch
+cadence: monthly
+---
+# Project
+`
+	parsed, diags := ValidateAttentionFields(src)
+	if len(diags) != 0 {
+		t.Fatalf("diagnostics: %v", diags)
+	}
+	if parsed.Kind != "attention" || parsed.Focus != "watch" {
+		t.Fatalf("attention alias = %#v", parsed)
+	}
+}
+
 func validFolderNote() string {
 	return `---
 kind: folder

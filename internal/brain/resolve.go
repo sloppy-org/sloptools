@@ -14,11 +14,11 @@ type Resolver struct {
 }
 
 type ResolvedPath struct {
-	Sphere    Sphere
-	VaultRoot string
-	BrainRoot string
-	Path      string
-	Rel       string
+	Sphere    Sphere `json:"sphere"`
+	VaultRoot string `json:"vault_root"`
+	BrainRoot string `json:"brain_root"`
+	Path      string `json:"path"`
+	Rel       string `json:"rel"`
 }
 
 func (r Resolver) ResolvePath(sphere Sphere, rawPath string, op PathOp) (ResolvedPath, error) {

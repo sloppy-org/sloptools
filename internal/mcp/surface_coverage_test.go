@@ -41,6 +41,7 @@ func TestGroupwareDocListsEveryMCPTool(t *testing.T) {
 		"item_",
 		"artifact_",
 		"actor_",
+		"brain.",
 		"brain_",
 	}
 

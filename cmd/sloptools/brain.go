@@ -21,6 +21,18 @@ func cmdBrain(args []string) int {
 		return cmdBrainSearch(args[1:])
 	case "backlinks":
 		return cmdBrainBacklinks(args[1:])
+	case "gtd":
+		return cmdBrainGTD(args[1:])
+	case "folder":
+		return cmdBrainFolder(args[1:])
+	case "glossary":
+		return cmdBrainGlossary(args[1:])
+	case "attention":
+		return cmdBrainAttention(args[1:])
+	case "links":
+		return cmdBrainLinks(args[1:])
+	case "vault":
+		return cmdBrainVault(args[1:])
 	case "help", "-h", "--help":
 		printBrainHelp()
 		return 0
@@ -32,7 +44,7 @@ func cmdBrain(args []string) int {
 }
 
 func printBrainHelp() {
-	fmt.Println("sloptools brain <search|backlinks> [flags]")
+	fmt.Println("sloptools brain <search|backlinks|gtd|folder|glossary|attention|links|vault> [flags]")
 	fmt.Println()
 	fmt.Println("search flags:")
 	fmt.Println("  --config PATH   vault config path (default ~/.config/sloptools/vaults.toml)")
@@ -46,6 +58,36 @@ func printBrainHelp() {
 	fmt.Println("  --sphere NAME   vault sphere: work or private")
 	fmt.Println("  --target PATH   target note path")
 	fmt.Println("  --limit N       maximum results (default 50)")
+	fmt.Println()
+	fmt.Println("gtd flags:")
+	fmt.Println("  --config PATH   vault config path (default ~/.config/sloptools/vaults.toml)")
+	fmt.Println("  --sphere NAME   vault sphere: work or private")
+	fmt.Println("  --path PATH     GTD note path")
+	fmt.Println()
+	fmt.Println("folder flags:")
+	fmt.Println("  --config PATH   vault config path (default ~/.config/sloptools/vaults.toml)")
+	fmt.Println("  --sphere NAME   vault sphere: work or private")
+	fmt.Println("  --path PATH     folder note path")
+	fmt.Println()
+	fmt.Println("glossary flags:")
+	fmt.Println("  --config PATH   vault config path (default ~/.config/sloptools/vaults.toml)")
+	fmt.Println("  --sphere NAME   vault sphere: work or private")
+	fmt.Println("  --path PATH     glossary note path")
+	fmt.Println()
+	fmt.Println("attention flags:")
+	fmt.Println("  --config PATH   vault config path (default ~/.config/sloptools/vaults.toml)")
+	fmt.Println("  --sphere NAME   vault sphere: work or private")
+	fmt.Println("  --path PATH     attention note path")
+	fmt.Println()
+	fmt.Println("links flags:")
+	fmt.Println("  --config PATH   vault config path (default ~/.config/sloptools/vaults.toml)")
+	fmt.Println("  --sphere NAME   vault sphere: work or private")
+	fmt.Println("  --path PATH     note path")
+	fmt.Println("  --link TEXT     link to resolve")
+	fmt.Println()
+	fmt.Println("vault flags:")
+	fmt.Println("  --config PATH   vault config path (default ~/.config/sloptools/vaults.toml)")
+	fmt.Println("  --sphere NAME   vault sphere: work or private")
 }
 
 func cmdBrainSearch(args []string) int {
