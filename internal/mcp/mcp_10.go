@@ -54,7 +54,29 @@ func firstTasksCapableAccount(st *store.Store, sphere string) (store.ExternalAcc
 }
 
 func taskListPayload(list providerdata.TaskList, providerName string) map[string]interface{} {
-	return map[string]interface{}{"id": list.ID, "name": list.Name, "primary": list.Primary, "provider": providerName}
+	payload := map[string]interface{}{
+		"id":           list.ID,
+		"name":         list.Name,
+		"primary":      list.Primary,
+		"provider":     providerName,
+		"description":  list.Description,
+		"color":        list.Color,
+		"order":        list.Order,
+		"is_shared":    list.IsShared,
+		"is_favorite":  list.IsFavorite,
+		"view_style":   list.ViewStyle,
+		"provider_url": list.ProviderURL,
+	}
+	if list.ParentID != nil && *list.ParentID != "" {
+		payload["parent_id"] = *list.ParentID
+	}
+	if list.IsInboxProject {
+		payload["is_inbox_project"] = true
+	}
+	if list.IsTeamInbox {
+		payload["is_team_inbox"] = true
+	}
+	return payload
 }
 
 func taskPayload(item providerdata.TaskItem, providerName string) map[string]interface{} {
@@ -63,10 +85,33 @@ func taskPayload(item providerdata.TaskItem, providerName string) map[string]int
 		"list_id":      item.ListID,
 		"title":        item.Title,
 		"notes":        item.Notes,
+		"description":  item.Description,
 		"completed":    item.Completed,
 		"priority":     item.Priority,
 		"provider_ref": item.ProviderRef,
+		"provider_url": item.ProviderURL,
 		"provider":     providerName,
+	}
+	if item.ProjectID != "" {
+		payload["project_id"] = item.ProjectID
+	}
+	if item.SectionID != "" {
+		payload["section_id"] = item.SectionID
+	}
+	if item.ParentID != "" {
+		payload["parent_id"] = item.ParentID
+	}
+	if len(item.Labels) > 0 {
+		payload["labels"] = append([]string(nil), item.Labels...)
+	}
+	if item.AssigneeID != "" {
+		payload["assignee_id"] = item.AssigneeID
+	}
+	if item.AssignerID != "" {
+		payload["assigner_id"] = item.AssignerID
+	}
+	if item.AssigneeName != "" {
+		payload["assignee_name"] = item.AssigneeName
 	}
 	if item.Due != nil {
 		payload["due"] = item.Due.UTC().Format(time.RFC3339)
@@ -79,6 +124,32 @@ func taskPayload(item providerdata.TaskItem, providerName string) map[string]int
 	}
 	if item.CompletedAt != nil {
 		payload["completed_at"] = item.CompletedAt.UTC().Format(time.RFC3339)
+	}
+	if len(item.Comments) > 0 {
+		comments := make([]map[string]interface{}, 0, len(item.Comments))
+		for _, comment := range item.Comments {
+			comments = append(comments, taskCommentPayload(comment))
+		}
+		payload["comments"] = comments
+	}
+	return payload
+}
+
+func taskCommentPayload(comment providerdata.TaskComment) map[string]interface{} {
+	payload := map[string]interface{}{
+		"id":         comment.ID,
+		"task_id":    comment.TaskID,
+		"project_id": comment.ProjectID,
+		"content":    comment.Content,
+		"posted_at":  comment.PostedAt.UTC().Format(time.RFC3339),
+	}
+	if comment.Attachment != nil {
+		payload["attachment"] = map[string]interface{}{
+			"file_name":     comment.Attachment.FileName,
+			"file_type":     comment.Attachment.FileType,
+			"file_url":      comment.Attachment.FileURL,
+			"resource_type": comment.Attachment.ResourceType,
+		}
 	}
 	return payload
 }
@@ -246,15 +317,7 @@ func (s *Server) taskCreate(args map[string]interface{}) (map[string]interface{}
 	if !ok {
 		return map[string]interface{}{"account_id": account.ID, "provider": provider.ProviderName(), "error_code": "capability_unsupported", "capability": "tasks.Mutator", "error_detail": fmt.Sprintf("provider %s does not support task mutation", provider.ProviderName())}, nil
 	}
-	due := parseRFC3339OrDate(strArg(args, "due"))
-	item := providerdata.TaskItem{
-		ListID:      listID,
-		Title:       title,
-		Notes:       strings.TrimSpace(strArg(args, "notes")),
-		Due:         &due,
-		Priority:    strings.TrimSpace(strArg(args, "priority")),
-		ProviderRef: "",
-	}
+	item := taskMutationItemFromArgs(args, "", listID, title)
 	created, err := mutator.CreateTask(context.Background(), listID, item)
 	if err != nil {
 		if errors.Is(err, tasks.ErrUnsupported) {
@@ -287,16 +350,7 @@ func (s *Server) taskUpdate(args map[string]interface{}) (map[string]interface{}
 	if !ok {
 		return map[string]interface{}{"account_id": account.ID, "provider": provider.ProviderName(), "error_code": "capability_unsupported", "capability": "tasks.Mutator", "error_detail": fmt.Sprintf("provider %s does not support task mutation", provider.ProviderName())}, nil
 	}
-	due := parseRFC3339OrDate(strArg(args, "due"))
-	item := providerdata.TaskItem{
-		ID:          id,
-		ListID:      listID,
-		Title:       title,
-		Notes:       strings.TrimSpace(strArg(args, "notes")),
-		Due:         &due,
-		Priority:    strings.TrimSpace(strArg(args, "priority")),
-		ProviderRef: "",
-	}
+	item := taskMutationItemFromArgs(args, id, listID, title)
 	updated, err := mutator.UpdateTask(context.Background(), listID, item)
 	if err != nil {
 		if errors.Is(err, tasks.ErrUnsupported) {
@@ -391,4 +445,40 @@ func parseRFC3339OrDate(raw string) time.Time {
 		return time.Date(value.Year(), value.Month(), value.Day(), 0, 0, 0, 0, time.UTC)
 	}
 	return time.Time{}
+}
+
+func taskMutationItemFromArgs(args map[string]interface{}, id, listID, title string) providerdata.TaskItem {
+	notes := strings.TrimSpace(strArg(args, "notes"))
+	description := strings.TrimSpace(strArg(args, "description"))
+	if description == "" {
+		description = notes
+	}
+	item := providerdata.TaskItem{
+		ID:          strings.TrimSpace(id),
+		ListID:      strings.TrimSpace(listID),
+		Title:       strings.TrimSpace(title),
+		Notes:       notes,
+		Description: description,
+		SectionID:   strings.TrimSpace(strArg(args, "section_id")),
+		ParentID:    strings.TrimSpace(strArg(args, "parent_id")),
+		Labels:      stringListArg(args, "labels"),
+		AssigneeID:  strings.TrimSpace(strArg(args, "assignee_id")),
+		Priority:    strings.TrimSpace(strArg(args, "priority")),
+	}
+	if startAt, ok := parseOptionalTaskTime(args, "start_at", "follow_up_at"); ok {
+		item.StartAt = &startAt
+	}
+	if due, ok := parseOptionalTaskTime(args, "due", "deadline"); ok {
+		item.Due = &due
+	}
+	return item
+}
+
+func parseOptionalTaskTime(args map[string]interface{}, keys ...string) (time.Time, bool) {
+	for _, key := range keys {
+		if raw := strings.TrimSpace(strArg(args, key)); raw != "" {
+			return parseRFC3339OrDate(raw), true
+		}
+	}
+	return time.Time{}, false
 }

@@ -42,6 +42,21 @@ type Project struct {
 	URL            string  `json:"url"`
 }
 
+type Section struct {
+	ID        string `json:"id"`
+	ProjectID string `json:"project_id"`
+	Order     int    `json:"order"`
+	Name      string `json:"name"`
+}
+
+type Label struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Color      string `json:"color"`
+	Order      int    `json:"order"`
+	IsFavorite bool   `json:"is_favorite"`
+}
+
 type Due struct {
 	String      string  `json:"string"`
 	Date        string  `json:"date"`

@@ -103,13 +103,31 @@ func TestOOFSettingsJSONRoundTrip(t *testing.T) {
 
 func TestTaskListZeroValue(t *testing.T) {
 	var zero TaskList
-	if zero.ID != "" || zero.Name != "" || zero.Primary {
+	if zero.ID != "" || zero.Name != "" || zero.Primary || zero.Description != "" ||
+		zero.Color != "" || zero.Order != 0 || zero.ParentID != nil || zero.IsShared ||
+		zero.IsFavorite || zero.IsInboxProject || zero.IsTeamInbox || zero.ViewStyle != "" ||
+		zero.ProviderURL != "" {
 		t.Fatalf("zero TaskList has populated fields: %+v", zero)
 	}
 }
 
 func TestTaskListJSONRoundTrip(t *testing.T) {
-	in := TaskList{ID: "tl-1", Name: "Inbox", Primary: true}
+	parentID := "tl-parent"
+	in := TaskList{
+		ID:             "tl-1",
+		Name:           "Inbox",
+		Primary:        true,
+		Description:    "Project inbox",
+		Color:          "berry",
+		Order:          7,
+		ParentID:       &parentID,
+		IsShared:       true,
+		IsFavorite:     true,
+		IsInboxProject: true,
+		IsTeamInbox:    true,
+		ViewStyle:      "board",
+		ProviderURL:    "https://todoist.com/app/project/tl-1",
+	}
 	got := roundTripJSON(t, in)
 	if !reflect.DeepEqual(in, got) {
 		t.Fatalf("round trip mismatch: in=%+v got=%+v", in, got)
@@ -119,8 +137,14 @@ func TestTaskListJSONRoundTrip(t *testing.T) {
 func TestTaskItemZeroValue(t *testing.T) {
 	var zero TaskItem
 	if zero.ID != "" || zero.ListID != "" || zero.Title != "" || zero.Notes != "" ||
-		zero.Completed || zero.Priority != "" || zero.ProviderRef != "" {
+		zero.Description != "" || zero.ProjectID != "" || zero.SectionID != "" ||
+		zero.ParentID != "" || zero.AssigneeID != "" || zero.AssignerID != "" ||
+		zero.AssigneeName != "" || zero.Completed || zero.Priority != "" ||
+		zero.ProviderRef != "" || zero.ProviderURL != "" {
 		t.Fatalf("zero TaskItem has populated scalars: %+v", zero)
+	}
+	if len(zero.Labels) != 0 || len(zero.Comments) != 0 {
+		t.Fatalf("zero TaskItem has populated slices: %+v", zero)
 	}
 	if zero.StartAt != nil || zero.EndAt != nil || zero.Due != nil || zero.CompletedAt != nil {
 		t.Fatalf("zero TaskItem has populated pointers: %+v", zero)
@@ -132,11 +156,33 @@ func TestTaskItemJSONRoundTrip(t *testing.T) {
 	end := start.Add(30 * time.Minute)
 	due := time.Date(2026, time.April, 30, 17, 0, 0, 0, time.UTC)
 	completed := due.Add(-time.Hour)
+	postedAt := time.Date(2026, time.April, 29, 10, 0, 0, 0, time.UTC)
 	in := TaskItem{
-		ID:          "t-1",
-		ListID:      "tl-1",
-		Title:       "ship release",
-		Notes:       "cut the tag and push",
+		ID:           "t-1",
+		ListID:       "tl-1",
+		Title:        "ship release",
+		Notes:        "cut the tag and push",
+		Description:  "cut the tag and push",
+		ProjectID:    "proj-1",
+		SectionID:    "sec-1",
+		ParentID:     "parent-1",
+		Labels:       []string{"waiting", "review"},
+		AssigneeID:   "user-1",
+		AssignerID:   "user-2",
+		AssigneeName: "Alice",
+		Comments: []TaskComment{{
+			ID:        "c-1",
+			TaskID:    "t-1",
+			ProjectID: "proj-1",
+			Content:   "note",
+			PostedAt:  postedAt,
+			Attachment: &TaskCommentAttachment{
+				FileName:     "notes.txt",
+				FileType:     "text/plain",
+				FileURL:      "https://example.test/notes.txt",
+				ResourceType: "file",
+			},
+		}},
 		StartAt:     &start,
 		EndAt:       &end,
 		Due:         &due,
@@ -144,12 +190,22 @@ func TestTaskItemJSONRoundTrip(t *testing.T) {
 		Completed:   true,
 		Priority:    "high",
 		ProviderRef: "google:tasks/1",
+		ProviderURL: "https://tasks.google.com/task/1",
 	}
 	got := roundTripJSON(t, in)
 	if got.ID != in.ID || got.ListID != in.ListID || got.Title != in.Title ||
-		got.Notes != in.Notes || got.Completed != in.Completed ||
-		got.Priority != in.Priority || got.ProviderRef != in.ProviderRef {
+		got.Notes != in.Notes || got.Description != in.Description ||
+		got.Completed != in.Completed || got.Priority != in.Priority ||
+		got.ProviderRef != in.ProviderRef || got.ProviderURL != in.ProviderURL {
 		t.Fatalf("scalar mismatch: in=%+v got=%+v", in, got)
+	}
+	if got.ProjectID != in.ProjectID || got.SectionID != in.SectionID ||
+		got.ParentID != in.ParentID || got.AssigneeID != in.AssigneeID ||
+		got.AssignerID != in.AssignerID || got.AssigneeName != in.AssigneeName {
+		t.Fatalf("metadata mismatch: in=%+v got=%+v", in, got)
+	}
+	if !reflect.DeepEqual(got.Labels, in.Labels) || !reflect.DeepEqual(got.Comments, in.Comments) {
+		t.Fatalf("slice mismatch: in=%+v got=%+v", in, got)
 	}
 	if got.Due == nil || !got.Due.Equal(due) {
 		t.Fatalf("Due mismatch: %+v", got.Due)
@@ -162,6 +218,39 @@ func TestTaskItemJSONRoundTrip(t *testing.T) {
 	}
 	if got.CompletedAt == nil || !got.CompletedAt.Equal(completed) {
 		t.Fatalf("CompletedAt mismatch: %+v", got.CompletedAt)
+	}
+}
+
+func TestTaskCommentZeroValue(t *testing.T) {
+	var zero TaskComment
+	if zero.ID != "" || zero.TaskID != "" || zero.ProjectID != "" || zero.Content != "" || !zero.PostedAt.IsZero() {
+		t.Fatalf("zero TaskComment has populated fields: %+v", zero)
+	}
+	if zero.Attachment != nil {
+		t.Fatalf("zero TaskComment has populated attachment: %+v", zero.Attachment)
+	}
+}
+
+func TestTaskCommentJSONRoundTrip(t *testing.T) {
+	postedAt := time.Date(2026, time.May, 1, 12, 0, 0, 0, time.UTC)
+	in := TaskComment{
+		ID:        "c-1",
+		TaskID:    "t-1",
+		ProjectID: "proj-1",
+		Content:   "follow up",
+		PostedAt:  postedAt,
+		Attachment: &TaskCommentAttachment{
+			FileName:     "notes.txt",
+			FileType:     "text/plain",
+			FileURL:      "https://example.test/notes.txt",
+			ResourceType: "file",
+		},
+	}
+	got := roundTripJSON(t, in)
+	if got.ID != in.ID || got.TaskID != in.TaskID || got.ProjectID != in.ProjectID ||
+		got.Content != in.Content || !got.PostedAt.Equal(in.PostedAt) ||
+		!reflect.DeepEqual(got.Attachment, in.Attachment) {
+		t.Fatalf("round trip mismatch: in=%+v got=%+v", in, got)
 	}
 }
 

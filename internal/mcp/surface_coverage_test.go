@@ -77,3 +77,25 @@ func TestGroupwareDocListsEveryMCPTool(t *testing.T) {
 		}
 	}
 }
+
+func TestTaskMutationSurfaceExposesSourceMetadata(t *testing.T) {
+	for _, name := range []string{"task_create", "task_update"} {
+		tool := surfaceToolByName(t, name)
+		for _, prop := range []string{"start_at", "follow_up_at", "deadline", "description", "section_id", "parent_id", "labels", "assignee_id"} {
+			if _, ok := tool.Properties[prop]; !ok {
+				t.Fatalf("%s missing property %s", name, prop)
+			}
+		}
+	}
+}
+
+func surfaceToolByName(t *testing.T, name string) surface.Tool {
+	t.Helper()
+	for _, tool := range surface.MCPTools {
+		if tool.Name == name {
+			return tool
+		}
+	}
+	t.Fatalf("surface tool %q not found", name)
+	return surface.Tool{}
+}

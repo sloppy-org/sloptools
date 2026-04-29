@@ -47,12 +47,18 @@ func TestTaskCreateReturnsPayload(t *testing.T) {
 	}
 
 	got, err := s.callTool("task_create", map[string]interface{}{
-		"account_id": account.ID,
-		"list_id":    "list-1",
-		"title":      "New task",
-		"notes":      "Do it now",
-		"due":        "2026-06-01T10:00:00Z",
-		"priority":   "high",
+		"account_id":  account.ID,
+		"list_id":     "list-1",
+		"title":       "New task",
+		"notes":       "Do it now",
+		"description": "Provider body",
+		"start_at":    "2026-05-30T09:00:00Z",
+		"due":         "2026-06-01T10:00:00Z",
+		"priority":    "high",
+		"section_id":  "sec-1",
+		"parent_id":   "parent-1",
+		"labels":      []interface{}{"waiting", "review"},
+		"assignee_id": "user-1",
 	})
 	if err != nil {
 		t.Fatalf("task_create: %v", err)
@@ -70,11 +76,24 @@ func TestTaskCreateReturnsPayload(t *testing.T) {
 	if task["notes"] != "Do it now" {
 		t.Fatalf("notes = %v, want Do it now", task["notes"])
 	}
+	if task["description"] != "Provider body" {
+		t.Fatalf("description = %v, want Provider body", task["description"])
+	}
+	if task["start_at"] != "2026-05-30T09:00:00Z" {
+		t.Fatalf("start_at = %v, want 2026-05-30T09:00:00Z", task["start_at"])
+	}
 	if task["due"] != "2026-06-01T10:00:00Z" {
 		t.Fatalf("due = %v, want 2026-06-01T10:00:00Z", task["due"])
 	}
 	if task["priority"] != "high" {
 		t.Fatalf("priority = %v, want high", task["priority"])
+	}
+	if task["section_id"] != "sec-1" || task["parent_id"] != "parent-1" || task["assignee_id"] != "user-1" {
+		t.Fatalf("Todoist metadata = %#v", task)
+	}
+	labels, ok := task["labels"].([]string)
+	if !ok || len(labels) != 2 || labels[0] != "waiting" || labels[1] != "review" {
+		t.Fatalf("labels = %#v", task["labels"])
 	}
 }
 
@@ -90,13 +109,17 @@ func TestTaskUpdateFullReplace(t *testing.T) {
 	}
 
 	got, err := s.callTool("task_update", map[string]interface{}{
-		"account_id": account.ID,
-		"list_id":    "list-1",
-		"id":         "t-1",
-		"title":      "Updated title",
-		"notes":      "Updated notes",
-		"due":        "2026-07-15",
-		"priority":   "low",
+		"account_id":   account.ID,
+		"list_id":      "list-1",
+		"id":           "t-1",
+		"title":        "Updated title",
+		"notes":        "Updated notes",
+		"follow_up_at": "2026-07-01",
+		"deadline":     "2026-07-15",
+		"priority":     "low",
+		"section_id":   "sec-2",
+		"labels":       "waiting,next",
+		"assignee_id":  "user-2",
 	})
 	if err != nil {
 		t.Fatalf("task_update: %v", err)
@@ -113,6 +136,16 @@ func TestTaskUpdateFullReplace(t *testing.T) {
 	}
 	if task["due"] != "2026-07-15T00:00:00Z" {
 		t.Fatalf("due = %v, want 2026-07-15T00:00:00Z", task["due"])
+	}
+	if task["start_at"] != "2026-07-01T00:00:00Z" {
+		t.Fatalf("start_at = %v, want 2026-07-01T00:00:00Z", task["start_at"])
+	}
+	if task["section_id"] != "sec-2" || task["assignee_id"] != "user-2" {
+		t.Fatalf("Todoist metadata = %#v", task)
+	}
+	labels, ok := task["labels"].([]string)
+	if !ok || len(labels) != 2 || labels[0] != "waiting" || labels[1] != "next" {
+		t.Fatalf("labels = %#v", task["labels"])
 	}
 }
 

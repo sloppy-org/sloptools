@@ -129,25 +129,63 @@ type SharedMailbox struct {
 
 // TaskList is a single task container (Google Tasks list or Exchange tasks folder).
 type TaskList struct {
-	ID      string
-	Name    string
-	Primary bool
+	ID             string
+	Name           string
+	Primary        bool
+	Description    string
+	Color          string
+	Order          int
+	ParentID       *string
+	IsShared       bool
+	IsFavorite     bool
+	IsInboxProject bool
+	IsTeamInbox    bool
+	ViewStyle      string
+	ProviderURL    string
 }
 
 // TaskItem is a single task within a TaskList.
 // Priority values follow the source backend; callers should treat them as opaque strings.
 type TaskItem struct {
-	ID          string
-	ListID      string
-	Title       string
-	Notes       string
-	StartAt     *time.Time
-	EndAt       *time.Time
-	Due         *time.Time
-	CompletedAt *time.Time
-	Completed   bool
-	Priority    string
-	ProviderRef string
+	ID           string
+	ListID       string
+	Title        string
+	Notes        string
+	Description  string
+	ProjectID    string
+	SectionID    string
+	ParentID     string
+	Labels       []string
+	AssigneeID   string
+	AssignerID   string
+	AssigneeName string
+	Comments     []TaskComment
+	StartAt      *time.Time
+	EndAt        *time.Time
+	Due          *time.Time
+	CompletedAt  *time.Time
+	Completed    bool
+	Priority     string
+	ProviderRef  string
+	ProviderURL  string
+}
+
+// TaskComment is a source comment attached to a task.
+type TaskComment struct {
+	ID         string
+	TaskID     string
+	ProjectID  string
+	Content    string
+	PostedAt   time.Time
+	Attachment *TaskCommentAttachment
+}
+
+// TaskCommentAttachment is a file attachment included with a task comment.
+type TaskCommentAttachment struct {
+	FileName     string
+	FileType     string
+	FileURL      string
+	ResourceType string
 }
 
 // Contact is the canonical address-book entry shared by Google People and Exchange contacts.

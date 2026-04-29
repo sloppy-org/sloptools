@@ -232,8 +232,10 @@ Lists tasks inside a task list. Required: `account_id`. Optional: `list_id`,
 `state` (filter by state), `limit`. Returns tasks from the specified list. The
 payload includes `start_at` for defer/start dates when the backend exposes one,
 and `due` only for hard deadlines. For Todoist, scheduled `due` maps to
-`start_at`, and `deadline` maps to `due`. When `account_id` is omitted, the
-first enabled tasks-capable account for the sphere is used.
+`start_at`, and `deadline` maps to `due`. Todoist task payloads also include
+project, section, labels, assignee, source URL, and comments when available.
+When `account_id` is omitted, the first enabled tasks-capable account for the
+sphere is used.
 
 ### `task_get`
 
@@ -241,11 +243,16 @@ Gets one task by provider id. Required: `account_id`. Optional: `list_id`. Retur
 
 ### `task_create`
 
-Creates a new task. Required: `account_id`, `title`. Optional: `list_id`, `due_at`, `notes`, `priority`, `state`. Returns error_code=`capability_unsupported` when the backend is read-only.
+Creates a new task. Required: `account_id`, `list_id`, `title`. Optional:
+`notes`, `description`, `start_at`/`follow_up_at`, `due`/`deadline`,
+`priority`, `section_id`, `parent_id`, `labels`, and `assignee_id`. Returns
+error_code=`capability_unsupported` when the backend is read-only.
 
 ### `task_update`
 
-Updates an existing task (full-replace semantics). Required: `account_id`, `task` object with `provider_ref`. Returns error_code=`capability_unsupported` when the backend is read-only.
+Updates an existing task (full-replace semantics). Required: `account_id`,
+`list_id`, `id`, `title`. Optional fields match `task_create`. Returns
+error_code=`capability_unsupported` when the backend is read-only.
 
 ### `task_complete`
 
