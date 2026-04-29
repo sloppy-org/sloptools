@@ -54,7 +54,29 @@ func firstTasksCapableAccount(st *store.Store, sphere string) (store.ExternalAcc
 }
 
 func taskListPayload(list providerdata.TaskList, providerName string) map[string]interface{} {
-	return map[string]interface{}{"id": list.ID, "name": list.Name, "primary": list.Primary, "provider": providerName}
+	payload := map[string]interface{}{
+		"id":           list.ID,
+		"name":         list.Name,
+		"primary":      list.Primary,
+		"provider":     providerName,
+		"description":  list.Description,
+		"color":        list.Color,
+		"order":        list.Order,
+		"is_shared":    list.IsShared,
+		"is_favorite":  list.IsFavorite,
+		"view_style":   list.ViewStyle,
+		"provider_url": list.ProviderURL,
+	}
+	if list.ParentID != nil && *list.ParentID != "" {
+		payload["parent_id"] = *list.ParentID
+	}
+	if list.IsInboxProject {
+		payload["is_inbox_project"] = true
+	}
+	if list.IsTeamInbox {
+		payload["is_team_inbox"] = true
+	}
+	return payload
 }
 
 func taskPayload(item providerdata.TaskItem, providerName string) map[string]interface{} {
@@ -63,10 +85,33 @@ func taskPayload(item providerdata.TaskItem, providerName string) map[string]int
 		"list_id":      item.ListID,
 		"title":        item.Title,
 		"notes":        item.Notes,
+		"description":  item.Description,
 		"completed":    item.Completed,
 		"priority":     item.Priority,
 		"provider_ref": item.ProviderRef,
+		"provider_url": item.ProviderURL,
 		"provider":     providerName,
+	}
+	if item.ProjectID != "" {
+		payload["project_id"] = item.ProjectID
+	}
+	if item.SectionID != "" {
+		payload["section_id"] = item.SectionID
+	}
+	if item.ParentID != "" {
+		payload["parent_id"] = item.ParentID
+	}
+	if len(item.Labels) > 0 {
+		payload["labels"] = append([]string(nil), item.Labels...)
+	}
+	if item.AssigneeID != "" {
+		payload["assignee_id"] = item.AssigneeID
+	}
+	if item.AssignerID != "" {
+		payload["assigner_id"] = item.AssignerID
+	}
+	if item.AssigneeName != "" {
+		payload["assignee_name"] = item.AssigneeName
 	}
 	if item.Due != nil {
 		payload["due"] = item.Due.UTC().Format(time.RFC3339)
@@ -79,6 +124,32 @@ func taskPayload(item providerdata.TaskItem, providerName string) map[string]int
 	}
 	if item.CompletedAt != nil {
 		payload["completed_at"] = item.CompletedAt.UTC().Format(time.RFC3339)
+	}
+	if len(item.Comments) > 0 {
+		comments := make([]map[string]interface{}, 0, len(item.Comments))
+		for _, comment := range item.Comments {
+			comments = append(comments, taskCommentPayload(comment))
+		}
+		payload["comments"] = comments
+	}
+	return payload
+}
+
+func taskCommentPayload(comment providerdata.TaskComment) map[string]interface{} {
+	payload := map[string]interface{}{
+		"id":         comment.ID,
+		"task_id":    comment.TaskID,
+		"project_id": comment.ProjectID,
+		"content":    comment.Content,
+		"posted_at":  comment.PostedAt.UTC().Format(time.RFC3339),
+	}
+	if comment.Attachment != nil {
+		payload["attachment"] = map[string]interface{}{
+			"file_name":     comment.Attachment.FileName,
+			"file_type":     comment.Attachment.FileType,
+			"file_url":      comment.Attachment.FileURL,
+			"resource_type": comment.Attachment.ResourceType,
+		}
 	}
 	return payload
 }

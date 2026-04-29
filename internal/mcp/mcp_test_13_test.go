@@ -320,6 +320,70 @@ func TestTaskGetReturnsPayload(t *testing.T) {
 	}
 }
 
+func TestTaskGetIncludesTodoistMetadata(t *testing.T) {
+	s, st, _ := newDomainServerForTest(t)
+	account, err := st.CreateExternalAccount(store.SphereWork, store.ExternalProviderTodoist, "Todoist", map[string]any{})
+	if err != nil {
+		t.Fatalf("CreateExternalAccount: %v", err)
+	}
+	provider := &fakeTasksProvider{
+		name:      "todoist",
+		taskLists: []providerdata.TaskList{{ID: "proj-1", Name: "Inbox", Primary: true, ProviderURL: "https://todoist.com/app/project/proj-1"}},
+		getTaskByID: map[string]providerdata.TaskItem{
+			"task-1": {
+				ID:           "task-1",
+				ListID:       "proj-1",
+				Title:        "Review proposal",
+				Notes:        "Check budget section",
+				Description:  "Check budget section",
+				ProjectID:    "proj-1",
+				SectionID:    "sec-1",
+				ParentID:     "parent-1",
+				Labels:       []string{"waiting", "review"},
+				AssigneeID:   "user-1",
+				AssignerID:   "user-2",
+				AssigneeName: "Alice",
+				ProviderRef:  "task-1",
+				ProviderURL:  "https://todoist.com/showTask?id=task-1",
+				Comments: []providerdata.TaskComment{{
+					ID:        "comment-1",
+					TaskID:    "task-1",
+					ProjectID: "proj-1",
+					Content:   "Remember appendix",
+					PostedAt:  time.Date(2026, 5, 6, 12, 0, 0, 0, time.UTC),
+				}},
+			},
+		},
+	}
+	s.newTasksProvider = func(_ context.Context, _ store.ExternalAccount) (tasks.Provider, error) {
+		return provider, nil
+	}
+
+	got, err := s.callTool("task_get", map[string]interface{}{"account_id": account.ID, "list_id": "proj-1", "id": "task-1"})
+	if err != nil {
+		t.Fatalf("task_get: %v", err)
+	}
+	task, ok := got["task"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("task type = %T, want map[string]interface{}", got["task"])
+	}
+	if task["provider_ref"] != "task-1" || task["provider_url"] != "https://todoist.com/showTask?id=task-1" {
+		t.Fatalf("provider fields = %#v", task)
+	}
+	if task["project_id"] != "proj-1" || task["section_id"] != "sec-1" || task["parent_id"] != "parent-1" {
+		t.Fatalf("project fields = %#v", task)
+	}
+	if labels, ok := task["labels"].([]string); !ok || len(labels) != 2 || labels[0] != "waiting" {
+		t.Fatalf("labels = %#v", task["labels"])
+	}
+	comments, ok := task["comments"].([]map[string]interface{})
+	if !ok || len(comments) != 1 || comments[0]["id"] != "comment-1" {
+		t.Fatalf("comments = %#v", task["comments"])
+	}
+}
+
+func ptrString(v string) *string { return &v }
+
 func TestTaskListListPicksFirstEnabledAccountForSphere(t *testing.T) {
 	s, st, _ := newDomainServerForTest(t)
 	disabled, err := st.CreateExternalAccount(store.SpherePrivate, store.ExternalProviderGoogleCalendar, "Disabled Google", map[string]any{})

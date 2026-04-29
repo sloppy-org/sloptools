@@ -175,6 +175,51 @@ func TestGetTaskIncludesComments(t *testing.T) {
 	}
 }
 
+func TestListSectionsLabelsAndComments(t *testing.T) {
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/rest/v2/sections":
+			if got := r.URL.Query().Get("project_id"); got != "proj-1" {
+				t.Fatalf("project_id = %q, want proj-1", got)
+			}
+			_ = json.NewEncoder(w).Encode([]Section{{ID: "sec-1", ProjectID: "proj-1", Name: "Inbox", Order: 3}})
+		case r.Method == http.MethodGet && r.URL.Path == "/rest/v2/labels":
+			_ = json.NewEncoder(w).Encode([]Label{{ID: "label-1", Name: "Waiting", Color: "berry", Order: 2, IsFavorite: true}})
+		case r.Method == http.MethodGet && r.URL.Path == "/rest/v2/comments":
+			if got := r.URL.Query().Get("task_id"); got != "task-1" {
+				t.Fatalf("task_id = %q, want task-1", got)
+			}
+			_ = json.NewEncoder(w).Encode([]Comment{{ID: "comment-1", TaskID: strPtr("task-1"), PostedAt: "2026-05-06T12:00:00Z", Content: "Remember appendix"}})
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.String())
+		}
+	})
+
+	sections, err := client.ListSections(context.Background(), "proj-1")
+	if err != nil {
+		t.Fatalf("ListSections() error: %v", err)
+	}
+	if len(sections) != 1 || sections[0].ID != "sec-1" || sections[0].ProjectID != "proj-1" {
+		t.Fatalf("sections = %#v", sections)
+	}
+
+	labels, err := client.ListLabels(context.Background())
+	if err != nil {
+		t.Fatalf("ListLabels() error: %v", err)
+	}
+	if len(labels) != 1 || labels[0].ID != "label-1" || !labels[0].IsFavorite {
+		t.Fatalf("labels = %#v", labels)
+	}
+
+	comments, err := client.ListComments(context.Background(), "task-1")
+	if err != nil {
+		t.Fatalf("ListComments() error: %v", err)
+	}
+	if len(comments) != 1 || comments[0].ID != "comment-1" {
+		t.Fatalf("comments = %#v", comments)
+	}
+}
+
 func TestCreateTaskSendsExpectedBody(t *testing.T) {
 	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/rest/v2/tasks" {
@@ -324,3 +369,5 @@ func TestValidationAndAPIErrors(t *testing.T) {
 		}
 	}
 }
+
+func strPtr(value string) *string { return &value }

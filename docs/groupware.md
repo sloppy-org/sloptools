@@ -232,8 +232,10 @@ Lists tasks inside a task list. Required: `account_id`. Optional: `list_id`,
 `state` (filter by state), `limit`. Returns tasks from the specified list. The
 payload includes `start_at` for defer/start dates when the backend exposes one,
 and `due` only for hard deadlines. For Todoist, scheduled `due` maps to
-`start_at`, and `deadline` maps to `due`. When `account_id` is omitted, the
-first enabled tasks-capable account for the sphere is used.
+`start_at`, and `deadline` maps to `due`. Todoist task payloads also include
+project, section, labels, assignee, source URL, and comments when available.
+When `account_id` is omitted, the first enabled tasks-capable account for the
+sphere is used.
 
 ### `task_get`
 
