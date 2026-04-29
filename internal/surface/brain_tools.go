@@ -64,5 +64,17 @@ func init() {
 			"config_path": {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},
 			"sphere":      {Type: "string", Description: "Vault sphere to inspect.", Enum: []string{"work", "private"}},
 		}},
+		Tool{Name: "brain.gtd.sync", Description: "Reconcile writeable GTD source bindings by pushing closed local overlays upstream or pulling periodic upstream closure state down.", Required: []string{"sphere"}, Properties: map[string]ToolProperty{
+			"config_path":     {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},
+			"sphere":          {Type: "string", Description: "Vault sphere to sync.", Enum: []string{"work", "private"}},
+			"path":            {Type: "string", Description: "Optional commitment note path. When omitted, every commitment in the sphere is scanned."},
+			"commitment_id":   {Type: "string", Description: "Alias for path."},
+			"periodic":        {Type: "boolean", Description: "When true, read upstream state and pull closed state into the local overlay."},
+			"dry_run":         {Type: "boolean", Description: "Report actions without applying upstream or Markdown writes."},
+			"mail_action":     {Type: "string", Description: "Mail action for closed mail bindings. Defaults to archive."},
+			"mail_label":      {Type: "string", Description: "Optional label for label-based mail actions."},
+			"mail_folder":     {Type: "string", Description: "Optional folder for folder-based mail actions."},
+			"todoist_list_id": {Type: "string", Description: "Optional Todoist project/list id when the binding ref does not include one."},
+		}},
 	)
 }
