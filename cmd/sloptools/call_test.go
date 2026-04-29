@@ -45,6 +45,32 @@ func captureRun(t *testing.T, args []string) (string, string, int) {
 	return outBuf.String(), errBuf.String(), code
 }
 
+func TestMCPServerAcceptsCanonicalStdioFlags(t *testing.T) {
+	tmp := t.TempDir()
+	inR, inW, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe stdin: %v", err)
+	}
+	_ = inW.Close()
+	origIn := os.Stdin
+	os.Stdin = inR
+	t.Cleanup(func() {
+		os.Stdin = origIn
+		_ = inR.Close()
+	})
+
+	_, stderr, code := captureRun(t, []string{
+		"mcp-server",
+		"--stdio",
+		"--vault-config", filepath.Join(tmp, "vaults.toml"),
+		"--project-dir", filepath.Join(tmp, "project"),
+		"--data-dir", filepath.Join(tmp, "data"),
+	})
+	if code != 0 {
+		t.Fatalf("mcp-server canonical flags code=%d stderr=%q", code, stderr)
+	}
+}
+
 func TestToolsListJSONIncludesKnownTools(t *testing.T) {
 	tmp := t.TempDir()
 	dataDir := filepath.Join(tmp, "data")

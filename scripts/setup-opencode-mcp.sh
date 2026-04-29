@@ -14,6 +14,7 @@
 #   SLOPTOOLS_DATA_DIR       data dir passed to mcp-server (default ~/.local/share/sloppy)
 #   SLOPTOOLS_PROJECT_DIR    project dir passed to mcp-server (default current dir at install)
 #   SLOPTOOLS_MCP_LABEL      key used in opencode.json mcp.<label> (default: sloppy)
+#   SLOPTOOLS_VAULT_CONFIG   brain vault config path (default ~/.config/sloptools/vaults.toml)
 set -euo pipefail
 
 CONFIG_PATH="${OPENCODE_CONFIG:-${HOME}/.config/opencode/opencode.json}"
@@ -21,6 +22,7 @@ SLOPTOOLS_BIN="${SLOPTOOLS_BIN:-$(command -v sloptools 2>/dev/null || echo "")}"
 DATA_DIR="${SLOPTOOLS_DATA_DIR:-${HOME}/.local/share/sloppy}"
 PROJECT_DIR="${SLOPTOOLS_PROJECT_DIR:-$(pwd)}"
 LABEL="${SLOPTOOLS_MCP_LABEL:-sloppy}"
+VAULT_CONFIG="${SLOPTOOLS_VAULT_CONFIG:-${HOME}/.config/sloptools/vaults.toml}"
 
 if [[ -z "${SLOPTOOLS_BIN}" ]]; then
   echo "sloptools binary not found. Install it first or set SLOPTOOLS_BIN." >&2
@@ -37,11 +39,11 @@ if [[ ! -f "${CONFIG_PATH}" ]]; then
   echo "{\"\$schema\": \"https://opencode.ai/config.json\"}" > "${CONFIG_PATH}"
 fi
 
-python3 - "${CONFIG_PATH}" "${SLOPTOOLS_BIN}" "${DATA_DIR}" "${PROJECT_DIR}" "${LABEL}" <<'PY'
+python3 - "${CONFIG_PATH}" "${SLOPTOOLS_BIN}" "${DATA_DIR}" "${PROJECT_DIR}" "${LABEL}" "${VAULT_CONFIG}" <<'PY'
 import json
 import sys
 
-config_path, bin_, data_dir, project_dir, label = sys.argv[1:6]
+config_path, bin_, data_dir, project_dir, label, vault_config = sys.argv[1:7]
 with open(config_path) as f:
     config = json.load(f)
 
@@ -51,6 +53,8 @@ config["mcp"][label] = {
     "command": [
         bin_,
         "mcp-server",
+        "--stdio",
+        "--vault-config", vault_config,
         "--project-dir", project_dir,
         "--data-dir", data_dir,
     ],
@@ -64,4 +68,4 @@ PY
 
 echo "added sloptools stdio MCP server to ${CONFIG_PATH}"
 echo "  label:    ${LABEL}"
-echo "  command:  ${SLOPTOOLS_BIN} mcp-server --project-dir ${PROJECT_DIR} --data-dir ${DATA_DIR}"
+echo "  command:  ${SLOPTOOLS_BIN} mcp-server --stdio --vault-config ${VAULT_CONFIG} --project-dir ${PROJECT_DIR} --data-dir ${DATA_DIR}"

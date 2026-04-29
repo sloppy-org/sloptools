@@ -10,7 +10,21 @@ import (
 
 	"github.com/sloppy-org/sloptools/internal/brain"
 	braingtd "github.com/sloppy-org/sloptools/internal/brain/gtd"
+	"github.com/sloppy-org/sloptools/internal/store"
 )
+
+func NewServerWithStoreAndBrainConfig(projectDir string, st *store.Store, brainConfigPath string) *Server {
+	srv := NewServerWithStore(projectDir, st)
+	srv.brainConfigPath = strings.TrimSpace(brainConfigPath)
+	return srv
+}
+
+func (s *Server) brainConfigArg(args map[string]interface{}) string {
+	if path := strings.TrimSpace(strArg(args, "config_path")); path != "" {
+		return path
+	}
+	return s.brainConfigPath
+}
 
 func (s *Server) brainNoteParse(args map[string]interface{}) (map[string]interface{}, error) {
 	return s.brainInspectNote(args, false)
@@ -21,7 +35,7 @@ func (s *Server) brainNoteValidate(args map[string]interface{}) (map[string]inte
 }
 
 func (s *Server) brainVaultValidate(args map[string]interface{}) (map[string]interface{}, error) {
-	cfg, err := brain.LoadConfig(strArg(args, "config_path"))
+	cfg, err := brain.LoadConfig(s.brainConfigArg(args))
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +101,7 @@ func (s *Server) brainVaultValidate(args map[string]interface{}) (map[string]int
 }
 
 func (s *Server) brainLinksResolve(args map[string]interface{}) (map[string]interface{}, error) {
-	cfg, err := brain.LoadConfig(strArg(args, "config_path"))
+	cfg, err := brain.LoadConfig(s.brainConfigArg(args))
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +133,7 @@ func (s *Server) brainLinksResolve(args map[string]interface{}) (map[string]inte
 }
 
 func (s *Server) brainInspectNote(args map[string]interface{}, validate bool) (map[string]interface{}, error) {
-	cfg, err := brain.LoadConfig(strArg(args, "config_path"))
+	cfg, err := brain.LoadConfig(s.brainConfigArg(args))
 	if err != nil {
 		return nil, err
 	}

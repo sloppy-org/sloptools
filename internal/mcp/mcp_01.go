@@ -42,6 +42,7 @@ type RPCError struct {
 
 type Server struct {
 	projectDir                 string
+	brainConfigPath            string
 	adapter                    *canvas.Adapter
 	handoffs                   *handoffRegistry
 	store                      *store.Store
@@ -293,7 +294,11 @@ func RunStdio(projectDir string) int {
 }
 
 func RunStdioWithStore(projectDir string, st *store.Store) int {
-	s := NewServerWithStore(projectDir, st)
+	return RunStdioWithStoreAndBrainConfig(projectDir, st, "")
+}
+
+func RunStdioWithStoreAndBrainConfig(projectDir string, st *store.Store, brainConfigPath string) int {
+	s := NewServerWithStoreAndBrainConfig(projectDir, st, brainConfigPath)
 	reader := bufio.NewReader(os.Stdin)
 	for {
 		msg, framed, err := readMessage(reader)

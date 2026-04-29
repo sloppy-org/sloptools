@@ -140,7 +140,7 @@ func (s *Server) brainGTDBind(args map[string]interface{}) (map[string]interface
 }
 
 func (s *Server) loadDedupNotes(args map[string]interface{}) ([]dedupNote, braingtd.ScanOptions, error) {
-	cfg, err := brain.LoadConfig(strArg(args, "config_path"))
+	cfg, err := brain.LoadConfig(s.brainConfigArg(args))
 	if err != nil {
 		return nil, braingtd.ScanOptions{}, err
 	}
