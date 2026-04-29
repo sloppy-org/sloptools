@@ -243,11 +243,16 @@ Gets one task by provider id. Required: `account_id`. Optional: `list_id`. Retur
 
 ### `task_create`
 
-Creates a new task. Required: `account_id`, `title`. Optional: `list_id`, `due_at`, `notes`, `priority`, `state`. Returns error_code=`capability_unsupported` when the backend is read-only.
+Creates a new task. Required: `account_id`, `list_id`, `title`. Optional:
+`notes`, `description`, `start_at`/`follow_up_at`, `due`/`deadline`,
+`priority`, `section_id`, `parent_id`, `labels`, and `assignee_id`. Returns
+error_code=`capability_unsupported` when the backend is read-only.
 
 ### `task_update`
 
-Updates an existing task (full-replace semantics). Required: `account_id`, `task` object with `provider_ref`. Returns error_code=`capability_unsupported` when the backend is read-only.
+Updates an existing task (full-replace semantics). Required: `account_id`,
+`list_id`, `id`, `title`. Optional fields match `task_create`. Returns
+error_code=`capability_unsupported` when the backend is read-only.
 
 ### `task_complete`
 

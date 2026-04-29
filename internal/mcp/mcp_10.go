@@ -317,15 +317,7 @@ func (s *Server) taskCreate(args map[string]interface{}) (map[string]interface{}
 	if !ok {
 		return map[string]interface{}{"account_id": account.ID, "provider": provider.ProviderName(), "error_code": "capability_unsupported", "capability": "tasks.Mutator", "error_detail": fmt.Sprintf("provider %s does not support task mutation", provider.ProviderName())}, nil
 	}
-	due := parseRFC3339OrDate(strArg(args, "due"))
-	item := providerdata.TaskItem{
-		ListID:      listID,
-		Title:       title,
-		Notes:       strings.TrimSpace(strArg(args, "notes")),
-		Due:         &due,
-		Priority:    strings.TrimSpace(strArg(args, "priority")),
-		ProviderRef: "",
-	}
+	item := taskMutationItemFromArgs(args, "", listID, title)
 	created, err := mutator.CreateTask(context.Background(), listID, item)
 	if err != nil {
 		if errors.Is(err, tasks.ErrUnsupported) {
@@ -358,16 +350,7 @@ func (s *Server) taskUpdate(args map[string]interface{}) (map[string]interface{}
 	if !ok {
 		return map[string]interface{}{"account_id": account.ID, "provider": provider.ProviderName(), "error_code": "capability_unsupported", "capability": "tasks.Mutator", "error_detail": fmt.Sprintf("provider %s does not support task mutation", provider.ProviderName())}, nil
 	}
-	due := parseRFC3339OrDate(strArg(args, "due"))
-	item := providerdata.TaskItem{
-		ID:          id,
-		ListID:      listID,
-		Title:       title,
-		Notes:       strings.TrimSpace(strArg(args, "notes")),
-		Due:         &due,
-		Priority:    strings.TrimSpace(strArg(args, "priority")),
-		ProviderRef: "",
-	}
+	item := taskMutationItemFromArgs(args, id, listID, title)
 	updated, err := mutator.UpdateTask(context.Background(), listID, item)
 	if err != nil {
 		if errors.Is(err, tasks.ErrUnsupported) {
@@ -462,4 +445,40 @@ func parseRFC3339OrDate(raw string) time.Time {
 		return time.Date(value.Year(), value.Month(), value.Day(), 0, 0, 0, 0, time.UTC)
 	}
 	return time.Time{}
+}
+
+func taskMutationItemFromArgs(args map[string]interface{}, id, listID, title string) providerdata.TaskItem {
+	notes := strings.TrimSpace(strArg(args, "notes"))
+	description := strings.TrimSpace(strArg(args, "description"))
+	if description == "" {
+		description = notes
+	}
+	item := providerdata.TaskItem{
+		ID:          strings.TrimSpace(id),
+		ListID:      strings.TrimSpace(listID),
+		Title:       strings.TrimSpace(title),
+		Notes:       notes,
+		Description: description,
+		SectionID:   strings.TrimSpace(strArg(args, "section_id")),
+		ParentID:    strings.TrimSpace(strArg(args, "parent_id")),
+		Labels:      stringListArg(args, "labels"),
+		AssigneeID:  strings.TrimSpace(strArg(args, "assignee_id")),
+		Priority:    strings.TrimSpace(strArg(args, "priority")),
+	}
+	if startAt, ok := parseOptionalTaskTime(args, "start_at", "follow_up_at"); ok {
+		item.StartAt = &startAt
+	}
+	if due, ok := parseOptionalTaskTime(args, "due", "deadline"); ok {
+		item.Due = &due
+	}
+	return item
+}
+
+func parseOptionalTaskTime(args map[string]interface{}, keys ...string) (time.Time, bool) {
+	for _, key := range keys {
+		if raw := strings.TrimSpace(strArg(args, key)); raw != "" {
+			return parseRFC3339OrDate(raw), true
+		}
+	}
+	return time.Time{}, false
 }

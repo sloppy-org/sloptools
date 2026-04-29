@@ -154,6 +154,13 @@ func TestTodoistProviderListsAndReadsMetadata(t *testing.T) {
 	if len(items[0].Labels) != 1 || items[0].Labels[0] != "waiting" || items[0].ProjectID != "proj-1" {
 		t.Fatalf("item metadata = %+v", items[0])
 	}
+	again, err := provider.ListTasks(context.Background(), "proj-1")
+	if err != nil {
+		t.Fatalf("ListTasks() second call error: %v", err)
+	}
+	if len(again) != 1 || again[0].ID != items[0].ID || again[0].ProviderRef != items[0].ProviderRef {
+		t.Fatalf("second list changed stable identity: first=%+v second=%+v", items, again)
+	}
 
 	detail, err := provider.GetTask(context.Background(), "proj-1", "task-1")
 	if err != nil {

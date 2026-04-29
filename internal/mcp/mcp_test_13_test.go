@@ -417,6 +417,36 @@ func TestTaskListListPicksFirstEnabledAccountForSphere(t *testing.T) {
 	}
 }
 
+func TestTaskListListKeepsTodoistWorkScoped(t *testing.T) {
+	s, st, _ := newDomainServerForTest(t)
+	work, err := st.CreateExternalAccount(store.SphereWork, store.ExternalProviderTodoist, "Work Todoist", map[string]any{})
+	if err != nil {
+		t.Fatalf("CreateExternalAccount(work): %v", err)
+	}
+	private, err := st.CreateExternalAccount(store.SpherePrivate, store.ExternalProviderTodoist, "Private Todoist", map[string]any{})
+	if err != nil {
+		t.Fatalf("CreateExternalAccount(private): %v", err)
+	}
+	workProvider := &fakeTasksProvider{name: "todoist", taskLists: []providerdata.TaskList{{ID: "work-proj", Name: "Work"}}}
+	s.newTasksProvider = func(_ context.Context, account store.ExternalAccount) (tasks.Provider, error) {
+		if account.ID == private.ID {
+			return nil, fmt.Errorf("private Todoist selected for work-scoped request")
+		}
+		if account.ID != work.ID {
+			return nil, fmt.Errorf("unexpected account selected: %d", account.ID)
+		}
+		return workProvider, nil
+	}
+
+	got, err := s.callTool("task_list_list", map[string]interface{}{"sphere": "work"})
+	if err != nil {
+		t.Fatalf("task_list_list(sphere=work): %v", err)
+	}
+	if got["account_id"] != work.ID {
+		t.Fatalf("account_id = %v, want %d", got["account_id"], work.ID)
+	}
+}
+
 func TestTaskListListWithoutAnyTasksAccountErrors(t *testing.T) {
 	s, _, _ := newDomainServerForTest(t)
 	if _, err := s.callTool("task_list_list", map[string]interface{}{}); err == nil {
