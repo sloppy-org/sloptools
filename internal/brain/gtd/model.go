@@ -26,6 +26,7 @@ type Commitment struct {
 	Labels         []string        `json:"labels,omitempty" yaml:"labels,omitempty"`
 	SourceBindings []SourceBinding `json:"source_bindings,omitempty" yaml:"source_bindings,omitempty"`
 	LocalOverlay   LocalOverlay    `json:"local_overlay,omitempty" yaml:"local_overlay,omitempty"`
+	Dedup          DedupState      `json:"dedup,omitempty" yaml:"dedup,omitempty"`
 	LegacySources  []string        `json:"legacy_sources,omitempty" yaml:"legacy_sources,omitempty"`
 }
 
@@ -53,6 +54,19 @@ type LocalOverlay struct {
 	Actor     string `json:"actor,omitempty" yaml:"actor,omitempty"`
 	ClosedAt  string `json:"closed_at,omitempty" yaml:"closed_at,omitempty"`
 	ClosedVia string `json:"closed_via,omitempty" yaml:"closed_via,omitempty"`
+}
+
+type DedupState struct {
+	EquivalentTo  string              `json:"equivalent_to,omitempty" yaml:"equivalent_to,omitempty"`
+	NotDuplicates []string            `json:"not_duplicates,omitempty" yaml:"not_duplicates,omitempty"`
+	Deferred      []string            `json:"deferred,omitempty" yaml:"deferred,omitempty"`
+	MergeHistory  []DedupHistoryEntry `json:"merge_history,omitempty" yaml:"merge_history,omitempty"`
+}
+
+type DedupHistoryEntry struct {
+	ID         string   `json:"id,omitempty" yaml:"id,omitempty"`
+	MergedFrom []string `json:"merged_from,omitempty" yaml:"merged_from,omitempty"`
+	DecidedAt  string   `json:"decided_at,omitempty" yaml:"decided_at,omitempty"`
 }
 
 func ParseCommitmentMarkdown(src string) (*Commitment, *brain.MarkdownNote, []brain.MarkdownDiagnostic) {
@@ -104,6 +118,7 @@ func ParseCommitmentMarkdown(src string) (*Commitment, *brain.MarkdownNote, []br
 	commitment.Labels = stringSliceField(note, "labels")
 	commitment.SourceBindings, diags = appendBindingDiagnostics(diags, note)
 	commitment.LocalOverlay, diags = appendOverlayDiagnostics(diags, note)
+	commitment.Dedup, diags = appendDedupDiagnostics(diags, note)
 	commitment.LegacySources = stringSliceField(note, "source_refs")
 	if len(commitment.SourceBindings) == 0 {
 		commitment.SourceBindings = bindingsFromLegacyRefs(commitment.LegacySources)
@@ -120,6 +135,11 @@ func ApplyCommitment(note *brain.MarkdownNote, commitment Commitment) error {
 	}
 	if !commitment.LocalOverlay.Empty() {
 		if err := note.SetFrontMatterField("local_overlay", commitment.LocalOverlay); err != nil {
+			return err
+		}
+	}
+	if !commitment.Dedup.Empty() {
+		if err := note.SetFrontMatterField("dedup", commitment.Dedup); err != nil {
 			return err
 		}
 	}
@@ -155,6 +175,10 @@ func (o LocalOverlay) Empty() bool {
 	return o.Status == "" && o.FollowUp == "" && o.Due == "" && o.Actor == "" && o.ClosedAt == "" && o.ClosedVia == ""
 }
 
+func (d DedupState) Empty() bool {
+	return d.EquivalentTo == "" && len(d.NotDuplicates) == 0 && len(d.Deferred) == 0 && len(d.MergeHistory) == 0
+}
+
 func appendBindingDiagnostics(diags []brain.MarkdownDiagnostic, note *brain.MarkdownNote) ([]SourceBinding, []brain.MarkdownDiagnostic) {
 	node, ok := note.FrontMatterField("source_bindings")
 	if !ok {
@@ -181,6 +205,21 @@ func appendOverlayDiagnostics(diags []brain.MarkdownDiagnostic, note *brain.Mark
 		return LocalOverlay{}, append(diags, brain.MarkdownDiagnostic{Message: "invalid local_overlay: " + err.Error()})
 	}
 	return overlay, diags
+}
+
+func appendDedupDiagnostics(diags []brain.MarkdownDiagnostic, note *brain.MarkdownNote) (DedupState, []brain.MarkdownDiagnostic) {
+	node, ok := note.FrontMatterField("dedup")
+	if !ok {
+		return DedupState{}, diags
+	}
+	var dedup DedupState
+	if err := node.Decode(&dedup); err != nil {
+		return DedupState{}, append(diags, brain.MarkdownDiagnostic{Message: "invalid dedup: " + err.Error()})
+	}
+	dedup.EquivalentTo = strings.TrimSpace(dedup.EquivalentTo)
+	dedup.NotDuplicates = compactStrings(dedup.NotDuplicates)
+	dedup.Deferred = compactStrings(dedup.Deferred)
+	return dedup, diags
 }
 
 func stringSliceField(note *brain.MarkdownNote, name string) []string {
@@ -229,4 +268,17 @@ func splitLegacyRef(raw string) (string, string) {
 
 func normalizeBindingPart(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
+}
+
+func compactStrings(values []string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		clean := strings.TrimSpace(value)
+		if clean != "" && !seen[clean] {
+			seen[clean] = true
+			out = append(out, clean)
+		}
+	}
+	return out
 }

@@ -18,6 +18,12 @@ func (s *Server) dispatchBrain(method string, args map[string]interface{}) (map[
 		return s.brainVaultValidate(args)
 	case "brain.links.resolve":
 		return s.brainLinksResolve(args)
+	case "brain.gtd.dedup_scan":
+		return s.brainGTDDedupScan(args)
+	case "brain.gtd.dedup_review_apply":
+		return s.brainGTDDedupReviewApply(args)
+	case "brain.gtd.dedup_history":
+		return s.brainGTDDedupHistory(args)
 	case "brain_search":
 		return s.brainSearch(args)
 	case "brain_backlinks":
