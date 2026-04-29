@@ -69,6 +69,60 @@ Free prose.
 	}
 }
 
+func TestBrainNoteParseToolSupportsPrivateSphere(t *testing.T) {
+	tmp := t.TempDir()
+	configPath := writeMCPBrainConfig(t, tmp)
+	notePath := filepath.Join("brain", "folders", "private-project.md")
+	writeMCPBrainFile(t, filepath.Join(tmp, "private", notePath), `---
+kind: folder
+vault: dropbox
+sphere: private
+source_folder: project
+status: stale
+projects: []
+people: []
+institutions: []
+topics: []
+---
+# project
+
+## Summary
+Summary.
+
+## Key Facts
+- Source folder: project
+
+## Important Files
+- None.
+
+## Related Folders
+- None.
+
+## Related Notes
+- None.
+
+## Notes
+Free prose.
+
+## Open Questions
+- None.
+`)
+
+	s := NewServer(t.TempDir())
+	got, err := s.callTool("brain.note.parse", map[string]interface{}{
+		"config_path": configPath,
+		"sphere":      "private",
+		"path":        notePath,
+	})
+	if err != nil {
+		t.Fatalf("brain.note.parse: %v", err)
+	}
+	source := got["source"].(brain.ResolvedPath)
+	if source.Sphere != "private" || source.Rel != notePath {
+		t.Fatalf("source = %#v, want private %q", source, notePath)
+	}
+}
+
 func TestBrainNoteValidateToolReportsDiagnostics(t *testing.T) {
 	tmp := t.TempDir()
 	configPath := writeMCPBrainConfig(t, tmp)
@@ -125,6 +179,30 @@ func TestBrainLinksResolveToolRejectsGuardrail(t *testing.T) {
 	}
 	if got := brain.KindOf(err); got != brain.ErrorExcludedPath {
 		t.Fatalf("KindOf(err) = %q, want excluded_path; err=%v", got, err)
+	}
+}
+
+func TestBrainLinksResolveToolResolvesValidRelativeLink(t *testing.T) {
+	tmp := t.TempDir()
+	configPath := writeMCPBrainConfig(t, tmp)
+	sourcePath := filepath.Join("brain", "projects", "alpha.md")
+	targetPath := filepath.Join("brain", "people", "ada.md")
+	writeMCPBrainFile(t, filepath.Join(tmp, "work", sourcePath), "[Ada](../people/ada.md)\n")
+	writeMCPBrainFile(t, filepath.Join(tmp, "work", targetPath), "# Ada\n")
+
+	s := NewServer(t.TempDir())
+	got, err := s.callTool("brain.links.resolve", map[string]interface{}{
+		"config_path": configPath,
+		"sphere":      "work",
+		"path":        sourcePath,
+		"link":        "../people/ada.md",
+	})
+	if err != nil {
+		t.Fatalf("brain.links.resolve: %v", err)
+	}
+	resolved := got["resolved"].(brain.ResolvedPath)
+	if resolved.Rel != targetPath {
+		t.Fatalf("resolved rel = %q, want %q", resolved.Rel, targetPath)
 	}
 }
 

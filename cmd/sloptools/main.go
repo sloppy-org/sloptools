@@ -67,7 +67,7 @@ func run(args []string) int {
 func printHelp() {
 	fmt.Println("sloptools <command> [flags]")
 	fmt.Println("commands: bootstrap server mcp-server brain mail external-account tools version")
-	fmt.Println("brain subcommands: search backlinks gtd folder glossary attention links")
+	fmt.Println("brain subcommands: search backlinks gtd folder glossary attention links vault")
 	fmt.Println("mail subcommands: send reply")
 	fmt.Println("external-account subcommands: list add update remove")
 	fmt.Println("tools subcommands: list call")

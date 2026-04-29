@@ -124,6 +124,59 @@ Send the reply.
 	}
 }
 
+func TestBrainGTDValidateCLISupportsPrivateSphere(t *testing.T) {
+	tmp := t.TempDir()
+	configPath := writeBrainCLIConfig(t, tmp)
+	notePath := filepath.Join("brain", "gtd", "private-task.md")
+	writeBrainCLIFile(t, filepath.Join(tmp, "private", notePath), `---
+kind: commitment
+sphere: private
+title: Repair shelf
+status: next
+next_action: Call carpenter
+context: home
+source_refs:
+  - manual:home
+---
+# Repair shelf
+
+## Summary
+Call carpenter.
+
+## Next Action
+- [ ] Call carpenter.
+
+## Evidence
+- manual:home
+
+## Linked Items
+- None.
+
+## Review Notes
+- None.
+`)
+
+	stdout, stderr, code := captureRun(t, []string{
+		"brain", "gtd", "validate",
+		"--config", configPath,
+		"--sphere", "private",
+		"--path", notePath,
+	})
+	if code != 0 {
+		t.Fatalf("exit code = %d, stderr=%q", code, stderr)
+	}
+	var got map[string]interface{}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("decode stdout: %v\n%s", err, stdout)
+	}
+	if got["source"].(map[string]interface{})["sphere"] != "private" {
+		t.Fatalf("source = %v, stdout=%s", got["source"], stdout)
+	}
+	if got["commitment"].(map[string]interface{})["sphere"] != "private" {
+		t.Fatalf("commitment = %v, stdout=%s", got["commitment"], stdout)
+	}
+}
+
 func TestBrainAttentionValidateCLIAcceptsAttentionKind(t *testing.T) {
 	tmp := t.TempDir()
 	configPath := writeBrainCLIConfig(t, tmp)
@@ -219,6 +272,33 @@ func TestBrainLinksResolveCLIRejectsPersonalGuardrail(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "excluded_path") {
 		t.Fatalf("stderr missing guardrail rejection: %q", stderr)
+	}
+}
+
+func TestBrainLinksResolveCLIResolvesValidRelativeLink(t *testing.T) {
+	tmp := t.TempDir()
+	configPath := writeBrainCLIConfig(t, tmp)
+	source := filepath.Join("brain", "projects", "alpha.md")
+	target := filepath.Join("brain", "people", "ada.md")
+	writeBrainCLIFile(t, filepath.Join(tmp, "work", source), "[Ada](../people/ada.md)\n")
+	writeBrainCLIFile(t, filepath.Join(tmp, "work", target), "# Ada\n")
+
+	stdout, stderr, code := captureRun(t, []string{
+		"brain", "links", "resolve",
+		"--config", configPath,
+		"--sphere", "work",
+		"--path", source,
+		"--link", "../people/ada.md",
+	})
+	if code != 0 {
+		t.Fatalf("exit code = %d, stderr=%q", code, stderr)
+	}
+	var got map[string]interface{}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("decode stdout: %v\n%s", err, stdout)
+	}
+	if got["resolved"].(map[string]interface{})["rel"] != target {
+		t.Fatalf("resolved = %v, stdout=%s", got["resolved"], stdout)
 	}
 }
 
