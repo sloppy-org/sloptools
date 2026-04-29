@@ -47,6 +47,10 @@ func (s *Server) brainGTDSync(args map[string]interface{}) (map[string]interface
 	if err != nil {
 		return nil, err
 	}
+	sources, err := loadGTDSources(strArg(args, "sources_config"))
+	if err != nil {
+		return nil, err
+	}
 	periodic := boolArg(args, "periodic")
 	dryRun := boolArg(args, "dry_run")
 	var actions []gtdSyncAction
@@ -55,7 +59,7 @@ func (s *Server) brainGTDSync(args map[string]interface{}) (map[string]interface
 	reconciled, skipped := 0, 0
 	for _, note := range notes {
 		for _, binding := range note.Entry.Commitment.SourceBindings {
-			if !binding.Writeable {
+			if !sources.writeable(note, binding) {
 				skipped++
 				continue
 			}
@@ -102,6 +106,54 @@ func (s *Server) brainGTDSync(args map[string]interface{}) (map[string]interface
 		"skipped":    skipped,
 		"errors":     syncErrs,
 		"actions":    actions,
+	}, nil
+}
+
+func (s *Server) brainGTDSetStatus(args map[string]interface{}) (map[string]interface{}, error) {
+	if strings.TrimSpace(strArg(args, "path")) == "" && strings.TrimSpace(strArg(args, "commitment_id")) == "" {
+		return nil, errors.New("path or commitment_id is required")
+	}
+	notes, err := s.loadSyncNotes(args)
+	if err != nil {
+		return nil, err
+	}
+	status := strings.TrimSpace(strArg(args, "status"))
+	if status == "" {
+		return nil, errors.New("status is required")
+	}
+	note := notes[0]
+	commitment := note.Entry.Commitment
+	commitment.LocalOverlay.Status = status
+	if closedStatus(status) {
+		if commitment.LocalOverlay.ClosedAt == "" {
+			commitment.LocalOverlay.ClosedAt = strings.TrimSpace(strArg(args, "closed_at"))
+		}
+		if commitment.LocalOverlay.ClosedAt == "" {
+			commitment.LocalOverlay.ClosedAt = time.Now().UTC().Format(time.RFC3339)
+		}
+		closedVia := strings.TrimSpace(strArg(args, "closed_via"))
+		if closedVia == "" {
+			closedVia = "brain.gtd.set_status"
+		}
+		commitment.LocalOverlay.ClosedVia = closedVia
+	}
+	note.Entry.Commitment = commitment
+	if err := writeDedupNotes(note); err != nil {
+		return nil, err
+	}
+	syncArgs := copyArgs(args)
+	syncArgs["path"] = note.Entry.Path
+	syncArgs["commitment_id"] = note.Entry.Path
+	syncResult, syncErr := s.brainGTDSync(syncArgs)
+	if syncErr != nil {
+		return nil, syncErr
+	}
+	return map[string]interface{}{
+		"sphere":        strArg(args, "sphere"),
+		"path":          note.Entry.Path,
+		"status":        status,
+		"local_overlay": commitment.LocalOverlay,
+		"sync":          syncResult,
 	}, nil
 }
 
@@ -190,6 +242,10 @@ func (s *Server) readBindingState(note dedupNote, binding braingtd.SourceBinding
 		return s.readMailBindingState(note, binding)
 	case "todoist":
 		return s.readTodoistBindingState(note, binding)
+	case "github":
+		return readGitHubBindingState(binding)
+	case "gitlab":
+		return readGitLabBindingState(binding)
 	default:
 		return gtdSyncState{}, fmt.Errorf("periodic read is not implemented for provider %q", binding.Provider)
 	}
