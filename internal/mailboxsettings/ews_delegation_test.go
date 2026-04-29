@@ -40,7 +40,7 @@ const delegateResponseXML = `<?xml version="1.0" encoding="utf-8"?>
 
 func TestEWSProviderListDelegatesMapsPermissions(t *testing.T) {
 	var requestBody string
-	provider, cleanup := newFakeEWSProvider(t, "albert@tugraz.at", func(w http.ResponseWriter, r *http.Request) {
+	provider, cleanup := newFakeEWSProvider(t, "ada@example.com", func(w http.ResponseWriter, r *http.Request) {
 		data, _ := io.ReadAll(r.Body)
 		requestBody = string(data)
 		w.Header().Set("Content-Type", "text/xml; charset=utf-8")
@@ -70,7 +70,7 @@ func TestEWSProviderListDelegatesMapsPermissions(t *testing.T) {
 			t.Fatalf("got[0].Permissions[%d] = %q, want %q", i, got[0].Permissions[i], wantPerms[i])
 		}
 	}
-	if !strings.Contains(requestBody, `<t:EmailAddress>albert@tugraz.at</t:EmailAddress>`) {
+	if !strings.Contains(requestBody, `<t:EmailAddress>ada@example.com</t:EmailAddress>`) {
 		t.Fatalf("request body missing mailbox address:\n%s", requestBody)
 	}
 }

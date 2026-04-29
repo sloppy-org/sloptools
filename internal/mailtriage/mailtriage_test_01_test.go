@@ -120,11 +120,11 @@ func TestEngineAutoApplyTrashWhenConfident(t *testing.T) {
 }
 
 func TestBuildTrainingReportFindsDeterministicMachineRulesAndInconsistency(t *testing.T) {
-	report := BuildTrainingReport([]ReviewedExample{{Sender: "Qodo <community@qodo.ai>", Subject: "News 1", Folder: "Posteingang", Action: "trash"}, {Sender: "Qodo <community@qodo.ai>", Subject: "News 2", Folder: "Posteingang", Action: "trash"}, {Sender: "Qodo <community@qodo.ai>", Subject: "News 3", Folder: "Posteingang", Action: "trash"}, {Sender: "Qodo <community@qodo.ai>", Subject: "News 4", Folder: "Posteingang", Action: "trash"}, {Sender: "Alice <alice@example.com>", Subject: "Action 1", Folder: "Posteingang", Action: "inbox"}, {Sender: "Alice <alice@example.com>", Subject: "FYI 1", Folder: "Posteingang", Action: "cc"}, {Sender: "Alice <alice@example.com>", Subject: "FYI 2", Folder: "Posteingang", Action: "cc"}, {Sender: "Alice <alice@example.com>", Subject: "Action 2", Folder: "Posteingang", Action: "inbox"}})
+	report := BuildTrainingReport([]ReviewedExample{{Sender: "Newsletter <newsletter@example.com>", Subject: "News 1", Folder: "Posteingang", Action: "trash"}, {Sender: "Newsletter <newsletter@example.com>", Subject: "News 2", Folder: "Posteingang", Action: "trash"}, {Sender: "Newsletter <newsletter@example.com>", Subject: "News 3", Folder: "Posteingang", Action: "trash"}, {Sender: "Newsletter <newsletter@example.com>", Subject: "News 4", Folder: "Posteingang", Action: "trash"}, {Sender: "Alice <alice@example.com>", Subject: "Action 1", Folder: "Posteingang", Action: "inbox"}, {Sender: "Alice <alice@example.com>", Subject: "FYI 1", Folder: "Posteingang", Action: "cc"}, {Sender: "Alice <alice@example.com>", Subject: "FYI 2", Folder: "Posteingang", Action: "cc"}, {Sender: "Alice <alice@example.com>", Subject: "Action 2", Folder: "Posteingang", Action: "inbox"}})
 	if len(report.DeterministicRules) == 0 {
 		t.Fatal("DeterministicRules is empty")
 	}
-	if report.DeterministicRules[0].Key != "community@qodo.ai" || report.DeterministicRules[0].Action != ActionTrash {
+	if report.DeterministicRules[0].Key != "newsletter@example.com" || report.DeterministicRules[0].Action != ActionTrash {
 		t.Fatalf("first deterministic rule = %+v", report.DeterministicRules[0])
 	}
 	if len(report.InconsistentPatterns) == 0 || report.InconsistentPatterns[0].Key != "alice@example.com" {
@@ -133,9 +133,9 @@ func TestBuildTrainingReportFindsDeterministicMachineRulesAndInconsistency(t *te
 }
 
 func TestHybridClassifierUsesDeterministicRuleWithoutSemantic(t *testing.T) {
-	training := DistillReviewedExamples([]ReviewedExample{{Sender: "Qodo <community@qodo.ai>", Subject: "News 1", Folder: "Posteingang", Action: "trash"}, {Sender: "Qodo <community@qodo.ai>", Subject: "News 2", Folder: "Posteingang", Action: "trash"}, {Sender: "Qodo <community@qodo.ai>", Subject: "News 3", Folder: "Posteingang", Action: "trash"}, {Sender: "Qodo <community@qodo.ai>", Subject: "News 4", Folder: "Posteingang", Action: "trash"}})
+	training := DistillReviewedExamples([]ReviewedExample{{Sender: "Newsletter <newsletter@example.com>", Subject: "News 1", Folder: "Posteingang", Action: "trash"}, {Sender: "Newsletter <newsletter@example.com>", Subject: "News 2", Folder: "Posteingang", Action: "trash"}, {Sender: "Newsletter <newsletter@example.com>", Subject: "News 3", Folder: "Posteingang", Action: "trash"}, {Sender: "Newsletter <newsletter@example.com>", Subject: "News 4", Folder: "Posteingang", Action: "trash"}})
 	classifier := HybridClassifier{Training: training.Model}
-	decision, err := classifier.Classify(context.Background(), Message{ID: "m1", Sender: "community@qodo.ai", Subject: "Another update", Snippet: "New benchmark", ReceivedAt: time.Now()})
+	decision, err := classifier.Classify(context.Background(), Message{ID: "m1", Sender: "newsletter@example.com", Subject: "Another update", Snippet: "New benchmark", ReceivedAt: time.Now()})
 	if err != nil {
 		t.Fatalf("Classify() error: %v", err)
 	}

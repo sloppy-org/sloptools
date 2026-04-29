@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	defaultEndpoint      = "https://exchange.tugraz.at/EWS/Exchange.asmx"
+	defaultEndpoint      = "https://exchange.example.com/EWS/Exchange.asmx"
 	defaultServerVersion = "Exchange2013"
 	defaultBatchSize     = 50
 	folderCacheTTL       = time.Minute

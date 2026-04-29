@@ -83,7 +83,7 @@ func TestClientGetDelegateParsesDelegateUsers(t *testing.T) {
 	}
 	defer client.Close()
 
-	got, err := client.GetDelegate(t.Context(), "albert@tugraz.at")
+	got, err := client.GetDelegate(t.Context(), "ada@example.com")
 	if err != nil {
 		t.Fatalf("GetDelegate() error: %v", err)
 	}
@@ -119,7 +119,7 @@ func TestClientGetDelegateParsesDelegateUsers(t *testing.T) {
 	}
 	for _, snippet := range []string{
 		`<m:GetDelegate IncludePermissions="true">`,
-		`<m:Mailbox><t:EmailAddress>albert@tugraz.at</t:EmailAddress></m:Mailbox>`,
+		`<m:Mailbox><t:EmailAddress>ada@example.com</t:EmailAddress></m:Mailbox>`,
 	} {
 		if !strings.Contains(body, snippet) {
 			t.Fatalf("request body missing %q:\n%s", snippet, body)
@@ -181,7 +181,7 @@ func TestClientGetDelegateSkipsFailedDelegateMessages(t *testing.T) {
 	}
 	defer client.Close()
 
-	got, err := client.GetDelegate(t.Context(), "albert@tugraz.at")
+	got, err := client.GetDelegate(t.Context(), "ada@example.com")
 	if err != nil {
 		t.Fatalf("GetDelegate() error: %v", err)
 	}
@@ -214,7 +214,7 @@ func TestClientGetDelegateSurfacesTopLevelError(t *testing.T) {
 	}
 	defer client.Close()
 
-	_, err = client.GetDelegate(t.Context(), "albert@tugraz.at")
+	_, err = client.GetDelegate(t.Context(), "ada@example.com")
 	if err == nil {
 		t.Fatal("GetDelegate() error = nil, want access-denied")
 	}

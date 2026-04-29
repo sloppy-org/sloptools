@@ -181,8 +181,8 @@ func TestContactListRoutesByAccountID(t *testing.T) {
 	workProvider := &fakeContactsProvider{
 		name: "exchange_ews_contacts",
 		listed: []providerdata.Contact{
-			{ProviderRef: "ews:1", Name: "Bob", Email: "bob@tugraz.at"},
-			{ProviderRef: "ews:2", Name: "Alice", Email: "alice@tugraz.at"},
+			{ProviderRef: "ews:1", Name: "Bob", Email: "bob@example.com"},
+			{ProviderRef: "ews:2", Name: "Alice", Email: "alice@example.com"},
 		},
 	}
 	privateProvider := &fakeContactsProvider{name: "google_contacts", listed: []providerdata.Contact{{ProviderRef: "people/c1", Name: "Friend"}}}

@@ -27,6 +27,9 @@ jobs:
           fi
           test -z "$offenders"
 
+      - name: forbidden tokens
+        run: ./scripts/check-forbidden-tokens.sh
+
       - name: go vet
         run: go vet ./...
 

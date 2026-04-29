@@ -81,7 +81,7 @@ const oofSetSuccessResponse = `<?xml version="1.0" encoding="utf-8"?>
 
 func TestEWSProviderGetOOFMapsScheduledResponse(t *testing.T) {
 	var requestBody string
-	provider, cleanup := newFakeEWSProvider(t, "albert@tugraz.at", func(w http.ResponseWriter, r *http.Request) {
+	provider, cleanup := newFakeEWSProvider(t, "ada@example.com", func(w http.ResponseWriter, r *http.Request) {
 		data, _ := io.ReadAll(r.Body)
 		requestBody = string(data)
 		w.Header().Set("Content-Type", "text/xml; charset=utf-8")
@@ -113,7 +113,7 @@ func TestEWSProviderGetOOFMapsScheduledResponse(t *testing.T) {
 	if got.EndAt == nil || !got.EndAt.Equal(wantEnd) {
 		t.Fatalf("EndAt = %v, want %v", got.EndAt, wantEnd)
 	}
-	if !strings.Contains(requestBody, "<t:Address>albert@tugraz.at</t:Address>") {
+	if !strings.Contains(requestBody, "<t:Address>ada@example.com</t:Address>") {
 		t.Fatalf("request body missing mailbox address:\n%s", requestBody)
 	}
 }
@@ -142,7 +142,7 @@ func TestEWSProviderGetOOFMapsDisabledResponse(t *testing.T) {
 
 func TestEWSProviderSetOOFEnabledBuildsRequest(t *testing.T) {
 	var body string
-	provider, cleanup := newFakeEWSProvider(t, "albert@tugraz.at", func(w http.ResponseWriter, r *http.Request) {
+	provider, cleanup := newFakeEWSProvider(t, "ada@example.com", func(w http.ResponseWriter, r *http.Request) {
 		data, _ := io.ReadAll(r.Body)
 		body = string(data)
 		w.Header().Set("Content-Type", "text/xml; charset=utf-8")
@@ -161,7 +161,7 @@ func TestEWSProviderSetOOFEnabledBuildsRequest(t *testing.T) {
 	}
 	for _, snippet := range []string{
 		`<m:SetUserOofSettingsRequest>`,
-		`<t:Address>albert@tugraz.at</t:Address>`,
+		`<t:Address>ada@example.com</t:Address>`,
 		`<t:OofState>Enabled</t:OofState>`,
 		`<t:ExternalAudience>All</t:ExternalAudience>`,
 		`<t:InternalReply><t:Message>Out today</t:Message></t:InternalReply>`,
@@ -178,7 +178,7 @@ func TestEWSProviderSetOOFEnabledBuildsRequest(t *testing.T) {
 
 func TestEWSProviderSetOOFScheduledEmitsDuration(t *testing.T) {
 	var body string
-	provider, cleanup := newFakeEWSProvider(t, "albert@tugraz.at", func(w http.ResponseWriter, r *http.Request) {
+	provider, cleanup := newFakeEWSProvider(t, "ada@example.com", func(w http.ResponseWriter, r *http.Request) {
 		data, _ := io.ReadAll(r.Body)
 		body = string(data)
 		w.Header().Set("Content-Type", "text/xml; charset=utf-8")

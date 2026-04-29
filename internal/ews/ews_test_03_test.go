@@ -120,7 +120,7 @@ func TestClientGetUserOofSettingsParsesScheduledResponse(t *testing.T) {
 	}
 	defer client.Close()
 
-	got, err := client.GetUserOofSettings(t.Context(), "albert@tugraz.at")
+	got, err := client.GetUserOofSettings(t.Context(), "ada@example.com")
 	if err != nil {
 		t.Fatalf("GetUserOofSettings() error: %v", err)
 	}
@@ -238,7 +238,7 @@ func TestClientSetUserOofSettingsBuildsScheduledRequest(t *testing.T) {
 		InternalReply:    "Out at conference & offline.",
 		ExternalReply:    "External: please email back next week.",
 	}
-	if err := client.SetUserOofSettings(t.Context(), "albert@tugraz.at", settings); err != nil {
+	if err := client.SetUserOofSettings(t.Context(), "ada@example.com", settings); err != nil {
 		t.Fatalf("SetUserOofSettings() error: %v", err)
 	}
 	if !strings.Contains(soapAction, "SetUserOofSettings") {
@@ -246,7 +246,7 @@ func TestClientSetUserOofSettingsBuildsScheduledRequest(t *testing.T) {
 	}
 	for _, snippet := range []string{
 		`<m:SetUserOofSettingsRequest>`,
-		`<t:Mailbox><t:Address>albert@tugraz.at</t:Address></t:Mailbox>`,
+		`<t:Mailbox><t:Address>ada@example.com</t:Address></t:Mailbox>`,
 		`<t:UserOofSettings>`,
 		`<t:OofState>Scheduled</t:OofState>`,
 		`<t:ExternalAudience>All</t:ExternalAudience>`,

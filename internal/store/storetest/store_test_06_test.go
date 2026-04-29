@@ -17,7 +17,7 @@ var _ *Store
 
 func TestExternalBindingStoreListsMissingContainerRef(t *testing.T) {
 	s := newTestStore(t)
-	account, err := s.CreateExternalAccount(SphereWork, ExternalProviderExchangeEWS, "TU Graz", map[string]any{"endpoint": "https://exchange.tugraz.at/EWS/Exchange.asmx", "username": "ert"})
+	account, err := s.CreateExternalAccount(SphereWork, ExternalProviderExchangeEWS, "Work Exchange", map[string]any{"endpoint": "https://exchange.example.com/EWS/Exchange.asmx", "username": "alice@example.com"})
 	if err != nil {
 		t.Fatalf("CreateExternalAccount() error: %v", err)
 	}
@@ -51,7 +51,7 @@ func TestExternalBindingStoreListsMissingContainerRef(t *testing.T) {
 
 func TestApplyExternalBindingReconcileUpdatesRewritesRemoteIDAndState(t *testing.T) {
 	s := newTestStore(t)
-	account, err := s.CreateExternalAccount(SphereWork, ExternalProviderExchangeEWS, "TU Graz", map[string]any{"endpoint": "https://exchange.tugraz.at/EWS/Exchange.asmx", "username": "ert"})
+	account, err := s.CreateExternalAccount(SphereWork, ExternalProviderExchangeEWS, "Work Exchange", map[string]any{"endpoint": "https://exchange.example.com/EWS/Exchange.asmx", "username": "alice@example.com"})
 	if err != nil {
 		t.Fatalf("CreateExternalAccount() error: %v", err)
 	}

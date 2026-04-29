@@ -1,6 +1,6 @@
 # sloptools
 
-Core MCP server for the [sloppy.at](https://sloppy.at) product family.
+Core MCP server for the sloptools product family.
 
 Provides domain tools for workspace management, items, artifacts, actors,
 email, calendar, handoffs, temporary files, and canvas relay via the
@@ -43,6 +43,16 @@ server name `sloppy`. Override via `SLOPTOOLS_PROJECT_DIR`,
 ## Documentation
 
 - [`docs/groupware.md`](docs/groupware.md) — MCP tool reference and per-backend capability matrix.
+
+## Lint
+
+Run the repo-local forbidden-token scan:
+
+```bash
+./scripts/check-forbidden-tokens.sh
+```
+
+Local extensions are read from `SLOPTOOLS_FORBIDDEN_TOKENS` (newline-separated regex patterns) and, if present, `SLOPTOOLS_FORBIDDEN_TOKENS_FILE` or `~/.config/sloptools/forbidden-tokens.txt`.
 
 ## License
 

@@ -405,7 +405,7 @@ func senderRuleAllowed(sender string) bool {
 	if sender == "" || protectedTopic(Message{Sender: sender, Subject: sender, Snippet: sender}, protectedTopicKeywords) {
 		return false
 	}
-	for _, snippet := range []string{"noreply", "no-reply", "notification", "news@", "newsletter", "mail@", "alerts@", "bot@", "online.tugraz.at", "qodo.ai", "academia-mail.com", "iter.org"} {
+	for _, snippet := range []string{"noreply", "no-reply", "notification", "news@", "newsletter", "mail@", "alerts@", "bot@"} {
 		if strings.Contains(sender, snippet) {
 			return true
 		}
@@ -414,17 +414,6 @@ func senderRuleAllowed(sender string) bool {
 }
 
 func domainRuleAllowed(domain, action string) bool {
-	if domain == "" {
-		return false
-	}
-	if strings.HasSuffix(domain, "tugraz.at") && action == "trash" {
-		return false
-	}
-	for _, snippet := range []string{"academia-mail.com", "qodo.ai", "iter.org"} {
-		if strings.Contains(domain, snippet) {
-			return true
-		}
-	}
 	return false
 }
 

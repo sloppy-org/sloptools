@@ -304,13 +304,13 @@ func (p *fakeDraftMailProvider) SendExistingDraft(_ context.Context, draftID str
 
 func setupComposeFixture(t *testing.T) (*Server, store.ExternalAccount, *fakeDraftMailProvider) {
 	s, st, _ := newDomainServerForTest(t)
-	account, err := st.CreateExternalAccount(store.SphereWork, store.ExternalProviderExchangeEWS, "albert@tugraz.at", map[string]any{})
+	account, err := st.CreateExternalAccount(store.SphereWork, store.ExternalProviderExchangeEWS, "ada@example.com", map[string]any{})
 	if err != nil {
 		t.Fatalf("CreateExternalAccount: %v", err)
 	}
 	body := "Original question\nsecond line"
 	now := time.Date(2026, time.April, 21, 10, 30, 0, 0, time.UTC)
-	provider := &fakeDraftMailProvider{fakeMailProvider: fakeMailProvider{messages: map[string]*providerdata.EmailMessage{"m1": {ID: "m1", ThreadID: "thread-src", InternetMessageID: "<abc@gcc.gnu.org>", Subject: "PR123 issue", Sender: "Jane Dev <jane@gcc.gnu.org>", Recipients: []string{"gcc-patches@gcc.gnu.org", "albert@tugraz.at"}, Date: now, BodyText: &body}}}}
+	provider := &fakeDraftMailProvider{fakeMailProvider: fakeMailProvider{messages: map[string]*providerdata.EmailMessage{"m1": {ID: "m1", ThreadID: "thread-src", InternetMessageID: "<abc@gcc.gnu.org>", Subject: "PR123 issue", Sender: "Jane Dev <jane@gcc.gnu.org>", Recipients: []string{"gcc-patches@gcc.gnu.org", "ada@example.com"}, Date: now, BodyText: &body}}}}
 	s.newEmailProvider = func(context.Context, store.ExternalAccount) (email.EmailProvider, error) {
 		return provider, nil
 	}

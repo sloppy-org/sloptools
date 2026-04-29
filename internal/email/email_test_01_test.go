@@ -77,7 +77,7 @@ func TestNormalizeDraftAddressesDeduplicates(t *testing.T) {
 }
 
 func TestBuildRFC822MessagePlainTextByDefault(t *testing.T) {
-	raw, err := buildRFC822Message(DraftInput{From: "albert@tugraz.at", To: []string{"alice@example.com"}, Subject: "Hello", Body: "first line\nsecond line"})
+	raw, err := buildRFC822Message(DraftInput{From: "ada@example.com", To: []string{"alice@example.com"}, Subject: "Hello", Body: "first line\nsecond line"})
 	if err != nil {
 		t.Fatalf("buildRFC822Message() error: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestBuildRFC822MessagePlainTextByDefault(t *testing.T) {
 
 func TestBuildRFC822MessageWithAttachmentsIsMultipart(t *testing.T) {
 	payload := []byte("PK\x03\x04fake-zip-body")
-	raw, err := buildRFC822Message(DraftInput{From: "albert@tugraz.at", To: []string{"alice@example.com"}, Subject: "Report", Body: "See attached.", Attachments: []DraftAttachment{{Filename: "report.zip", ContentType: "application/zip", Content: payload}, {Filename: "notes.txt", Content: []byte("plain notes")}}})
+	raw, err := buildRFC822Message(DraftInput{From: "ada@example.com", To: []string{"alice@example.com"}, Subject: "Report", Body: "See attached.", Attachments: []DraftAttachment{{Filename: "report.zip", ContentType: "application/zip", Content: payload}, {Filename: "notes.txt", Content: []byte("plain notes")}}})
 	if err != nil {
 		t.Fatalf("buildRFC822Message() error: %v", err)
 	}

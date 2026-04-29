@@ -15,7 +15,7 @@ import (
 
 func TestMailDraftSendUnsupportedProvider(t *testing.T) {
 	s, st, _ := newDomainServerForTest(t)
-	account, err := st.CreateExternalAccount(store.SphereWork, store.ExternalProviderExchangeEWS, "albert@tugraz.at", map[string]any{})
+	account, err := st.CreateExternalAccount(store.SphereWork, store.ExternalProviderExchangeEWS, "ada@example.com", map[string]any{})
 	if err != nil {
 		t.Fatalf("CreateExternalAccount: %v", err)
 	}
