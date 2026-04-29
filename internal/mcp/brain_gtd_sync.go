@@ -182,7 +182,7 @@ func (s *Server) pushClosedBinding(note dedupNote, binding braingtd.SourceBindin
 	if dryRun {
 		return action, nil
 	}
-	switch strings.ToLower(strings.TrimSpace(binding.Provider)) {
+	switch gtdSyncProvider(binding.Provider) {
 	case "manual":
 		return syncAction(note, binding, "manual_noop", false), nil
 	case "meetings":
@@ -201,7 +201,7 @@ func (s *Server) pushClosedBinding(note dedupNote, binding braingtd.SourceBindin
 }
 
 func (s *Server) periodicSyncBinding(note dedupNote, binding braingtd.SourceBinding, dryRun bool) (bool, gtdSyncAction, gtdSyncDrift, error) {
-	if strings.EqualFold(strings.TrimSpace(binding.Provider), "manual") {
+	if gtdSyncProvider(binding.Provider) == "manual" {
 		return false, gtdSyncAction{}, gtdSyncDrift{}, nil
 	}
 	state, err := s.readBindingState(note, binding)
@@ -233,7 +233,7 @@ func (s *Server) periodicSyncBinding(note dedupNote, binding braingtd.SourceBind
 }
 
 func (s *Server) readBindingState(note dedupNote, binding braingtd.SourceBinding) (gtdSyncState, error) {
-	switch strings.ToLower(strings.TrimSpace(binding.Provider)) {
+	switch gtdSyncProvider(binding.Provider) {
 	case "manual":
 		return gtdSyncState{Status: "open"}, nil
 	case "meetings":

@@ -113,6 +113,14 @@ func issueString(value interface{}) string {
 	return strings.TrimSpace(fmt.Sprint(value))
 }
 
+func gtdSyncProvider(provider string) string {
+	clean := strings.ToLower(strings.TrimSpace(provider))
+	if clean == "mail" || emailCapableProvider(clean) {
+		return "mail"
+	}
+	return clean
+}
+
 type issueBindingRef struct {
 	container string
 	kind      string
@@ -272,7 +280,7 @@ func (s gtdSources) writeable(note dedupNote, binding braingtd.SourceBinding) bo
 	ref := strings.TrimSpace(binding.Ref)
 	sphere := strings.ToLower(strings.TrimSpace(string(note.Resolved.Sphere)))
 	for _, rule := range s.rules {
-		if !rule.Writeable || rule.Provider != provider || rule.Ref != ref {
+		if !rule.Writeable || !sourceProviderMatches(rule.Provider, provider) || rule.Ref != ref {
 			continue
 		}
 		if rule.Sphere == "" || rule.Sphere == sphere {
@@ -280,6 +288,12 @@ func (s gtdSources) writeable(note dedupNote, binding braingtd.SourceBinding) bo
 		}
 	}
 	return false
+}
+
+func sourceProviderMatches(ruleProvider, bindingProvider string) bool {
+	rule := strings.ToLower(strings.TrimSpace(ruleProvider))
+	binding := strings.ToLower(strings.TrimSpace(bindingProvider))
+	return rule == binding || (rule == "mail" && gtdSyncProvider(binding) == "mail")
 }
 
 func copyArgs(args map[string]interface{}) map[string]interface{} {

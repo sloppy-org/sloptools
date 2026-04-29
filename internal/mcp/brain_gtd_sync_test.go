@@ -180,7 +180,7 @@ func TestBrainGTDSyncRequiresSourcesConfigWriteableOptIn(t *testing.T) {
 
 func TestBrainGTDSyncPeriodicReadsGitHubAndGitLabBindings(t *testing.T) {
 	s, configPath, sourcesPath, root, _, _ := newGTDSyncFixture(t)
-	writeGTDSyncIssueCommitments(t, root)
+	writeGTDSyncIssueCommitments(t, root, "next", "closed")
 	var calls []string
 	restore := stubGTDSyncCommand(t, func(_ context.Context, name string, args ...string) ([]byte, error) {
 		calls = append(calls, name+" "+strings.Join(args, " "))
@@ -207,6 +207,52 @@ func TestBrainGTDSyncPeriodicReadsGitHubAndGitLabBindings(t *testing.T) {
 		t.Fatalf("drifted = %#v", drifts)
 	}
 	if len(calls) != 2 || !strings.Contains(calls[0], "issue view 7") || !strings.Contains(calls[1], "issue view 8") {
+		t.Fatalf("calls = %#v", calls)
+	}
+}
+
+func TestBrainGTDSyncPushesIssueBindingsAndManualNoop(t *testing.T) {
+	s, configPath, sourcesPath, root, _, _ := newGTDSyncFixture(t)
+	writeGTDSyncIssueCommitments(t, root, "closed", "closed")
+	writeGTDSyncManualCommitment(t, root)
+	var calls []string
+	restore := stubGTDSyncCommand(t, func(_ context.Context, name string, args ...string) ([]byte, error) {
+		calls = append(calls, name+" "+strings.Join(args, " "))
+		return nil, nil
+	})
+	defer restore()
+
+	got, err := s.callTool("brain.gtd.sync", map[string]interface{}{"config_path": configPath, "sources_config": sourcesPath, "sphere": "work"})
+	if err != nil {
+		t.Fatalf("brain.gtd.sync issue push: %v", err)
+	}
+	if got["reconciled"] != 3 {
+		t.Fatalf("reconciled = %#v, want 3: %#v", got["reconciled"], got)
+	}
+	actions := got["actions"].([]gtdSyncAction)
+	if !hasGTDSyncAction(actions, "manual:local-note", "manual_noop") {
+		t.Fatalf("actions missing manual no-op: %#v", actions)
+	}
+	if len(calls) != 2 || calls[0] != "gh issue close 7 -R sloppy-org/sloptools" || calls[1] != "glab issue close 8 -R group/project" {
+		t.Fatalf("calls = %#v", calls)
+	}
+}
+
+func TestGTDSyncClosesGitHubPullsAndGitLabMergeRequests(t *testing.T) {
+	var calls []string
+	restore := stubGTDSyncCommand(t, func(_ context.Context, name string, args ...string) ([]byte, error) {
+		calls = append(calls, name+" "+strings.Join(args, " "))
+		return nil, nil
+	})
+	defer restore()
+
+	if err := closeGitHubBinding(braingtd.SourceBinding{Provider: "github", Ref: "org/repo#12", URL: "https://github.com/org/repo/pull/12"}); err != nil {
+		t.Fatalf("close github pull: %v", err)
+	}
+	if err := closeGitLabBinding(braingtd.SourceBinding{Provider: "gitlab", Ref: "group/project!9"}); err != nil {
+		t.Fatalf("close gitlab merge request: %v", err)
+	}
+	if len(calls) != 2 || calls[0] != "gh pr close 12 -R org/repo" || calls[1] != "glab mr close 9 -R group/project" {
 		t.Fatalf("calls = %#v", calls)
 	}
 }
@@ -289,6 +335,12 @@ sphere = "work"
 provider = "gitlab"
 ref = "group/project#8"
 writeable = true
+
+[[source]]
+sphere = "work"
+provider = "manual"
+ref = "local-note"
+writeable = true
 `
 	writeMCPBrainFile(t, path, body)
 	return path
@@ -313,7 +365,7 @@ source_bindings:
     location:
       path: brain/meetings/standup.md
       anchor: "gtd:alpha"
-  - provider: mail
+  - provider: gmail
     ref: "m1"
     writeable: true
   - provider: todoist
@@ -349,7 +401,7 @@ Body.
 	writeMCPBrainFile(t, filepath.Join(root, "work", "brain", "gtd", "sync.md"), body)
 }
 
-func writeGTDSyncIssueCommitments(t *testing.T, root string) {
+func writeGTDSyncIssueCommitments(t *testing.T, root, githubStatus, gitlabStatus string) {
 	t.Helper()
 	github := `---
 kind: commitment
@@ -360,7 +412,7 @@ source_bindings:
   - provider: github
     ref: "sloppy-org/sloptools#7"
 local_overlay:
-  status: next
+  status: ` + githubStatus + `
 ---
 Body.
 `
@@ -373,12 +425,39 @@ source_bindings:
   - provider: gitlab
     ref: "group/project#8"
 local_overlay:
-  status: closed
+  status: ` + gitlabStatus + `
 ---
 Body.
 `
 	writeMCPBrainFile(t, filepath.Join(root, "work", "brain", "gtd", "github.md"), github)
 	writeMCPBrainFile(t, filepath.Join(root, "work", "brain", "gtd", "gitlab.md"), gitlab)
+}
+
+func writeGTDSyncManualCommitment(t *testing.T, root string) {
+	t.Helper()
+	body := `---
+kind: commitment
+title: Local note
+status: next
+outcome: Local note
+source_bindings:
+  - provider: manual
+    ref: "local-note"
+local_overlay:
+  status: closed
+---
+Body.
+`
+	writeMCPBrainFile(t, filepath.Join(root, "work", "brain", "gtd", "manual.md"), body)
+}
+
+func hasGTDSyncAction(actions []gtdSyncAction, binding, action string) bool {
+	for _, got := range actions {
+		if got.Binding == binding && got.Action == action {
+			return true
+		}
+	}
+	return false
 }
 
 func stubGTDSyncCommand(t *testing.T, fn func(context.Context, string, ...string) ([]byte, error)) func() {
