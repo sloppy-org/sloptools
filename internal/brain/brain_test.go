@@ -51,6 +51,28 @@ brain = "notes"
 	}
 }
 
+func TestLoadConfigExpandsHomePath(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	workRoot := filepath.Join(home, "work")
+	writeFile(t, filepath.Join(home, "vaults.toml"), `[[vault]]
+sphere = "work"
+root = "`+filepath.ToSlash(workRoot)+`"
+`)
+
+	cfg, err := LoadConfig("~/vaults.toml")
+	if err != nil {
+		t.Fatalf("LoadConfig(~) error: %v", err)
+	}
+	work, ok := cfg.Vault(SphereWork)
+	if !ok {
+		t.Fatal("work vault missing")
+	}
+	if work.Root != workRoot {
+		t.Fatalf("work root = %q, want %q", work.Root, workRoot)
+	}
+}
+
 func TestResolveLinkAcceptsInVaultMarkdownLink(t *testing.T) {
 	cfg := testConfig(t)
 	resolver := cfg.Resolver()

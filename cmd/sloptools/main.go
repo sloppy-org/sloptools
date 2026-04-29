@@ -106,9 +106,15 @@ func cmdBootstrap(args []string) int {
 
 func cmdMCPServer(args []string) int {
 	fs := flag.NewFlagSet("mcp-server", flag.ContinueOnError)
+	stdio := fs.Bool("stdio", true, "use stdio transport")
+	vaultConfig := fs.String("vault-config", "", "default brain vault config path")
 	projectDir := fs.String("project-dir", ".", "project dir")
 	dataDir := fs.String("data-dir", filepath.Join(os.Getenv("HOME"), ".local", "share", "sloppy"), "data dir")
 	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if !*stdio {
+		fmt.Fprintln(os.Stderr, "mcp-server only supports stdio transport")
 		return 2
 	}
 	res, err := protocol.BootstrapProject(*projectDir)
@@ -122,7 +128,7 @@ func cmdMCPServer(args []string) int {
 		return 1
 	}
 	defer st.Close()
-	return mcp.RunStdioWithStore(res.Paths.ProjectDir, st)
+	return mcp.RunStdioWithStoreAndBrainConfig(res.Paths.ProjectDir, st, *vaultConfig)
 }
 
 func cmdServer(args []string) int {

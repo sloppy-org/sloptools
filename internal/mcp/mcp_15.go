@@ -36,7 +36,7 @@ func (s *Server) dispatchBrain(method string, args map[string]interface{}) (map[
 }
 
 func (s *Server) brainSearch(args map[string]interface{}) (map[string]interface{}, error) {
-	cfg, err := brain.LoadConfig(strArg(args, "config_path"))
+	cfg, err := brain.LoadConfig(s.brainConfigArg(args))
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +65,7 @@ func (s *Server) brainSearch(args map[string]interface{}) (map[string]interface{
 }
 
 func (s *Server) brainBacklinks(args map[string]interface{}) (map[string]interface{}, error) {
-	cfg, err := brain.LoadConfig(strArg(args, "config_path"))
+	cfg, err := brain.LoadConfig(s.brainConfigArg(args))
 	if err != nil {
 		return nil, err
 	}

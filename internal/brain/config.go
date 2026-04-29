@@ -47,6 +47,8 @@ func LoadConfig(path string) (*Config, error) {
 			return nil, err
 		}
 		path = defaultPath
+	} else {
+		path = expandHomePath(path)
 	}
 	var cfg Config
 	if _, err := toml.DecodeFile(path, &cfg); err != nil {
@@ -56,6 +58,21 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, err
 	}
 	return &cfg, nil
+}
+
+func expandHomePath(path string) string {
+	clean := strings.TrimSpace(path)
+	if clean != "~" && !strings.HasPrefix(clean, "~/") {
+		return clean
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return clean
+	}
+	if clean == "~" {
+		return home
+	}
+	return filepath.Join(home, strings.TrimPrefix(clean, "~/"))
 }
 
 func NewConfig(vaults []Vault) (*Config, error) {

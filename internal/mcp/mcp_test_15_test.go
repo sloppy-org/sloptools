@@ -24,25 +24,18 @@ institutions: []
 topics: []
 ---
 # project
-
 ## Summary
 Summary.
-
 ## Key Facts
 - Source folder: project
-
 ## Important Files
 - None.
-
 ## Related Folders
 - None.
-
 ## Related Notes
 - None.
-
 ## Notes
 Free prose.
-
 ## Open Questions
 - None.
 `)
@@ -85,6 +78,53 @@ institutions: []
 topics: []
 ---
 # project
+## Summary
+Summary.
+## Key Facts
+- Source folder: project
+## Important Files
+- None.
+## Related Folders
+- None.
+## Related Notes
+- None.
+## Notes
+Free prose.
+## Open Questions
+- None.
+`)
+
+	s := NewServer(t.TempDir())
+	got, err := s.callTool("brain.note.parse", map[string]interface{}{
+		"config_path": configPath,
+		"sphere":      "private",
+		"path":        notePath,
+	})
+	if err != nil {
+		t.Fatalf("brain.note.parse: %v", err)
+	}
+	source := got["source"].(brain.ResolvedPath)
+	if source.Sphere != "private" || source.Rel != notePath {
+		t.Fatalf("source = %#v, want private %q", source, notePath)
+	}
+}
+
+func TestBrainToolsUseServerDefaultVaultConfig(t *testing.T) {
+	tmp := t.TempDir()
+	configPath := writeMCPBrainConfig(t, tmp)
+	notePath := filepath.Join("brain", "folders", "project.md")
+	writeMCPBrainFile(t, filepath.Join(tmp, "work", notePath), `---
+kind: folder
+vault: nextcloud
+sphere: work
+source_folder: project
+status: stale
+projects: []
+people: []
+institutions: []
+topics: []
+---
+# project
 
 ## Summary
 Summary.
@@ -108,18 +148,119 @@ Free prose.
 - None.
 `)
 
-	s := NewServer(t.TempDir())
+	s := NewServerWithStoreAndBrainConfig(t.TempDir(), nil, configPath)
+	got, err := s.callTool("brain.note.parse", map[string]interface{}{
+		"sphere": "work",
+		"path":   notePath,
+	})
+	if err != nil {
+		t.Fatalf("brain.note.parse with server default config: %v", err)
+	}
+	source := got["source"].(brain.ResolvedPath)
+	if source.Rel != notePath {
+		t.Fatalf("source rel = %q, want %q", source.Rel, notePath)
+	}
+}
+
+func TestBrainVaultValidateUsesServerDefaultVaultConfig(t *testing.T) {
+	tmp := t.TempDir()
+	configPath := writeMCPBrainConfig(t, tmp)
+	writeMCPBrainFile(t, filepath.Join(tmp, "work", "brain", "folders", "project.md"), `---
+kind: folder
+vault: nextcloud
+sphere: work
+source_folder: project
+status: stale
+projects: []
+people: []
+institutions: []
+topics: []
+---
+# project
+
+## Summary
+Summary.
+
+## Key Facts
+- Source folder: project
+
+## Important Files
+- None.
+
+## Related Folders
+- None.
+
+## Related Notes
+- None.
+
+## Notes
+Free prose.
+
+## Open Questions
+- None.
+`)
+
+	s := NewServerWithStoreAndBrainConfig(t.TempDir(), nil, configPath)
+	got, err := s.callTool("brain.vault.validate", map[string]interface{}{"sphere": "work"})
+	if err != nil {
+		t.Fatalf("brain.vault.validate with server default config: %v", err)
+	}
+	if got["valid"] != true || got["count"] != 1 {
+		t.Fatalf("vault validation = %#v, want one valid note", got)
+	}
+}
+
+func TestBrainToolsConfigPathOverridesServerDefaultVaultConfig(t *testing.T) {
+	tmp := t.TempDir()
+	configPath := writeMCPBrainConfig(t, tmp)
+	notePath := filepath.Join("brain", "folders", "project.md")
+	writeMCPBrainFile(t, filepath.Join(tmp, "work", notePath), `---
+kind: folder
+vault: nextcloud
+sphere: work
+source_folder: project
+status: stale
+projects: []
+people: []
+institutions: []
+topics: []
+---
+# project
+
+## Summary
+Summary.
+
+## Key Facts
+- Source folder: project
+
+## Important Files
+- None.
+
+## Related Folders
+- None.
+
+## Related Notes
+- None.
+
+## Notes
+Free prose.
+
+## Open Questions
+- None.
+`)
+
+	s := NewServerWithStoreAndBrainConfig(t.TempDir(), nil, filepath.Join(tmp, "missing.toml"))
 	got, err := s.callTool("brain.note.parse", map[string]interface{}{
 		"config_path": configPath,
-		"sphere":      "private",
+		"sphere":      "work",
 		"path":        notePath,
 	})
 	if err != nil {
-		t.Fatalf("brain.note.parse: %v", err)
+		t.Fatalf("brain.note.parse with config_path override: %v", err)
 	}
 	source := got["source"].(brain.ResolvedPath)
-	if source.Sphere != "private" || source.Rel != notePath {
-		t.Fatalf("source = %#v, want private %q", source, notePath)
+	if source.Rel != notePath {
+		t.Fatalf("source rel = %q, want %q", source.Rel, notePath)
 	}
 }
 
