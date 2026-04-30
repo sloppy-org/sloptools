@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -51,20 +52,31 @@ func cmdBrainGTDWrite(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	resolved, body, err := brain.ReadNoteFile(cfg, brain.Sphere(*sphere), *path)
+	resolved, err := brain.ResolveNotePath(cfg, brain.Sphere(*sphere), *path)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	commitment, note, diags := braingtd.ParseCommitmentMarkdown(string(body))
-	if len(diags) != 0 {
-		return printBrainJSON(map[string]interface{}{
-			"source":      resolved,
-			"diagnostics": diags,
-			"count":       len(diags),
-		})
+	body, readErr := os.ReadFile(resolved.Path)
+	updated := braingtd.Commitment{Kind: "commitment", Sphere: *sphere}
+	var note *brain.MarkdownNote
+	var diags []brain.MarkdownDiagnostic
+	if readErr == nil {
+		commitment, parsedNote, parsedDiags := braingtd.ParseCommitmentMarkdown(string(body))
+		if len(parsedDiags) != 0 {
+			return printBrainJSON(map[string]interface{}{
+				"source":      resolved,
+				"diagnostics": parsedDiags,
+				"count":       len(parsedDiags),
+			})
+		}
+		updated = *commitment
+		note = parsedNote
+		diags = parsedDiags
+	} else if !errors.Is(readErr, os.ErrNotExist) {
+		fmt.Fprintln(os.Stderr, readErr)
+		return 1
 	}
-	updated := *commitment
 	if strings.TrimSpace(*title) != "" {
 		updated.Title = strings.TrimSpace(*title)
 	}
@@ -114,20 +126,46 @@ func cmdBrainGTDWrite(args []string) int {
 			URL:      strings.TrimSpace(*bindingURL),
 		}}
 	}
-	if err := writeCommitmentFrontMatter(note, updated); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
+	if readErr == nil {
+		if err := writeCommitmentFrontMatter(note, updated); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		if err := braingtd.ApplyCommitment(note, updated); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		rendered, err := note.Render()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		if err := validateRenderedBrainGTD(rendered); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		if err := os.WriteFile(resolved.Path, []byte(rendered), 0o644); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		return printBrainJSON(map[string]interface{}{
+			"source":      resolved,
+			"commitment":  updated,
+			"diagnostics": diags,
+			"count":       len(diags),
+			"valid":       len(diags) == 0,
+		})
 	}
-	if err := braingtd.ApplyCommitment(note, updated); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
-	}
-	rendered, err := note.Render()
+	rendered, err := braincatalog.BuildGTDCommitmentMarkdown(updated)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
 	if err := validateRenderedBrainGTD(rendered); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	if err := os.MkdirAll(filepath.Dir(resolved.Path), 0o755); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
@@ -138,9 +176,9 @@ func cmdBrainGTDWrite(args []string) int {
 	return printBrainJSON(map[string]interface{}{
 		"source":      resolved,
 		"commitment":  updated,
-		"diagnostics": diags,
-		"count":       len(diags),
-		"valid":       len(diags) == 0,
+		"diagnostics": []brain.MarkdownDiagnostic{},
+		"count":       0,
+		"valid":       true,
 	})
 }
 

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -158,33 +159,70 @@ func (s *Server) brainGTDWrite(args map[string]interface{}) (map[string]interfac
 	if path == "" {
 		return nil, errors.New("path is required")
 	}
-	resolved, data, err := brain.ReadNoteFile(cfg, brain.Sphere(sphere), path)
+	resolved, err := brain.ResolveNotePath(cfg, brain.Sphere(sphere), path)
 	if err != nil {
 		return nil, err
-	}
-	commitment, note, diags := braingtd.ParseCommitmentMarkdown(string(data))
-	if note == nil {
-		return nil, fmt.Errorf("failed to parse GTD note %q", resolved.Rel)
 	}
 	updates := objectArg(args, "commitment")
 	if len(updates) == 0 {
 		updates = noteWriteUpdates(args)
 	}
-	updated, err := overlayCommitment(*commitment, updates)
+	body, readErr := os.ReadFile(resolved.Path)
+	updated := braingtd.Commitment{Kind: "commitment", Sphere: sphere}
+	var note *brain.MarkdownNote
+	var diags []brain.MarkdownDiagnostic
+	if readErr == nil {
+		commitment, parsedNote, parsedDiags := braingtd.ParseCommitmentMarkdown(string(body))
+		if len(parsedDiags) != 0 {
+			return map[string]interface{}{
+				"source":      resolved,
+				"diagnostics": parsedDiags,
+				"count":       len(parsedDiags),
+			}, nil
+		}
+		updated = *commitment
+		note = parsedNote
+		diags = parsedDiags
+	} else if !errors.Is(readErr, os.ErrNotExist) {
+		return nil, readErr
+	}
+	updated, err = overlayCommitment(updated, updates)
 	if err != nil {
 		return nil, err
 	}
-	if err := writeCommitmentFrontMatter(note, updated); err != nil {
-		return nil, err
+	if readErr == nil {
+		if err := writeCommitmentFrontMatter(note, updated); err != nil {
+			return nil, err
+		}
+		if err := braingtd.ApplyCommitment(note, updated); err != nil {
+			return nil, err
+		}
+		rendered, err := note.Render()
+		if err != nil {
+			return nil, err
+		}
+		if err := validateRenderedBrainGTD(rendered); err != nil {
+			return nil, err
+		}
+		if err := os.WriteFile(resolved.Path, []byte(rendered), 0o644); err != nil {
+			return nil, err
+		}
+		return map[string]interface{}{
+			"source":      resolved,
+			"commitment":  updated,
+			"diagnostics": diags,
+			"count":       len(diags),
+			"valid":       len(diags) == 0,
+		}, nil
 	}
-	if err := braingtd.ApplyCommitment(note, updated); err != nil {
-		return nil, err
-	}
-	rendered, err := note.Render()
+	rendered, err := braincatalog.BuildGTDCommitmentMarkdown(updated)
 	if err != nil {
 		return nil, err
 	}
 	if err := validateRenderedBrainGTD(rendered); err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(filepath.Dir(resolved.Path), 0o755); err != nil {
 		return nil, err
 	}
 	if err := os.WriteFile(resolved.Path, []byte(rendered), 0o644); err != nil {
@@ -193,9 +231,9 @@ func (s *Server) brainGTDWrite(args map[string]interface{}) (map[string]interfac
 	return map[string]interface{}{
 		"source":      resolved,
 		"commitment":  updated,
-		"diagnostics": diags,
-		"count":       len(diags),
-		"valid":       len(diags) == 0,
+		"diagnostics": []brain.MarkdownDiagnostic{},
+		"count":       0,
+		"valid":       true,
 	}, nil
 }
 

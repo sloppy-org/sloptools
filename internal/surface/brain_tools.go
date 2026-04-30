@@ -91,10 +91,10 @@ func init() {
 			"source":      {Type: "string", Description: "Optional source filter."},
 			"limit":       {Type: "integer", Description: "Maximum results to return."},
 		}},
-		Tool{Name: "brain.gtd.write", Description: "Round-trip safe update of a GTD commitment note.", Required: []string{"sphere", "path", "commitment"}, Properties: map[string]ToolProperty{
+		Tool{Name: "brain.gtd.write", Description: "Round-trip safe create or update of a GTD commitment note.", Required: []string{"sphere", "path", "commitment"}, Properties: map[string]ToolProperty{
 			"config_path": {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},
 			"sphere":      {Type: "string", Description: "Vault sphere to inspect.", Enum: []string{"work", "private"}},
-			"path":        {Type: "string", Description: "Commitment note path."},
+			"path":        {Type: "string", Description: "Commitment note path to create or update."},
 			"commitment":  {Type: "object", Description: "Commitment field updates. Missing fields preserve their current values."},
 		}},
 		Tool{Name: "brain.gtd.organize", Description: "Generate an organized GTD index note for a vault sphere.", Required: []string{"sphere"}, Properties: map[string]ToolProperty{

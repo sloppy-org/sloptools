@@ -2,6 +2,11 @@ package mcp
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"strings"
+
+	braingtd "github.com/sloppy-org/sloptools/internal/brain/gtd"
 	"github.com/sloppy-org/sloptools/internal/providerdata"
 	"github.com/sloppy-org/sloptools/internal/store"
 	"github.com/sloppy-org/sloptools/internal/tasks"
@@ -366,5 +371,45 @@ func TestTaskListDeleteRejectsPrimaryList(t *testing.T) {
 	}
 	if got["error_code"] != "bad_request" {
 		t.Fatalf("error_code = %v, want bad_request", got["error_code"])
+	}
+}
+
+func TestBrainGTDWriteToolCreatesMissingCommitmentNotes(t *testing.T) {
+	tmp := t.TempDir()
+	configPath := writeMCPBrainConfig(t, tmp)
+	notePath := filepath.Join("brain", "gtd", "created.md")
+
+	s := NewServer(t.TempDir())
+	got, err := s.callTool("brain.gtd.write", map[string]interface{}{
+		"config_path": configPath,
+		"sphere":      "work",
+		"path":        notePath,
+		"commitment": map[string]interface{}{
+			"title":       "Reply to Bea",
+			"status":      "next",
+			"next_action": "Send the reply",
+			"context":     "email",
+			"source_bindings": []interface{}{
+				map[string]interface{}{"provider": "mail", "ref": "mail-42"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("brain.gtd.write: %v", err)
+	}
+	if got["valid"] != true {
+		t.Fatalf("valid = %v, want true: %#v", got["valid"], got)
+	}
+	created, err := os.ReadFile(filepath.Join(tmp, "work", notePath))
+	if err != nil {
+		t.Fatalf("read created note: %v", err)
+	}
+	for _, want := range []string{"kind: commitment", "status: next", "source_bindings:", "provider: mail", "ref: mail-42", "## Summary", "## Next Action"} {
+		if !strings.Contains(string(created), want) {
+			t.Fatalf("created note missing %q:\n%s", want, string(created))
+		}
+	}
+	if result := braingtd.ParseAndValidate(string(created)); len(result.Diagnostics) != 0 {
+		t.Fatalf("created note invalid: %#v\n%s", result.Diagnostics, string(created))
 	}
 }

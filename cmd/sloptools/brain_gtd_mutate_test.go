@@ -96,6 +96,39 @@ Prepare slides.
 	}
 
 	stdout, stderr, code = captureRun(t, []string{
+		"brain", "gtd", "write",
+		"--config", configPath,
+		"--sphere", "work",
+		"--path", filepath.Join("brain", "gtd", "created.md"),
+		"--title", "Reply to Bea",
+		"--status", "next",
+		"--next-action", "Send the reply",
+		"--context", "email",
+		"--binding-provider", "mail",
+		"--binding-ref", "mail-42",
+	})
+	if code != 0 {
+		t.Fatalf("create write exit code = %d, stderr=%q", code, stderr)
+	}
+	var created map[string]interface{}
+	if err := json.Unmarshal([]byte(stdout), &created); err != nil {
+		t.Fatalf("decode create write stdout: %v\n%s", err, stdout)
+	}
+	createdPath := filepath.Join(tmp, "work", "brain", "gtd", "created.md")
+	createdData, err := os.ReadFile(createdPath)
+	if err != nil {
+		t.Fatalf("read created note: %v", err)
+	}
+	for _, want := range []string{"kind: commitment", "status: next", "source_bindings:", "provider: mail", "ref: mail-42", "## Summary", "## Next Action"} {
+		if !strings.Contains(string(createdData), want) {
+			t.Fatalf("created note missing %q:\n%s", want, string(createdData))
+		}
+	}
+	if result := braingtd.ParseAndValidate(string(createdData)); len(result.Diagnostics) != 0 {
+		t.Fatalf("created note invalid: %#v\n%s", result.Diagnostics, string(createdData))
+	}
+
+	stdout, stderr, code = captureRun(t, []string{
 		"brain", "gtd", "resurface",
 		"--config", configPath,
 		"--sphere", "work",

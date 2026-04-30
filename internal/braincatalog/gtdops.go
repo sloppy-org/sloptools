@@ -6,6 +6,9 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/sloppy-org/sloptools/internal/brain"
+	braingtd "github.com/sloppy-org/sloptools/internal/brain/gtd"
 )
 
 type MeetingTask struct {
@@ -26,6 +29,23 @@ func BuildGTDDashboardMarkdown(items []GTDListItem, sphere, name string) string 
 func BuildGTDReviewBatchMarkdown(items []GTDListItem, sphere, query string) string {
 	grouped := groupGTDItems(selectGTDReviewBatchItems(items, query), "")
 	return buildGTDMarkdown("GTD Review Batch: "+strings.TrimSpace(query), sphere, grouped)
+}
+
+func BuildGTDCommitmentMarkdown(commitment braingtd.Commitment) (string, error) {
+	if strings.TrimSpace(commitment.Kind) == "" {
+		commitment.Kind = "commitment"
+	}
+	note, diags := brain.ParseMarkdownNote(buildGTDCommitmentTemplate(commitment), brain.MarkdownParseOptions{})
+	if len(diags) != 0 {
+		return "", fmt.Errorf("gtd commitment template invalid: %s", formatMarkdownDiagnostics(diags))
+	}
+	if err := writeGTDCommitmentFrontMatter(note, commitment); err != nil {
+		return "", err
+	}
+	if err := braingtd.ApplyCommitment(note, commitment); err != nil {
+		return "", err
+	}
+	return note.Render()
 }
 
 func ExtractMeetingTasks(src string) []MeetingTask {
@@ -295,4 +315,67 @@ func needsYAMLQuotes(value string) bool {
 		}
 	}
 	return false
+}
+
+func buildGTDCommitmentTemplate(commitment braingtd.Commitment) string {
+	heading := strings.TrimSpace(commitment.Outcome)
+	if heading == "" {
+		heading = strings.TrimSpace(commitment.Title)
+	}
+	if heading == "" {
+		heading = "Commitment"
+	}
+	heading = strings.ReplaceAll(strings.ReplaceAll(heading, "\r", " "), "\n", " ")
+	return strings.TrimSpace(fmt.Sprintf(`---
+---
+# %s
+
+## Summary
+
+## Next Action
+
+## Evidence
+
+## Linked Items
+
+## Review Notes
+`, heading))
+}
+
+func writeGTDCommitmentFrontMatter(note *brain.MarkdownNote, commitment braingtd.Commitment) error {
+	for key, value := range map[string]interface{}{
+		"kind":             commitment.Kind,
+		"title":            commitment.Title,
+		"sphere":           commitment.Sphere,
+		"status":           commitment.Status,
+		"outcome":          commitment.Outcome,
+		"next_action":      commitment.NextAction,
+		"context":          commitment.Context,
+		"follow_up":        commitment.FollowUp,
+		"due":              commitment.Due,
+		"actor":            commitment.Actor,
+		"waiting_for":      commitment.WaitingFor,
+		"project":          commitment.Project,
+		"last_evidence_at": commitment.LastEvidenceAt,
+		"review_state":     commitment.ReviewState,
+		"people":           commitment.People,
+		"labels":           commitment.Labels,
+	} {
+		if err := note.SetFrontMatterField(key, value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func formatMarkdownDiagnostics(diags []brain.MarkdownDiagnostic) string {
+	parts := make([]string, 0, len(diags))
+	for _, diag := range diags {
+		if diag.Line > 0 {
+			parts = append(parts, fmt.Sprintf("line %d: %s", diag.Line, diag.Message))
+			continue
+		}
+		parts = append(parts, diag.Message)
+	}
+	return strings.Join(parts, "; ")
 }
