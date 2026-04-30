@@ -64,6 +64,16 @@ func init() {
 			"config_path": {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},
 			"sphere":      {Type: "string", Description: "Vault sphere to inspect.", Enum: []string{"work", "private"}},
 		}},
+		Tool{Name: "brain.gtd.review_list", Description: "Return a normalized GTD review list across Markdown commitments, task providers, and issue sources without materializing duplicate Markdown notes.", Required: []string{"sphere"}, Properties: map[string]ToolProperty{
+			"config_path":  {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},
+			"sphere":       {Type: "string", Description: "Vault/account sphere to inspect.", Enum: []string{"work", "private"}},
+			"sources":      {Type: "array", Description: "Optional source classes. Defaults to markdown,tasks,source."},
+			"account_id":   {Type: "integer", Description: "Optional tasks-capable account id for task-backed items."},
+			"list_ids":     {Type: "array", Description: "Optional task list/project ids to scan. Defaults to all lists."},
+			"project_dirs": {Type: "array", Description: "Optional Git checkout directories for GitHub/GitLab issue and PR sources."},
+			"provider":     {Type: "string", Description: "Optional issue provider override for project_dirs.", Enum: []string{"auto", "github", "gitlab"}},
+			"limit":        {Type: "integer", Description: "Optional maximum number of normalized items to return."},
+		}},
 		Tool{Name: "brain.gtd.set_status", Description: "Set a commitment local overlay status, then automatically reconcile writeable source bindings from sources.toml.", Required: []string{"sphere", "path", "status"}, Properties: map[string]ToolProperty{
 			"config_path":     {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},
 			"sources_config":  {Type: "string", Description: "Optional source writeability config path. Defaults to ~/.config/sloptools/sources.toml."},

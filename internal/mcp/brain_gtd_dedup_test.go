@@ -1,10 +1,15 @@
 package mcp
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
+	"time"
 
 	braingtd "github.com/sloppy-org/sloptools/internal/brain/gtd"
+	"github.com/sloppy-org/sloptools/internal/providerdata"
+	"github.com/sloppy-org/sloptools/internal/store"
+	"github.com/sloppy-org/sloptools/internal/tasks"
 )
 
 func TestBrainGTDDedupScanReconcilesAndQueuesCandidates(t *testing.T) {
@@ -185,6 +190,86 @@ func TestBrainGTDDedupScanUsesLocalLLMCommand(t *testing.T) {
 	}
 }
 
+func TestBrainGTDReviewListMergesMarkdownAndTodoistWithoutDuplicates(t *testing.T) {
+	tmp := t.TempDir()
+	configPath := writeMCPBrainConfig(t, tmp)
+	writeDedupCommitment(t, tmp, "work", "brain/gtd/todo.md", "Send alpha budget", "todoist", "work-proj/task-1")
+	s, st, _ := newDomainServerForTest(t)
+	account, err := st.CreateExternalAccount(store.SphereWork, store.ExternalProviderTodoist, "Todoist", map[string]any{})
+	if err != nil {
+		t.Fatalf("CreateExternalAccount: %v", err)
+	}
+	start := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+	deadline := time.Date(2026, 5, 7, 0, 0, 0, 0, time.UTC)
+	provider := &fakeTasksProvider{
+		name:      "todoist",
+		taskLists: []providerdata.TaskList{{ID: "work-proj", Name: "Work"}},
+		tasksByList: map[string][]providerdata.TaskItem{
+			"work-proj": {
+				{ID: "task-1", ListID: "work-proj", ProviderRef: "task-1", Title: "Send alpha budget"},
+				{ID: "task-2", ListID: "work-proj", ProviderRef: "task-2", Title: "Draft beta budget", StartAt: &start, Due: &deadline},
+			},
+		},
+	}
+	s.newTasksProvider = func(_ context.Context, got store.ExternalAccount) (tasks.Provider, error) {
+		if got.ID != account.ID {
+			t.Fatalf("account ID = %d, want %d", got.ID, account.ID)
+		}
+		return provider, nil
+	}
+
+	got, err := s.callTool("brain.gtd.review_list", map[string]interface{}{
+		"config_path": configPath,
+		"sphere":      "work",
+		"sources":     []interface{}{"markdown", "tasks"},
+		"account_id":  account.ID,
+	})
+	if err != nil {
+		t.Fatalf("brain.gtd.review_list: %v", err)
+	}
+	items := got["items"].([]gtdReviewItem)
+	if len(items) != 2 {
+		t.Fatalf("items = %#v, want markdown canonical item plus one new task", items)
+	}
+	if got["duplicate_skipped"] != 1 {
+		t.Fatalf("duplicate_skipped = %#v, want 1", got["duplicate_skipped"])
+	}
+	task := itemByID(items, "todoist:work-proj/task-2")
+	if task == nil {
+		t.Fatalf("missing todoist task: %#v", items)
+	}
+	if task.Queue != "deferred" || task.FollowUp != "2026-05-01T00:00:00Z" || task.Due != "2026-05-07T00:00:00Z" {
+		t.Fatalf("task mapping = %#v", task)
+	}
+}
+
+func TestGTDReviewItemFromSourceItemMapsIssueState(t *testing.T) {
+	item := gtdReviewItemFromSourceItem(providerdata.SourceItem{
+		Provider:  "github",
+		Kind:      "issue",
+		Container: "sloppy-org/sloptools",
+		Number:    43,
+		Title:     "Add GTD tools",
+		State:     "OPEN",
+		SourceRef: "github:sloppy-org/sloptools#43",
+	})
+	if item.ID != "github:sloppy-org/sloptools#43" || item.Queue != "next" {
+		t.Fatalf("open issue item = %#v", item)
+	}
+	item = gtdReviewItemFromSourceItem(providerdata.SourceItem{
+		Provider:  "gitlab",
+		Kind:      "merge_request",
+		Container: "plasma/repo",
+		Number:    7,
+		Title:     "Closed MR",
+		State:     "merged",
+		SourceRef: "gitlab:plasma/repo!7",
+	})
+	if item.ID != "gitlab:plasma/repo!7" || item.Queue != "done" {
+		t.Fatalf("merged MR item = %#v", item)
+	}
+}
+
 func parseDedupCommitment(t *testing.T, s *Server, configPath, path string) *braingtd.Commitment {
 	t.Helper()
 	parsed, err := s.callTool("brain.note.parse", map[string]interface{}{"config_path": configPath, "sphere": "work", "path": path})
@@ -216,6 +301,15 @@ func aggregateWithBinding(aggregates []braingtd.Aggregate, id string) *braingtd.
 			if bindingID == id {
 				return &aggregates[i]
 			}
+		}
+	}
+	return nil
+}
+
+func itemByID(items []gtdReviewItem, id string) *gtdReviewItem {
+	for i := range items {
+		if items[i].ID == id {
+			return &items[i]
 		}
 	}
 	return nil

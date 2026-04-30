@@ -87,6 +87,12 @@ Derives GTD commitments from mail messages and links each result back to the und
 
 Closes a writeable mail-bound commitment by applying an upstream mail action. Required: `account_id`, `message_id`, `writeable=true`. Optional: `action` (defaults to `archive`), `folder`, `label`. This refuses non-writeable bindings instead of silently changing mail state.
 
+### `brain.gtd.review_list`
+
+Returns one normalized GTD review list across Markdown commitments, task providers, and GitHub/GitLab issue sources. Required: `sphere`. Optional: `sources`, `account_id`, `list_ids`, `project_dirs`, `provider`, `limit`, `config_path`.
+
+Markdown remains canonical. If a source item already has a matching Markdown `source_bindings` entry, the source duplicate is skipped and reported in `duplicate_skipped` instead of materializing a second commitment. Todoist-style task dates map provider start/scheduled dates to `follow_up` and provider deadlines to `due`; calendar events are not imported as tasks.
+
 ### `mail_attachment_get`
 
 Downloads one mail attachment to disk. Required: `account_id`, `message_id`, `attachment_id`. Optional: `dest_dir` (defaults to `~/Downloads/sloppy-attachments`). All backends support this.
