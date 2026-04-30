@@ -79,7 +79,10 @@ func extractCheckboxTasks(src string) []MeetingTask {
 }
 
 func selectGTDReviewBatchItems(items []GTDListItem, query string) []GTDListItem {
-	now := time.Now().UTC()
+	return selectGTDReviewBatchItemsAt(items, query, time.Now().UTC())
+}
+
+func selectGTDReviewBatchItemsAt(items []GTDListItem, query string, now time.Time) []GTDListItem {
 	filtered := make([]GTDListItem, 0, len(items))
 	for _, item := range items {
 		queue, why := gtdReviewBatchQueue(item, now)
@@ -106,7 +109,7 @@ func selectGTDReviewBatchItems(items []GTDListItem, query string) []GTDListItem 
 }
 
 func gtdReviewBatchQueue(item GTDListItem, now time.Time) (string, string) {
-	status := normalizeGTDStatus(item.Status)
+	status := strings.ToLower(strings.TrimSpace(item.Status))
 	switch status {
 	case "done", "closed":
 		return status, "status=" + status

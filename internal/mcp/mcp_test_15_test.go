@@ -104,6 +104,15 @@ canonical_topic: "[[people/Ada]]"
 ## Definition
 Neoclassical toroidal viscosity.
 `)
+	writeMCPBrainFile(t, filepath.Join(tmp, "work", "brain", "projects", "ada.md"), `---
+kind: project
+focus: active
+cadence: weekly
+strategic: true
+enjoyment: 3
+---
+# Ada
+`)
 
 	s := NewServer(t.TempDir())
 	got, err := s.callTool("brain.vault.validate", map[string]interface{}{
@@ -113,14 +122,14 @@ Neoclassical toroidal viscosity.
 	if err != nil {
 		t.Fatalf("brain.vault.validate: %v", err)
 	}
-	if got["count"] != 2 {
-		t.Fatalf("count = %v, want 2: %#v", got["count"], got)
+	if got["count"] != 3 {
+		t.Fatalf("count = %v, want 3: %#v", got["count"], got)
 	}
 	if got["issues"] == 0 {
 		t.Fatalf("expected vault issues: %#v", got)
 	}
 	notes, _ := got["notes"].([]map[string]interface{})
-	if len(notes) != 2 {
+	if len(notes) != 3 {
 		t.Fatalf("notes = %#v", got["notes"])
 	}
 }

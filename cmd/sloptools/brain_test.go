@@ -351,6 +351,15 @@ canonical_topic: "[[people/Ada]]"
 ## Definition
 Neoclassical toroidal viscosity.
 `)
+	writeBrainCLIFile(t, filepath.Join(tmp, "work", "brain", "projects", "ada.md"), `---
+kind: project
+focus: active
+cadence: weekly
+strategic: true
+enjoyment: 3
+---
+# Ada
+`)
 
 	stdout, stderr, code := captureRun(t, []string{
 		"brain", "vault", "validate",
@@ -367,7 +376,7 @@ Neoclassical toroidal viscosity.
 	if got["valid"].(bool) {
 		t.Fatalf("expected invalid vault, stdout=%s", stdout)
 	}
-	if int(got["count"].(float64)) != 2 {
+	if int(got["count"].(float64)) != 3 {
 		t.Fatalf("count = %v, stdout=%s", got["count"], stdout)
 	}
 	if int(got["issues"].(float64)) == 0 {
