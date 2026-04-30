@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/sloppy-org/sloptools/internal/brain"
 )
 
 func TestBrainPeopleDashboardAggregatesOpenLoops(t *testing.T) {
@@ -88,6 +90,9 @@ func TestBrainPeopleRenderReplacesOnlyCurrentOpenLoops(t *testing.T) {
 	}
 	if !strings.Contains(rendered, "Intro.\n\n## Current open loops") || !strings.Contains(rendered, "## Notes\nKeep me.\n") {
 		t.Fatalf("render changed unrelated note content:\n%s", rendered)
+	}
+	if diags := brain.ValidateMarkdownNote(rendered, brain.MarkdownParseOptions{}); len(diags) != 0 {
+		t.Fatalf("rendered person note invalid: %#v\n%s", diags, rendered)
 	}
 	firstInfo := statPeopleFile(t, personPath)
 	second, err := s.callTool("brain.people.render", map[string]interface{}{

@@ -90,6 +90,9 @@ func TestBrainGTDSyncPeriodicMeetingPullsClosedState(t *testing.T) {
 	if commitment.LocalOverlay.Status != "closed" || commitment.LocalOverlay.ClosedVia != "brain.gtd.sync" {
 		t.Fatalf("local overlay = %#v", commitment.LocalOverlay)
 	}
+	if result := braingtd.ParseAndValidate(readGTDSyncFile(t, root, "work/brain/gtd/sync.md")); len(result.Diagnostics) != 0 {
+		t.Fatalf("synced commitment invalid: %#v", result.Diagnostics)
+	}
 }
 
 func TestBrainGTDSyncPeriodicReportsConflict(t *testing.T) {
@@ -374,8 +377,11 @@ func writeGTDSyncCommitment(t *testing.T, root, overlayStatus string) {
 	t.Helper()
 	body := `---
 kind: commitment
+sphere: work
 title: Send alpha budget
 status: next
+context: review
+next_action: Review the budget
 outcome: Send alpha budget
 source_bindings:
   - provider: meetings
@@ -393,7 +399,22 @@ source_bindings:
 local_overlay:
   status: ` + overlayStatus + `
 ---
-Body.
+# Send alpha budget
+
+## Summary
+Review the budget.
+
+## Next Action
+- [ ] Review the budget
+
+## Evidence
+- meetings:gtd:alpha
+
+## Linked Items
+- None.
+
+## Review Notes
+- None.
 `
 	writeMCPBrainFile(t, filepath.Join(root, "work", "brain", "gtd", "sync.md"), body)
 }
@@ -402,8 +423,11 @@ func writeGTDSyncMeetingCommitment(t *testing.T, root, overlayStatus string) {
 	t.Helper()
 	body := `---
 kind: commitment
+sphere: work
 title: Send alpha budget
 status: next
+context: review
+next_action: Review the budget
 outcome: Send alpha budget
 source_bindings:
   - provider: meetings
@@ -415,7 +439,22 @@ source_bindings:
 local_overlay:
   status: ` + overlayStatus + `
 ---
-Body.
+# Send alpha budget
+
+## Summary
+Review the budget.
+
+## Next Action
+- [ ] Review the budget
+
+## Evidence
+- meetings:gtd:alpha
+
+## Linked Items
+- None.
+
+## Review Notes
+- None.
 `
 	writeMCPBrainFile(t, filepath.Join(root, "work", "brain", "gtd", "sync.md"), body)
 }
@@ -424,8 +463,11 @@ func writeGTDSyncIssueCommitments(t *testing.T, root, githubStatus, gitlabStatus
 	t.Helper()
 	github := `---
 kind: commitment
+sphere: work
 title: Close GitHub issue
 status: next
+context: review
+next_action: Review the issue
 outcome: Close GitHub issue
 source_bindings:
   - provider: github
@@ -433,12 +475,30 @@ source_bindings:
 local_overlay:
   status: ` + githubStatus + `
 ---
-Body.
+# Close GitHub issue
+
+## Summary
+Review the issue.
+
+## Next Action
+- [ ] Review the issue
+
+## Evidence
+- github:sloppy-org/sloptools#7
+
+## Linked Items
+- None.
+
+## Review Notes
+- None.
 `
 	gitlab := `---
 kind: commitment
+sphere: work
 title: Close GitLab issue
 status: next
+context: review
+next_action: Review the issue
 outcome: Close GitLab issue
 source_bindings:
   - provider: gitlab
@@ -446,7 +506,22 @@ source_bindings:
 local_overlay:
   status: ` + gitlabStatus + `
 ---
-Body.
+# Close GitLab issue
+
+## Summary
+Review the issue.
+
+## Next Action
+- [ ] Review the issue
+
+## Evidence
+- gitlab:group/project#8
+
+## Linked Items
+- None.
+
+## Review Notes
+- None.
 `
 	writeMCPBrainFile(t, filepath.Join(root, "work", "brain", "gtd", "github.md"), github)
 	writeMCPBrainFile(t, filepath.Join(root, "work", "brain", "gtd", "gitlab.md"), gitlab)
@@ -456,8 +531,11 @@ func writeGTDSyncManualCommitment(t *testing.T, root string) {
 	t.Helper()
 	body := `---
 kind: commitment
+sphere: work
 title: Local note
 status: next
+context: review
+next_action: Review the note
 outcome: Local note
 source_bindings:
   - provider: manual
@@ -465,7 +543,22 @@ source_bindings:
 local_overlay:
   status: closed
 ---
-Body.
+# Local note
+
+## Summary
+Review the note.
+
+## Next Action
+- [ ] Review the note
+
+## Evidence
+- manual:local-note
+
+## Linked Items
+- None.
+
+## Review Notes
+- None.
 `
 	writeMCPBrainFile(t, filepath.Join(root, "work", "brain", "gtd", "manual.md"), body)
 }

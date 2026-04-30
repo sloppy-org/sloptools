@@ -336,6 +336,9 @@ func writeDedupNotes(notes ...dedupNote) error {
 		if err != nil {
 			return err
 		}
+		if err := validateRenderedBrainGTD(rendered); err != nil {
+			return err
+		}
 		if err := os.WriteFile(note.Resolved.Path, []byte(rendered), 0o644); err != nil {
 			return err
 		}

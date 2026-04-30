@@ -122,6 +122,10 @@ func cmdBrainGTDUpdate(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
+	if err := validateRenderedBrainGTD(rendered); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
 	if err := os.WriteFile(resolved.Path, []byte(rendered), 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1

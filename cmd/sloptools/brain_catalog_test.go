@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	braingtd "github.com/sloppy-org/sloptools/internal/brain/gtd"
 )
 
 func TestBrainVaultListCLIListsConfiguredVaults(t *testing.T) {
@@ -226,5 +228,8 @@ Send the reply.
 	}
 	if !strings.Contains(string(updated), "2026-04-29T14:00:00Z") {
 		t.Fatalf("updated note missing closed_at:\n%s", string(updated))
+	}
+	if result := braingtd.ParseAndValidate(string(updated)); len(result.Diagnostics) != 0 {
+		t.Fatalf("updated note invalid: %#v\n%s", result.Diagnostics, string(updated))
 	}
 }

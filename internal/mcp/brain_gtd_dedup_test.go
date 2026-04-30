@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -95,6 +96,13 @@ func TestBrainGTDDedupMergePreservesBindings(t *testing.T) {
 	winner := parsed["commitment"].(*braingtd.Commitment)
 	if len(winner.SourceBindings) != 2 || winner.Outcome != "Send Alpha budget" {
 		t.Fatalf("winner = %#v", winner)
+	}
+	winnerData, err := os.ReadFile(filepath.Join(tmp, "work", "brain", "gtd", "a.md"))
+	if err != nil {
+		t.Fatalf("read winner: %v", err)
+	}
+	if result := braingtd.ParseAndValidate(string(winnerData)); len(result.Diagnostics) != 0 {
+		t.Fatalf("winner note invalid: %#v\n%s", result.Diagnostics, string(winnerData))
 	}
 }
 
@@ -283,14 +291,32 @@ func writeDedupCommitment(t *testing.T, root, sphere, rel, outcome, provider, re
 	t.Helper()
 	body := `---
 kind: commitment
+sphere: ` + sphere + `
 title: ` + outcome + `
 status: next
+context: review
+next_action: Review the item
 outcome: ` + outcome + `
 source_bindings:
   - provider: ` + provider + `
     ref: "` + ref + `"
 ---
-Body.
+# ` + outcome + `
+
+## Summary
+Review the item.
+
+## Next Action
+- [ ] Review the item
+
+## Evidence
+- ` + provider + `:` + ref + `
+
+## Linked Items
+- None.
+
+## Review Notes
+- None.
 `
 	writeMCPBrainFile(t, filepath.Join(root, sphere, filepath.FromSlash(rel)), body)
 }

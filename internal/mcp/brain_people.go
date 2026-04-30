@@ -65,6 +65,9 @@ func (s *Server) brainPeopleRender(args map[string]interface{}) (map[string]inte
 	if rendered == string(data) {
 		return map[string]interface{}{"sphere": strArg(args, "sphere"), "person": person.Name, "person_path": person.Rel, "changed": false}, nil
 	}
+	if err := validateRenderedBrainNote(rendered); err != nil {
+		return nil, err
+	}
 	if err := os.WriteFile(person.Path, []byte(rendered), 0o644); err != nil {
 		return nil, err
 	}
