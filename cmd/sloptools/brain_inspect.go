@@ -24,8 +24,20 @@ func cmdBrainGTD(args []string) int {
 		return cmdBrainGTDList(args[1:])
 	case "update":
 		return cmdBrainGTDUpdate(args[1:])
+	case "write":
+		return cmdBrainGTDWrite(args[1:])
+	case "organize":
+		return cmdBrainGTDOrganize(args[1:])
+	case "resurface":
+		return cmdBrainGTDResurface(args[1:])
+	case "dashboard":
+		return cmdBrainGTDDashboard(args[1:])
+	case "review-batch":
+		return cmdBrainGTDReviewBatch(args[1:])
+	case "ingest":
+		return cmdBrainGTDIngest(args[1:])
 	case "help", "-h", "--help":
-		fmt.Println("sloptools brain gtd <parse|validate|list|update> [flags]")
+		fmt.Println("sloptools brain gtd <parse|validate|list|update|write|organize|resurface|dashboard|review-batch|ingest> [flags]")
 		fmt.Println("  --config PATH   vault config path (default ~/.config/sloptools/vaults.toml)")
 		fmt.Println("  --sphere NAME   vault sphere: work or private")
 		fmt.Println("  --path PATH     GTD note path")

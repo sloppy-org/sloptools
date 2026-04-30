@@ -65,6 +65,7 @@ func printBrainHelp() {
 	fmt.Println("  --config PATH   vault config path (default ~/.config/sloptools/vaults.toml)")
 	fmt.Println("  --sphere NAME   vault sphere: work or private")
 	fmt.Println("  --path PATH     GTD note path")
+	fmt.Println("  subcommands: parse validate list update write organize resurface dashboard review-batch ingest")
 	fmt.Println()
 	fmt.Println("folder flags:")
 	fmt.Println("  --config PATH   vault config path (default ~/.config/sloptools/vaults.toml)")

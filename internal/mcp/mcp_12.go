@@ -2,10 +2,16 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"strconv"
 	"strings"
 
+	"github.com/sloppy-org/sloptools/internal/brain"
+	braingtd "github.com/sloppy-org/sloptools/internal/brain/gtd"
+	"github.com/sloppy-org/sloptools/internal/braincatalog"
 	"github.com/sloppy-org/sloptools/internal/evernote"
 	"github.com/sloppy-org/sloptools/internal/store"
 )
@@ -137,4 +143,280 @@ func evernoteNotePayload(note evernote.Note) map[string]interface{} {
 		"content_markdown": note.ContentMarkdown,
 		"tasks":            tasks,
 	}
+}
+
+func (s *Server) brainGTDWrite(args map[string]interface{}) (map[string]interface{}, error) {
+	cfg, err := brain.LoadConfig(s.brainConfigArg(args))
+	if err != nil {
+		return nil, err
+	}
+	sphere := strings.TrimSpace(strArg(args, "sphere"))
+	path := strings.TrimSpace(strArg(args, "path"))
+	if sphere == "" {
+		return nil, errors.New("sphere is required")
+	}
+	if path == "" {
+		return nil, errors.New("path is required")
+	}
+	resolved, data, err := brain.ReadNoteFile(cfg, brain.Sphere(sphere), path)
+	if err != nil {
+		return nil, err
+	}
+	commitment, note, diags := braingtd.ParseCommitmentMarkdown(string(data))
+	if note == nil {
+		return nil, fmt.Errorf("failed to parse GTD note %q", resolved.Rel)
+	}
+	updates := objectArg(args, "commitment")
+	if len(updates) == 0 {
+		updates = noteWriteUpdates(args)
+	}
+	updated, err := overlayCommitment(*commitment, updates)
+	if err != nil {
+		return nil, err
+	}
+	if err := writeCommitmentFrontMatter(note, updated); err != nil {
+		return nil, err
+	}
+	if err := braingtd.ApplyCommitment(note, updated); err != nil {
+		return nil, err
+	}
+	rendered, err := note.Render()
+	if err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(resolved.Path, []byte(rendered), 0o644); err != nil {
+		return nil, err
+	}
+	return map[string]interface{}{
+		"source":      resolved,
+		"commitment":  updated,
+		"diagnostics": diags,
+		"count":       len(diags),
+		"valid":       len(diags) == 0,
+	}, nil
+}
+
+func objectArg(args map[string]interface{}, key string) map[string]interface{} {
+	raw, ok := args[key]
+	if !ok || raw == nil {
+		return nil
+	}
+	m, ok := raw.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	return m
+}
+
+func stringArgFromMap(m map[string]interface{}, key string) (string, bool) {
+	raw, ok := m[key]
+	if !ok {
+		return "", false
+	}
+	value, ok := raw.(string)
+	if !ok {
+		return "", false
+	}
+	clean := strings.TrimSpace(value)
+	return clean, true
+}
+
+func stringSliceArgFromMap(m map[string]interface{}, key string) ([]string, bool) {
+	raw, ok := m[key]
+	if !ok {
+		return nil, false
+	}
+	switch typed := raw.(type) {
+	case []string:
+		out := make([]string, 0, len(typed))
+		for _, value := range typed {
+			if clean := strings.TrimSpace(value); clean != "" {
+				out = append(out, clean)
+			}
+		}
+		return out, true
+	case []interface{}:
+		out := make([]string, 0, len(typed))
+		for _, value := range typed {
+			if clean := strings.TrimSpace(fmt.Sprint(value)); clean != "" && clean != "<nil>" {
+				out = append(out, clean)
+			}
+		}
+		return out, true
+	case string:
+		parts := strings.Split(typed, ",")
+		out := make([]string, 0, len(parts))
+		for _, value := range parts {
+			if clean := strings.TrimSpace(value); clean != "" {
+				out = append(out, clean)
+			}
+		}
+		return out, true
+	default:
+		return nil, false
+	}
+}
+
+func sourceBindingsFromAny(raw interface{}) ([]braingtd.SourceBinding, error) {
+	body, err := json.Marshal(raw)
+	if err != nil {
+		return nil, err
+	}
+	var bindings []braingtd.SourceBinding
+	if err := json.Unmarshal(body, &bindings); err != nil {
+		return nil, err
+	}
+	for i := range bindings {
+		bindings[i].Provider = strings.TrimSpace(bindings[i].Provider)
+		bindings[i].Ref = strings.TrimSpace(bindings[i].Ref)
+	}
+	return bindings, nil
+}
+
+func decodeAny[T any](raw interface{}) (T, error) {
+	var out T
+	body, err := json.Marshal(raw)
+	if err != nil {
+		return out, err
+	}
+	if err := json.Unmarshal(body, &out); err != nil {
+		return out, err
+	}
+	return out, nil
+}
+
+func writeCommitmentFrontMatter(note *brain.MarkdownNote, commitment braingtd.Commitment) error {
+	for key, value := range map[string]interface{}{
+		"kind":             commitment.Kind,
+		"title":            commitment.Title,
+		"sphere":           commitment.Sphere,
+		"status":           commitment.Status,
+		"outcome":          commitment.Outcome,
+		"next_action":      commitment.NextAction,
+		"context":          commitment.Context,
+		"follow_up":        commitment.FollowUp,
+		"due":              commitment.Due,
+		"actor":            commitment.Actor,
+		"waiting_for":      commitment.WaitingFor,
+		"project":          commitment.Project,
+		"last_evidence_at": commitment.LastEvidenceAt,
+		"review_state":     commitment.ReviewState,
+		"people":           commitment.People,
+		"labels":           commitment.Labels,
+	} {
+		if err := note.SetFrontMatterField(key, value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func overlayCommitment(base braingtd.Commitment, updates map[string]interface{}) (braingtd.Commitment, error) {
+	out := base
+	if v, ok := stringArgFromMap(updates, "title"); ok {
+		out.Title = v
+	}
+	if v, ok := stringArgFromMap(updates, "kind"); ok {
+		out.Kind = v
+	}
+	if v, ok := stringArgFromMap(updates, "sphere"); ok {
+		out.Sphere = v
+	}
+	if v, ok := stringArgFromMap(updates, "status"); ok {
+		out.Status = v
+	}
+	if v, ok := stringArgFromMap(updates, "outcome"); ok {
+		out.Outcome = v
+	}
+	if v, ok := stringArgFromMap(updates, "next_action"); ok {
+		out.NextAction = v
+	}
+	if v, ok := stringArgFromMap(updates, "context"); ok {
+		out.Context = v
+	}
+	if v, ok := stringArgFromMap(updates, "follow_up"); ok {
+		out.FollowUp = v
+	}
+	if v, ok := stringArgFromMap(updates, "due"); ok {
+		out.Due = v
+	}
+	if v, ok := stringArgFromMap(updates, "actor"); ok {
+		out.Actor = v
+	}
+	if v, ok := stringArgFromMap(updates, "waiting_for"); ok {
+		out.WaitingFor = v
+	}
+	if v, ok := stringArgFromMap(updates, "project"); ok {
+		out.Project = v
+	}
+	if v, ok := stringArgFromMap(updates, "last_evidence_at"); ok {
+		out.LastEvidenceAt = v
+	}
+	if v, ok := stringArgFromMap(updates, "review_state"); ok {
+		out.ReviewState = v
+	}
+	if v, ok := stringSliceArgFromMap(updates, "people"); ok {
+		out.People = v
+	}
+	if v, ok := stringSliceArgFromMap(updates, "labels"); ok {
+		out.Labels = v
+	}
+	if raw, ok := updates["source_bindings"]; ok {
+		bindings, err := sourceBindingsFromAny(raw)
+		if err != nil {
+			return braingtd.Commitment{}, err
+		}
+		out.SourceBindings = bindings
+	}
+	if raw, ok := updates["local_overlay"]; ok {
+		overlay, err := decodeAny[braingtd.LocalOverlay](raw)
+		if err != nil {
+			return braingtd.Commitment{}, err
+		}
+		out.LocalOverlay = overlay
+	}
+	if raw, ok := updates["dedup"]; ok {
+		dedup, err := decodeAny[braingtd.DedupState](raw)
+		if err != nil {
+			return braingtd.Commitment{}, err
+		}
+		out.Dedup = dedup
+	}
+	if v, ok := stringSliceArgFromMap(updates, "legacy_sources"); ok {
+		out.LegacySources = v
+	}
+	return out, nil
+}
+
+func renderIngestCommitment(sphere, meetingRel string, task braincatalog.MeetingTask) string {
+	return strings.TrimSpace(fmt.Sprintf(`---
+kind: commitment
+sphere: %s
+title: %s
+status: inbox
+context: meeting
+source_bindings:
+  - provider: meetings
+    ref: %q
+    location:
+      path: %s
+      anchor: %q
+---
+# %s
+
+## Summary
+Meeting task from %s.
+
+## Next Action
+- [ ] %s
+
+## Evidence
+- %s#L%d
+
+## Linked Items
+- None.
+
+## Review Notes
+- Ingested from meeting notes.
+`, sphere, strconv.Quote(task.Text), meetingRel+"#"+strconv.Itoa(task.Line), meetingRel, task.Text, task.Text, meetingRel, task.Text, meetingRel, task.Line))
 }

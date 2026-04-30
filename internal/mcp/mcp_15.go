@@ -3,9 +3,14 @@ package mcp
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
 	"strings"
+	"time"
+	"unicode"
 
 	"github.com/sloppy-org/sloptools/internal/brain"
+	braingtd "github.com/sloppy-org/sloptools/internal/brain/gtd"
 )
 
 func (s *Server) dispatchBrain(method string, args map[string]interface{}) (map[string]interface{}, error) {
@@ -44,6 +49,8 @@ func (s *Server) dispatchBrain(method string, args map[string]interface{}) (map[
 		return s.brainGTDParseVault(args)
 	case "brain.gtd.list":
 		return s.brainGTDListVault(args)
+	case "brain.gtd.write":
+		return s.brainGTDWrite(args)
 	case "brain.gtd.bind":
 		return s.brainGTDBind(args)
 	case "brain.gtd.dedup_scan":
@@ -58,6 +65,18 @@ func (s *Server) dispatchBrain(method string, args map[string]interface{}) (map[
 		return s.brainGTDSetStatus(args)
 	case "brain.gtd.sync":
 		return s.brainGTDSync(args)
+	case "brain.gtd.organize":
+		return s.brainGTDOrganize(args)
+	case "brain.gtd.resurface":
+		return s.brainGTDResurface(args)
+	case "brain.gtd.dashboard":
+		return s.brainGTDDashboard(args)
+	case "brain.gtd.review_batch":
+		return s.brainGTDReviewBatch(args)
+	case "brain.gtd.ingest":
+		return s.brainGTDIngest(args)
+	case "brain.note.write":
+		return s.brainNoteWrite(args)
 	case "brain.people.dashboard":
 		return s.brainPeopleDashboard(args)
 	case "brain.people.render":
@@ -122,4 +141,220 @@ func (s *Server) brainBacklinks(args map[string]interface{}) (map[string]interfa
 		return nil, err
 	}
 	return map[string]interface{}{"sphere": sphere, "target": target, "results": results, "count": len(results)}, nil
+}
+
+func (s *Server) brainNoteWrite(args map[string]interface{}) (map[string]interface{}, error) {
+	cfg, err := brain.LoadConfig(s.brainConfigArg(args))
+	if err != nil {
+		return nil, err
+	}
+	sphere := strings.TrimSpace(strArg(args, "sphere"))
+	path := strings.TrimSpace(strArg(args, "path"))
+	if sphere == "" {
+		return nil, errors.New("sphere is required")
+	}
+	if path == "" {
+		return nil, errors.New("path is required")
+	}
+	resolved, data, err := brain.ReadNoteFile(cfg, brain.Sphere(sphere), path)
+	if err != nil {
+		return nil, err
+	}
+	note, diags := brain.ParseMarkdownNote(string(data), brain.MarkdownParseOptions{})
+	if note == nil {
+		return nil, fmt.Errorf("failed to parse note %q", resolved.Rel)
+	}
+	updates := noteWriteUpdates(args)
+	fields := make([]string, 0, len(updates))
+	if fm := objectArg(updates, "frontmatter"); len(fm) > 0 {
+		if err := applyNoteFrontMatter(note, fm, &fields); err != nil {
+			return nil, err
+		}
+	}
+	if sections := objectArg(updates, "sections"); len(sections) > 0 {
+		if err := applyNoteSections(note, sections, &fields); err != nil {
+			return nil, err
+		}
+	}
+	for key, raw := range updates {
+		switch key {
+		case "frontmatter", "sections", "body", "markdown":
+			continue
+		}
+		if err := note.SetFrontMatterField(key, raw); err != nil {
+			return nil, err
+		}
+		fields = append(fields, key)
+	}
+	rendered, err := note.Render()
+	if err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(resolved.Path, []byte(rendered), 0o644); err != nil {
+		return nil, err
+	}
+	return map[string]interface{}{
+		"source":      resolved,
+		"fields":      fields,
+		"diagnostics": diags,
+		"count":       len(diags),
+		"valid":       len(diags) == 0,
+	}, nil
+}
+
+func (s *Server) brainGTDResurface(args map[string]interface{}) (map[string]interface{}, error) {
+	cfg, err := brain.LoadConfig(s.brainConfigArg(args))
+	if err != nil {
+		return nil, err
+	}
+	sphere := strings.TrimSpace(strArg(args, "sphere"))
+	if sphere == "" {
+		return nil, errors.New("sphere is required")
+	}
+	path := strings.TrimSpace(strArg(args, "path"))
+	changed := make([]string, 0)
+	if path != "" {
+		if resurfaceOneCommitment(cfg, brain.Sphere(sphere), path) {
+			changed = append(changed, path)
+		}
+		return map[string]interface{}{"sphere": sphere, "count": len(changed), "paths": changed, "updated": len(changed) > 0}, nil
+	}
+	if err := brain.WalkVaultNotes(cfg, brain.Sphere(sphere), func(snapshot brain.NoteSnapshot) error {
+		if snapshot.Kind != "commitment" {
+			return nil
+		}
+		commitment, note, diags := braingtd.ParseCommitmentMarkdown(snapshot.Body)
+		if len(diags) != 0 || !resurfaceCommitment(commitment, time.Now().UTC()) {
+			return nil
+		}
+		if err := braingtd.ApplyCommitment(note, *commitment); err != nil {
+			return err
+		}
+		rendered, err := note.Render()
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(snapshot.Source.Path, []byte(rendered), 0o644); err != nil {
+			return err
+		}
+		changed = append(changed, snapshot.Source.Rel)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return map[string]interface{}{"sphere": sphere, "count": len(changed), "paths": changed, "updated": len(changed) > 0}, nil
+}
+
+func resurfaceOneCommitment(cfg *brain.Config, sphere brain.Sphere, path string) bool {
+	resolved, data, err := brain.ReadNoteFile(cfg, sphere, path)
+	if err != nil {
+		return false
+	}
+	commitment, note, diags := braingtd.ParseCommitmentMarkdown(string(data))
+	if len(diags) != 0 || !resurfaceCommitment(commitment, time.Now().UTC()) {
+		return false
+	}
+	if err := braingtd.ApplyCommitment(note, *commitment); err != nil {
+		return false
+	}
+	rendered, err := note.Render()
+	if err != nil {
+		return false
+	}
+	return os.WriteFile(resolved.Path, []byte(rendered), 0o644) == nil
+}
+
+func noteWriteUpdates(args map[string]interface{}) map[string]interface{} {
+	if updates := objectArg(args, "fields"); len(updates) > 0 {
+		return updates
+	}
+	updates := make(map[string]interface{})
+	for key, value := range args {
+		switch key {
+		case "config_path", "sphere", "path", "commitment":
+			continue
+		}
+		updates[key] = value
+	}
+	return updates
+}
+
+func applyNoteFrontMatter(note *brain.MarkdownNote, updates map[string]interface{}, written *[]string) error {
+	for key, value := range updates {
+		if err := note.SetFrontMatterField(key, value); err != nil {
+			return err
+		}
+		*written = append(*written, key)
+	}
+	return nil
+}
+
+func applyNoteSections(note *brain.MarkdownNote, updates map[string]interface{}, written *[]string) error {
+	for name, raw := range updates {
+		body, ok := raw.(string)
+		if !ok {
+			if fields := objectArg(map[string]interface{}{"section": raw}, "section"); len(fields) > 0 {
+				if text, ok := stringArgFromMap(fields, "body"); ok {
+					body = text
+				}
+			}
+		}
+		if body == "" {
+			continue
+		}
+		if err := note.SetSectionBody(name, body); err != nil {
+			return err
+		}
+		*written = append(*written, "section:"+name)
+	}
+	return nil
+}
+
+func resurfaceCommitment(commitment *braingtd.Commitment, now time.Time) bool {
+	if commitment == nil {
+		return false
+	}
+	if !strings.EqualFold(strings.TrimSpace(commitment.LocalOverlay.Status), "deferred") {
+		return false
+	}
+	followUp := strings.TrimSpace(commitment.FollowUp)
+	if followUp == "" {
+		return false
+	}
+	dueDate := followUp
+	if len(dueDate) >= len("2006-01-02T15:04:05Z07:00") {
+		dueDate = dueDate[:10]
+	}
+	parsed, err := time.Parse("2006-01-02", dueDate)
+	if err != nil {
+		return false
+	}
+	if parsed.After(now.UTC()) {
+		return false
+	}
+	commitment.LocalOverlay.Status = "next"
+	return true
+}
+
+func slugify(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	var b strings.Builder
+	lastDash := false
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+			lastDash = false
+		case unicode.IsSpace(r) || r == '-' || r == '_' || r == '.':
+			if !lastDash && b.Len() > 0 {
+				b.WriteByte('-')
+				lastDash = true
+			}
+		}
+	}
+	out := strings.Trim(b.String(), "-")
+	if out == "" {
+		return "item"
+	}
+	return out
 }
