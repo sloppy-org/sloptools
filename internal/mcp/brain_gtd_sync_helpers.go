@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -12,7 +13,9 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/sloppy-org/sloptools/internal/brain"
 	braingtd "github.com/sloppy-org/sloptools/internal/brain/gtd"
+	"github.com/sloppy-org/sloptools/internal/braincatalog"
 	"github.com/sloppy-org/sloptools/internal/store"
 )
 
@@ -313,4 +316,168 @@ func copyArgs(args map[string]interface{}) map[string]interface{} {
 		out[key] = value
 	}
 	return out
+}
+
+func (s *Server) brainGTDOrganize(args map[string]interface{}) (map[string]interface{}, error) {
+	cfg, err := brain.LoadConfig(s.brainConfigArg(args))
+	if err != nil {
+		return nil, err
+	}
+	sphere := strings.TrimSpace(strArg(args, "sphere"))
+	if sphere == "" {
+		return nil, errors.New("sphere is required")
+	}
+	items, err := braincatalog.ListGTDVault(cfg, brain.Sphere(sphere), braincatalog.GTDListFilter{})
+	if err != nil {
+		return nil, err
+	}
+	path := strings.TrimSpace(strArg(args, "path"))
+	if path == "" {
+		path = filepath.ToSlash(filepath.Join("brain", "gtd", "organize.md"))
+	}
+	resolved, err := brain.ResolveNotePath(cfg, brain.Sphere(sphere), path)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(filepath.Dir(resolved.Path), 0o755); err != nil {
+		return nil, err
+	}
+	rendered := braincatalog.BuildGTDIndexMarkdown(items, sphere)
+	if err := validateRenderedBrainNote(rendered); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(resolved.Path, []byte(rendered), 0o644); err != nil {
+		return nil, err
+	}
+	return map[string]interface{}{"sphere": sphere, "path": resolved.Rel, "count": len(items), "updated": true}, nil
+}
+
+func (s *Server) brainGTDDashboard(args map[string]interface{}) (map[string]interface{}, error) {
+	cfg, err := brain.LoadConfig(s.brainConfigArg(args))
+	if err != nil {
+		return nil, err
+	}
+	sphere := strings.TrimSpace(strArg(args, "sphere"))
+	name := strings.TrimSpace(strArg(args, "name"))
+	if sphere == "" {
+		return nil, errors.New("sphere is required")
+	}
+	if name == "" {
+		return nil, errors.New("name is required")
+	}
+	items, err := braincatalog.ListGTDVault(cfg, brain.Sphere(sphere), braincatalog.GTDListFilter{})
+	if err != nil {
+		return nil, err
+	}
+	path := strings.TrimSpace(strArg(args, "path"))
+	if path == "" {
+		path = filepath.ToSlash(filepath.Join("brain", "gtd", "dashboards", slugify(name)+".md"))
+	}
+	resolved, err := brain.ResolveNotePath(cfg, brain.Sphere(sphere), path)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(filepath.Dir(resolved.Path), 0o755); err != nil {
+		return nil, err
+	}
+	rendered := braincatalog.BuildGTDDashboardMarkdown(items, sphere, name)
+	if err := validateRenderedBrainNote(rendered); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(resolved.Path, []byte(rendered), 0o644); err != nil {
+		return nil, err
+	}
+	return map[string]interface{}{"sphere": sphere, "name": name, "path": resolved.Rel, "count": len(items), "updated": true}, nil
+}
+
+func (s *Server) brainGTDReviewBatch(args map[string]interface{}) (map[string]interface{}, error) {
+	cfg, err := brain.LoadConfig(s.brainConfigArg(args))
+	if err != nil {
+		return nil, err
+	}
+	sphere := strings.TrimSpace(strArg(args, "sphere"))
+	query := strings.TrimSpace(strArg(args, "q"))
+	if query == "" {
+		query = strings.TrimSpace(strArg(args, "query"))
+	}
+	if sphere == "" {
+		return nil, errors.New("sphere is required")
+	}
+	if query == "" {
+		return nil, errors.New("q is required")
+	}
+	items, err := braincatalog.ListGTDVault(cfg, brain.Sphere(sphere), braincatalog.GTDListFilter{})
+	if err != nil {
+		return nil, err
+	}
+	path := strings.TrimSpace(strArg(args, "path"))
+	if path == "" {
+		path = filepath.ToSlash(filepath.Join("brain", "gtd", "reviews", slugify(query)+".md"))
+	}
+	resolved, err := brain.ResolveNotePath(cfg, brain.Sphere(sphere), path)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(filepath.Dir(resolved.Path), 0o755); err != nil {
+		return nil, err
+	}
+	rendered := braincatalog.BuildGTDReviewBatchMarkdown(items, sphere, query)
+	if err := validateRenderedBrainNote(rendered); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(resolved.Path, []byte(rendered), 0o644); err != nil {
+		return nil, err
+	}
+	return map[string]interface{}{"sphere": sphere, "q": query, "path": resolved.Rel, "count": len(items), "updated": true}, nil
+}
+
+func (s *Server) brainGTDIngest(args map[string]interface{}) (map[string]interface{}, error) {
+	cfg, err := brain.LoadConfig(s.brainConfigArg(args))
+	if err != nil {
+		return nil, err
+	}
+	sphere := strings.TrimSpace(strArg(args, "sphere"))
+	source := strings.ToLower(strings.TrimSpace(strArg(args, "source")))
+	if sphere == "" {
+		return nil, errors.New("sphere is required")
+	}
+	if source == "" {
+		return nil, errors.New("source is required")
+	}
+	if !supportedIngestSource(source) {
+		return nil, fmt.Errorf("unsupported ingest source %q", source)
+	}
+	paths := stringListArg(args, "path")
+	if len(paths) == 0 {
+		paths = stringListArg(args, "paths")
+	}
+	if len(paths) == 0 {
+		return nil, errors.New("paths are required")
+	}
+	created := make([]string, 0)
+	for _, rawPath := range paths {
+		resolved, data, err := brain.ReadNoteFile(cfg, brain.Sphere(sphere), rawPath)
+		if err != nil {
+			return nil, err
+		}
+		for i, task := range braincatalog.ExtractIngestTasks(source, string(data)) {
+			out := filepath.ToSlash(filepath.Join("brain", "gtd", "ingest", slugify(filepath.Base(resolved.Rel))+"-"+fmt.Sprintf("%02d", i+1)+".md"))
+			target, err := brain.ResolveNotePath(cfg, brain.Sphere(sphere), out)
+			if err != nil {
+				return nil, err
+			}
+			if err := os.MkdirAll(filepath.Dir(target.Path), 0o755); err != nil {
+				return nil, err
+			}
+			rendered := renderIngestCommitment(sphere, source, resolved.Rel, task)
+			if err := validateRenderedBrainGTD(rendered); err != nil {
+				return nil, err
+			}
+			if err := os.WriteFile(target.Path, []byte(rendered), 0o644); err != nil {
+				return nil, err
+			}
+			created = append(created, target.Rel)
+		}
+	}
+	return map[string]interface{}{"sphere": sphere, "source": source, "count": len(created), "paths": created, "updated": len(created) > 0}, nil
 }

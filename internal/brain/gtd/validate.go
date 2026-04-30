@@ -27,6 +27,11 @@ func ParseAndValidate(src string) ValidationResult {
 	return ValidationResult{Commitment: *commitment, Diagnostics: diags}
 }
 
+func ValidateRenderedCommitment(src string) []brain.MarkdownDiagnostic {
+	result := ParseAndValidate(src)
+	return result.Diagnostics
+}
+
 func ValidateCommitment(commitment Commitment, note *brain.MarkdownNote) []brain.MarkdownDiagnostic {
 	var diags []brain.MarkdownDiagnostic
 	diags = append(diags, requireValue("kind", commitment.Kind)...)

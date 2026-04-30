@@ -77,6 +77,11 @@ func ParseMarkdownNote(src string, opts MarkdownParseOptions) (*MarkdownNote, []
 	return note, diags
 }
 
+func ValidateMarkdownNote(src string, opts MarkdownParseOptions) []MarkdownDiagnostic {
+	_, diags := ParseMarkdownNote(src, opts)
+	return diags
+}
+
 func (n *MarkdownNote) FrontMatter() (MarkdownFrontMatter, bool) {
 	if n == nil || n.frontMatter == nil {
 		return MarkdownFrontMatter{}, false
