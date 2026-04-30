@@ -167,7 +167,7 @@ func (s *Server) callAuxTool(_, name string, args map[string]interface{}) toolDi
 		return handledTool(s.dispatchTasks(name, args))
 	case "evernote_notebook_list", "evernote_note_search", "evernote_note_get":
 		return handledTool(s.dispatchEvernote(name, args))
-	case "brain.note.parse", "brain.note.validate", "brain.vault.validate", "brain.links.resolve", "brain_search", "brain_backlinks", "brain.gtd.bind", "brain.gtd.dedup_scan", "brain.gtd.dedup_review_apply", "brain.gtd.dedup_history", "brain.gtd.set_status", "brain.gtd.sync", "brain.people.dashboard", "brain.people.render":
+	case "brain.note.parse", "brain.note.validate", "brain.vault.validate", "brain.links.resolve", "brain_search", "brain_backlinks", "brain.gtd.bind", "brain.gtd.dedup_scan", "brain.gtd.dedup_review_apply", "brain.gtd.dedup_history", "brain.gtd.review_list", "brain.gtd.set_status", "brain.gtd.sync", "brain.people.dashboard", "brain.people.render":
 		return handledTool(s.dispatchBrain(name, args))
 	default:
 		return unhandledTool()

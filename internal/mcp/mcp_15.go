@@ -26,6 +26,8 @@ func (s *Server) dispatchBrain(method string, args map[string]interface{}) (map[
 		return s.brainGTDDedupReviewApply(args)
 	case "brain.gtd.dedup_history":
 		return s.brainGTDDedupHistory(args)
+	case "brain.gtd.review_list":
+		return s.brainGTDReviewList(args)
 	case "brain.gtd.set_status":
 		return s.brainGTDSetStatus(args)
 	case "brain.gtd.sync":
