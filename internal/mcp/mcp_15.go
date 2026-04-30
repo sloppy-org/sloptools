@@ -190,6 +190,9 @@ func (s *Server) brainNoteWrite(args map[string]interface{}) (map[string]interfa
 	if err != nil {
 		return nil, err
 	}
+	if err := validateRenderedBrainNote(rendered); err != nil {
+		return nil, err
+	}
 	if err := os.WriteFile(resolved.Path, []byte(rendered), 0o644); err != nil {
 		return nil, err
 	}
@@ -234,6 +237,9 @@ func (s *Server) brainGTDResurface(args map[string]interface{}) (map[string]inte
 		if err != nil {
 			return err
 		}
+		if err := validateRenderedBrainGTD(rendered); err != nil {
+			return err
+		}
 		if err := os.WriteFile(snapshot.Source.Path, []byte(rendered), 0o644); err != nil {
 			return err
 		}
@@ -259,6 +265,9 @@ func resurfaceOneCommitment(cfg *brain.Config, sphere brain.Sphere, path string)
 	}
 	rendered, err := note.Render()
 	if err != nil {
+		return false
+	}
+	if err := validateRenderedBrainGTD(rendered); err != nil {
 		return false
 	}
 	return os.WriteFile(resolved.Path, []byte(rendered), 0o644) == nil
@@ -357,4 +366,47 @@ func slugify(value string) string {
 		return "item"
 	}
 	return out
+}
+
+func validateRenderedBrainNote(rendered string) error {
+	if diags := brain.ValidateMarkdownNote(rendered, brain.MarkdownParseOptions{}); len(diags) != 0 {
+		return fmt.Errorf("rendered Markdown note failed validation: %s", formatBrainDiagnostics(diags))
+	}
+	return nil
+}
+
+func validateRenderedBrainGTD(rendered string) error {
+	if diags := braingtd.ValidateRenderedCommitment(rendered); len(diags) != 0 {
+		return fmt.Errorf("rendered GTD note failed validation: %s", formatBrainDiagnostics(diags))
+	}
+	return nil
+}
+
+func formatBrainDiagnostics(diags []brain.MarkdownDiagnostic) string {
+	parts := make([]string, 0, len(diags))
+	for _, diag := range diags {
+		if diag.Line > 0 {
+			parts = append(parts, fmt.Sprintf("line %d: %s", diag.Line, diag.Message))
+			continue
+		}
+		parts = append(parts, diag.Message)
+	}
+	return strings.Join(parts, "; ")
+}
+
+func supportedIngestSource(source string) bool {
+	switch strings.ToLower(strings.TrimSpace(source)) {
+	case "meetings", "mail", "todoist", "github", "gitlab", "evernote":
+		return true
+	default:
+		return false
+	}
+}
+
+func displayIngestSource(source string) string {
+	source = strings.TrimSpace(source)
+	if source == "" {
+		return "Source"
+	}
+	return strings.ToUpper(source[:1]) + strings.ToLower(source[1:])
 }

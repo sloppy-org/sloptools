@@ -113,16 +113,16 @@ func init() {
 			"name":        {Type: "string", Description: "Dashboard subject name."},
 			"path":        {Type: "string", Description: "Optional output note path. Defaults to brain/gtd/dashboards/<slug>.md."},
 		}},
-		Tool{Name: "brain.gtd.review_batch", Description: "Generate a Markdown review batch from GTD items matching a query.", Required: []string{"sphere", "q"}, Properties: map[string]ToolProperty{
+		Tool{Name: "brain.gtd.review_batch", Description: "Generate a Markdown review batch from GTD items selected by deterministic review signals and optional query matching.", Required: []string{"sphere", "q"}, Properties: map[string]ToolProperty{
 			"config_path": {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},
 			"sphere":      {Type: "string", Description: "Vault sphere to inspect.", Enum: []string{"work", "private"}},
 			"q":           {Type: "string", Description: "Review query."},
 			"path":        {Type: "string", Description: "Optional output note path. Defaults to brain/gtd/reviews/<slug>.md."},
 		}},
-		Tool{Name: "brain.gtd.ingest", Description: "Ingest meeting notes into GTD commitment notes.", Required: []string{"sphere", "source", "paths"}, Properties: map[string]ToolProperty{
+		Tool{Name: "brain.gtd.ingest", Description: "Ingest source notes into GTD commitment notes.", Required: []string{"sphere", "source", "paths"}, Properties: map[string]ToolProperty{
 			"config_path": {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},
 			"sphere":      {Type: "string", Description: "Vault sphere to inspect.", Enum: []string{"work", "private"}},
-			"source":      {Type: "string", Description: "Ingest source name. Initial support: meetings."},
+			"source":      {Type: "string", Description: "Ingest source name. Initial support: meetings, mail, todoist, github, gitlab, evernote."},
 			"paths":       {Type: "array", Description: "Source note paths to ingest."},
 			"path":        {Type: "string", Description: "Alias for a single source path."},
 		}},

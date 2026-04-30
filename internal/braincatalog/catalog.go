@@ -106,7 +106,6 @@ func gtdListItemFromRecord(record GTDRecord) GTDListItem {
 		FollowUp:   strings.TrimSpace(commitment.FollowUp),
 		Labels:     labels,
 		Bindings:   compactStrings(bindings),
-		Why:        "commitment",
 	}
 }
 

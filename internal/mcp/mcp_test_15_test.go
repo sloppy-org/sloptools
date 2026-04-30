@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/sloppy-org/sloptools/internal/brain"
+	braingtd "github.com/sloppy-org/sloptools/internal/brain/gtd"
 )
 
 func TestBrainLinksResolveToolRejectsGuardrail(t *testing.T) {
@@ -323,6 +324,33 @@ Send the reply.
 ## Review Notes
 - None.
 `)
+	writeMCPBrainFile(t, filepath.Join(tmp, "work", "brain", "gtd", "done.md"), `---
+kind: commitment
+sphere: work
+title: Ignore Ada
+status: done
+context: email
+source_bindings:
+  - provider: mail
+    ref: m2
+---
+# Ignore Ada
+
+## Summary
+Ignore this.
+
+## Next Action
+- [ ] Ignore this.
+
+## Evidence
+- mail:m2
+
+## Linked Items
+- None.
+
+## Review Notes
+- None.
+`)
 	writeMCPBrainFile(t, filepath.Join(tmp, "work", "brain", "meetings", "standup.md"), "- [ ] Follow up with Ada\n")
 
 	s := NewServer(t.TempDir())
@@ -341,6 +369,9 @@ Send the reply.
 	if !strings.Contains(string(orgData), "# GTD Organize") {
 		t.Fatalf("organize output missing heading:\n%s", string(orgData))
 	}
+	if diags := brain.ValidateMarkdownNote(string(orgData), brain.MarkdownParseOptions{}); len(diags) != 0 {
+		t.Fatalf("organize output invalid: %#v\n%s", diags, string(orgData))
+	}
 	dashboard, err := s.callTool("brain.gtd.dashboard", map[string]interface{}{
 		"config_path": configPath,
 		"sphere":      "work",
@@ -356,6 +387,9 @@ Send the reply.
 	}
 	if !strings.Contains(string(dashData), "Reply to Ada") {
 		t.Fatalf("dashboard output missing commitment:\n%s", string(dashData))
+	}
+	if diags := brain.ValidateMarkdownNote(string(dashData), brain.MarkdownParseOptions{}); len(diags) != 0 {
+		t.Fatalf("dashboard output invalid: %#v\n%s", diags, string(dashData))
 	}
 	reviewBatch, err := s.callTool("brain.gtd.review_batch", map[string]interface{}{
 		"config_path": configPath,
@@ -373,34 +407,45 @@ Send the reply.
 	if !strings.Contains(string(reviewData), "GTD Review Batch") {
 		t.Fatalf("review batch output missing heading:\n%s", string(reviewData))
 	}
-	ingested, err := s.callTool("brain.gtd.ingest", map[string]interface{}{
-		"config_path": configPath,
-		"sphere":      "work",
-		"source":      "meetings",
-		"paths":       []interface{}{filepath.Join("brain", "meetings", "standup.md")},
-	})
-	if err != nil {
-		t.Fatalf("brain.gtd.ingest: %v", err)
+	if strings.Contains(string(reviewData), "Ignore Ada") {
+		t.Fatalf("review batch included done item:\n%s", string(reviewData))
 	}
-	if ingested["count"] != 1 {
-		t.Fatalf("ingest count = %v, want 1: %#v", ingested["count"], ingested)
+	if diags := brain.ValidateMarkdownNote(string(reviewData), brain.MarkdownParseOptions{}); len(diags) != 0 {
+		t.Fatalf("review batch output invalid: %#v\n%s", diags, string(reviewData))
 	}
-	var ingestRel string
-	switch paths := ingested["paths"].(type) {
-	case []string:
-		ingestRel = paths[0]
-	case []interface{}:
-		ingestRel = paths[0].(string)
-	default:
-		t.Fatalf("unexpected ingest paths type: %T", ingested["paths"])
-	}
-	ingestPath := filepath.Join(tmp, "work", ingestRel)
-	ingestData, err := os.ReadFile(ingestPath)
-	if err != nil {
-		t.Fatalf("read ingest output: %v", err)
-	}
-	if !strings.Contains(string(ingestData), "Follow up with Ada") || !strings.Contains(string(ingestData), "source_bindings:") {
-		t.Fatalf("ingest output missing expected content:\n%s", string(ingestData))
+	for _, source := range []string{"meetings", "mail", "todoist", "github", "gitlab", "evernote"} {
+		ingested, err := s.callTool("brain.gtd.ingest", map[string]interface{}{
+			"config_path": configPath,
+			"sphere":      "work",
+			"source":      source,
+			"paths":       []interface{}{filepath.Join("brain", "meetings", "standup.md")},
+		})
+		if err != nil {
+			t.Fatalf("brain.gtd.ingest %s: %v", source, err)
+		}
+		if ingested["count"] != 1 {
+			t.Fatalf("ingest count for %s = %v, want 1: %#v", source, ingested["count"], ingested)
+		}
+		var ingestRel string
+		switch paths := ingested["paths"].(type) {
+		case []string:
+			ingestRel = paths[0]
+		case []interface{}:
+			ingestRel = paths[0].(string)
+		default:
+			t.Fatalf("unexpected ingest paths type for %s: %T", source, ingested["paths"])
+		}
+		ingestPath := filepath.Join(tmp, "work", ingestRel)
+		ingestData, err := os.ReadFile(ingestPath)
+		if err != nil {
+			t.Fatalf("read ingest output for %s: %v", source, err)
+		}
+		if !strings.Contains(string(ingestData), "source_bindings:") || !strings.Contains(string(ingestData), "provider: "+source) {
+			t.Fatalf("ingest output missing expected source data for %s:\n%s", source, string(ingestData))
+		}
+		if result := braingtd.ParseAndValidate(string(ingestData)); len(result.Diagnostics) != 0 {
+			t.Fatalf("ingest output invalid for %s: %#v\n%s", source, result.Diagnostics, string(ingestData))
+		}
 	}
 }
 

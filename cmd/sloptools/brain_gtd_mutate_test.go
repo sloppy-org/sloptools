@@ -6,6 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/sloppy-org/sloptools/internal/brain"
+	braingtd "github.com/sloppy-org/sloptools/internal/brain/gtd"
 )
 
 func TestBrainGTDCLIWriteResurfaceAndReportCommands(t *testing.T) {
@@ -135,6 +138,9 @@ Prepare slides.
 	if !strings.Contains(string(orgData), "# GTD Organize") {
 		t.Fatalf("organize output missing heading:\n%s", string(orgData))
 	}
+	if diags := brain.ValidateMarkdownNote(string(orgData), brain.MarkdownParseOptions{}); len(diags) != 0 {
+		t.Fatalf("organize output invalid: %#v\n%s", diags, string(orgData))
+	}
 
 	stdout, stderr, code = captureRun(t, []string{
 		"brain", "gtd", "dashboard",
@@ -155,6 +161,9 @@ Prepare slides.
 	}
 	if !strings.Contains(string(dashData), "Ada") {
 		t.Fatalf("dashboard output missing subject:\n%s", string(dashData))
+	}
+	if diags := brain.ValidateMarkdownNote(string(dashData), brain.MarkdownParseOptions{}); len(diags) != 0 {
+		t.Fatalf("dashboard output invalid: %#v\n%s", diags, string(dashData))
 	}
 
 	stdout, stderr, code = captureRun(t, []string{
@@ -177,38 +186,46 @@ Prepare slides.
 	if !strings.Contains(string(reviewData), "GTD Review Batch") {
 		t.Fatalf("review batch output missing heading:\n%s", string(reviewData))
 	}
+	if diags := brain.ValidateMarkdownNote(string(reviewData), brain.MarkdownParseOptions{}); len(diags) != 0 {
+		t.Fatalf("review batch output invalid: %#v\n%s", diags, string(reviewData))
+	}
 
-	stdout, stderr, code = captureRun(t, []string{
-		"brain", "gtd", "ingest",
-		"--config", configPath,
-		"--sphere", "work",
-		"--source", "meetings",
-		"--path", filepath.Join("brain", "meetings", "standup.md"),
-	})
-	if code != 0 {
-		t.Fatalf("ingest exit code = %d, stderr=%q", code, stderr)
-	}
-	var ingest map[string]interface{}
-	if err := json.Unmarshal([]byte(stdout), &ingest); err != nil {
-		t.Fatalf("decode ingest stdout: %v\n%s", err, stdout)
-	}
-	if int(ingest["count"].(float64)) != 1 {
-		t.Fatalf("ingest count = %v, stdout=%s", ingest["count"], stdout)
-	}
-	var ingestRel string
-	switch paths := ingest["paths"].(type) {
-	case []string:
-		ingestRel = paths[0]
-	case []interface{}:
-		ingestRel = paths[0].(string)
-	default:
-		t.Fatalf("unexpected ingest paths type: %T", ingest["paths"])
-	}
-	ingestData, err := os.ReadFile(filepath.Join(tmp, "work", ingestRel))
-	if err != nil {
-		t.Fatalf("read ingest output: %v", err)
-	}
-	if !strings.Contains(string(ingestData), "Follow up with Ada") || !strings.Contains(string(ingestData), "source_bindings:") {
-		t.Fatalf("ingest output missing expected content:\n%s", string(ingestData))
+	for _, source := range []string{"meetings", "mail", "todoist", "github", "gitlab", "evernote"} {
+		stdout, stderr, code = captureRun(t, []string{
+			"brain", "gtd", "ingest",
+			"--config", configPath,
+			"--sphere", "work",
+			"--source", source,
+			"--path", filepath.Join("brain", "meetings", "standup.md"),
+		})
+		if code != 0 {
+			t.Fatalf("ingest %s exit code = %d, stderr=%q", source, code, stderr)
+		}
+		var ingest map[string]interface{}
+		if err := json.Unmarshal([]byte(stdout), &ingest); err != nil {
+			t.Fatalf("decode ingest stdout for %s: %v\n%s", source, err, stdout)
+		}
+		if int(ingest["count"].(float64)) != 1 {
+			t.Fatalf("ingest count for %s = %v, stdout=%s", source, ingest["count"], stdout)
+		}
+		var ingestRel string
+		switch paths := ingest["paths"].(type) {
+		case []string:
+			ingestRel = paths[0]
+		case []interface{}:
+			ingestRel = paths[0].(string)
+		default:
+			t.Fatalf("unexpected ingest paths type for %s: %T", source, ingest["paths"])
+		}
+		ingestData, err := os.ReadFile(filepath.Join(tmp, "work", ingestRel))
+		if err != nil {
+			t.Fatalf("read ingest output for %s: %v", source, err)
+		}
+		if !strings.Contains(string(ingestData), "source_bindings:") || !strings.Contains(string(ingestData), "provider: "+source) {
+			t.Fatalf("ingest output missing expected source data for %s:\n%s", source, string(ingestData))
+		}
+		if result := braingtd.ParseAndValidate(string(ingestData)); len(result.Diagnostics) != 0 {
+			t.Fatalf("ingest output invalid for %s: %#v\n%s", source, result.Diagnostics, string(ingestData))
+		}
 	}
 }

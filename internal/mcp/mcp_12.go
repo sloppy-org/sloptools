@@ -184,6 +184,9 @@ func (s *Server) brainGTDWrite(args map[string]interface{}) (map[string]interfac
 	if err != nil {
 		return nil, err
 	}
+	if err := validateRenderedBrainGTD(rendered); err != nil {
+		return nil, err
+	}
 	if err := os.WriteFile(resolved.Path, []byte(rendered), 0o644); err != nil {
 		return nil, err
 	}
@@ -388,15 +391,18 @@ func overlayCommitment(base braingtd.Commitment, updates map[string]interface{})
 	return out, nil
 }
 
-func renderIngestCommitment(sphere, meetingRel string, task braincatalog.MeetingTask) string {
+func renderIngestCommitment(sphere, source, sourceRel string, task braincatalog.MeetingTask) string {
+	sourceLabel := displayIngestSource(source)
+	sourceName := strings.ToLower(strings.TrimSpace(source))
+	sourceRef := sourceRel + "#" + strconv.Itoa(task.Line)
 	return strings.TrimSpace(fmt.Sprintf(`---
 kind: commitment
 sphere: %s
-title: %s
+title: %q
 status: inbox
-context: meeting
+context: %s
 source_bindings:
-  - provider: meetings
+  - provider: %s
     ref: %q
     location:
       path: %s
@@ -405,7 +411,7 @@ source_bindings:
 # %s
 
 ## Summary
-Meeting task from %s.
+%s task from %s.
 
 ## Next Action
 - [ ] %s
@@ -417,6 +423,6 @@ Meeting task from %s.
 - None.
 
 ## Review Notes
-- Ingested from meeting notes.
-`, sphere, strconv.Quote(task.Text), meetingRel+"#"+strconv.Itoa(task.Line), meetingRel, task.Text, task.Text, meetingRel, task.Text, meetingRel, task.Line))
+- Ingested from %s notes.
+`, sphere, task.Text, sourceName, sourceName, sourceRef, sourceRel, task.Text, task.Text, sourceLabel, sourceRel, task.Text, sourceRel, task.Line, sourceLabel))
 }

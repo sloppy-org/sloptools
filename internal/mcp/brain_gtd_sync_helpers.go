@@ -342,7 +342,11 @@ func (s *Server) brainGTDOrganize(args map[string]interface{}) (map[string]inter
 	if err := os.MkdirAll(filepath.Dir(resolved.Path), 0o755); err != nil {
 		return nil, err
 	}
-	if err := os.WriteFile(resolved.Path, []byte(braincatalog.BuildGTDIndexMarkdown(items, sphere)), 0o644); err != nil {
+	rendered := braincatalog.BuildGTDIndexMarkdown(items, sphere)
+	if err := validateRenderedBrainNote(rendered); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(resolved.Path, []byte(rendered), 0o644); err != nil {
 		return nil, err
 	}
 	return map[string]interface{}{"sphere": sphere, "path": resolved.Rel, "count": len(items), "updated": true}, nil
@@ -376,7 +380,11 @@ func (s *Server) brainGTDDashboard(args map[string]interface{}) (map[string]inte
 	if err := os.MkdirAll(filepath.Dir(resolved.Path), 0o755); err != nil {
 		return nil, err
 	}
-	if err := os.WriteFile(resolved.Path, []byte(braincatalog.BuildGTDDashboardMarkdown(items, sphere, name)), 0o644); err != nil {
+	rendered := braincatalog.BuildGTDDashboardMarkdown(items, sphere, name)
+	if err := validateRenderedBrainNote(rendered); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(resolved.Path, []byte(rendered), 0o644); err != nil {
 		return nil, err
 	}
 	return map[string]interface{}{"sphere": sphere, "name": name, "path": resolved.Rel, "count": len(items), "updated": true}, nil
@@ -413,7 +421,11 @@ func (s *Server) brainGTDReviewBatch(args map[string]interface{}) (map[string]in
 	if err := os.MkdirAll(filepath.Dir(resolved.Path), 0o755); err != nil {
 		return nil, err
 	}
-	if err := os.WriteFile(resolved.Path, []byte(braincatalog.BuildGTDReviewBatchMarkdown(items, sphere, query)), 0o644); err != nil {
+	rendered := braincatalog.BuildGTDReviewBatchMarkdown(items, sphere, query)
+	if err := validateRenderedBrainNote(rendered); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(resolved.Path, []byte(rendered), 0o644); err != nil {
 		return nil, err
 	}
 	return map[string]interface{}{"sphere": sphere, "q": query, "path": resolved.Rel, "count": len(items), "updated": true}, nil
@@ -432,7 +444,7 @@ func (s *Server) brainGTDIngest(args map[string]interface{}) (map[string]interfa
 	if source == "" {
 		return nil, errors.New("source is required")
 	}
-	if source != "meetings" {
+	if !supportedIngestSource(source) {
 		return nil, fmt.Errorf("unsupported ingest source %q", source)
 	}
 	paths := stringListArg(args, "path")
@@ -448,7 +460,7 @@ func (s *Server) brainGTDIngest(args map[string]interface{}) (map[string]interfa
 		if err != nil {
 			return nil, err
 		}
-		for i, task := range braincatalog.ExtractMeetingTasks(string(data)) {
+		for i, task := range braincatalog.ExtractIngestTasks(source, string(data)) {
 			out := filepath.ToSlash(filepath.Join("brain", "gtd", "ingest", slugify(filepath.Base(resolved.Rel))+"-"+fmt.Sprintf("%02d", i+1)+".md"))
 			target, err := brain.ResolveNotePath(cfg, brain.Sphere(sphere), out)
 			if err != nil {
@@ -457,7 +469,11 @@ func (s *Server) brainGTDIngest(args map[string]interface{}) (map[string]interfa
 			if err := os.MkdirAll(filepath.Dir(target.Path), 0o755); err != nil {
 				return nil, err
 			}
-			if err := os.WriteFile(target.Path, []byte(renderIngestCommitment(sphere, resolved.Rel, task)), 0o644); err != nil {
+			rendered := renderIngestCommitment(sphere, source, resolved.Rel, task)
+			if err := validateRenderedBrainGTD(rendered); err != nil {
+				return nil, err
+			}
+			if err := os.WriteFile(target.Path, []byte(rendered), 0o644); err != nil {
 				return nil, err
 			}
 			created = append(created, target.Rel)

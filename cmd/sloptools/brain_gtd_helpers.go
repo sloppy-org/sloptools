@@ -33,7 +33,7 @@ func cmdBrainGTDIngest(args []string) int {
 		fmt.Fprintln(os.Stderr, "--source is required")
 		return 2
 	}
-	if strings.ToLower(strings.TrimSpace(*source)) != "meetings" {
+	if !supportedIngestSource(*source) {
 		fmt.Fprintln(os.Stderr, "unsupported ingest source")
 		return 1
 	}
@@ -53,7 +53,10 @@ func cmdBrainGTDIngest(args []string) int {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
 		}
-		tasks := braincatalog.ExtractMeetingTasks(string(data))
+		tasks := braincatalog.ExtractIngestTasks(*source, string(data))
+		if len(tasks) == 0 {
+			continue
+		}
 		for i, task := range tasks {
 			output := filepath.ToSlash(filepath.Join("brain", "gtd", "ingest", slugify(filepath.Base(resolved.Rel))+"-"+fmt.Sprintf("%02d", i+1)+".md"))
 			target, err := brain.ResolveNotePath(cfg, brain.Sphere(*sphere), output)
@@ -65,7 +68,12 @@ func cmdBrainGTDIngest(args []string) int {
 				fmt.Fprintln(os.Stderr, err)
 				return 1
 			}
-			if err := os.WriteFile(target.Path, []byte(renderIngestCommitmentCLI(*sphere, resolved.Rel, task)), 0o644); err != nil {
+			rendered := renderIngestCommitmentCLI(*sphere, *source, resolved.Rel, task)
+			if err := validateRenderedBrainGTD(rendered); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				return 1
+			}
+			if err := os.WriteFile(target.Path, []byte(rendered), 0o644); err != nil {
 				fmt.Fprintln(os.Stderr, err)
 				return 1
 			}
@@ -92,6 +100,9 @@ func resurfaceOneCommitment(cfg *brain.Config, sphere brain.Sphere, path string)
 	}
 	rendered, err := note.Render()
 	if err != nil {
+		return false
+	}
+	if err := validateRenderedBrainGTD(rendered); err != nil {
 		return false
 	}
 	if err := os.WriteFile(resolved.Path, []byte(rendered), 0o644); err != nil {
@@ -124,15 +135,18 @@ func (s *stringSliceFlag) Set(value string) error {
 	return nil
 }
 
-func renderIngestCommitmentCLI(sphere, meetingRel string, task braincatalog.MeetingTask) string {
+func renderIngestCommitmentCLI(sphere, source, sourceRel string, task braincatalog.MeetingTask) string {
+	sourceLabel := displayIngestSource(source)
+	sourceName := strings.ToLower(strings.TrimSpace(source))
+	sourceRef := sourceRel + "#" + strconv.Itoa(task.Line)
 	return strings.TrimSpace(fmt.Sprintf(`---
 kind: commitment
 sphere: %s
-title: %s
+title: %q
 status: inbox
-context: meeting
+context: %s
 source_bindings:
-  - provider: meetings
+  - provider: %s
     ref: %q
     location:
       path: %s
@@ -141,7 +155,7 @@ source_bindings:
 # %s
 
 ## Summary
-Meeting task from %s.
+%s task from %s.
 
 ## Next Action
 - [ ] %s
@@ -153,8 +167,25 @@ Meeting task from %s.
 - None.
 
 ## Review Notes
-- Ingested from meeting notes.
-`, sphere, strconv.Quote(task.Text), meetingRel+"#"+strconv.Itoa(task.Line), meetingRel, task.Text, task.Text, meetingRel, task.Text, meetingRel, task.Line))
+- Ingested from %s notes.
+`, sphere, task.Text, sourceName, sourceName, sourceRef, sourceRel, task.Text, task.Text, sourceLabel, sourceRel, task.Text, sourceRel, task.Line, sourceLabel))
+}
+
+func supportedIngestSource(source string) bool {
+	switch strings.ToLower(strings.TrimSpace(source)) {
+	case "meetings", "mail", "todoist", "github", "gitlab", "evernote":
+		return true
+	default:
+		return false
+	}
+}
+
+func displayIngestSource(source string) string {
+	source = strings.TrimSpace(source)
+	if source == "" {
+		return "Source"
+	}
+	return strings.ToUpper(source[:1]) + strings.ToLower(source[1:])
 }
 
 func writeCommitmentFrontMatter(note *brain.MarkdownNote, commitment braingtd.Commitment) error {

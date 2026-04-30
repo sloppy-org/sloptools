@@ -12,7 +12,7 @@ import (
 
 func cmdBrainGTD(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "brain gtd requires parse, validate, list, or update")
+		fmt.Fprintln(os.Stderr, "brain gtd requires parse, validate, list, update, write, organize, resurface, dashboard, review-batch, or ingest")
 		return 2
 	}
 	switch args[0] {

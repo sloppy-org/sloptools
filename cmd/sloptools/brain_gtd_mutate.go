@@ -127,6 +127,10 @@ func cmdBrainGTDWrite(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
+	if err := validateRenderedBrainGTD(rendered); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
 	if err := os.WriteFile(resolved.Path, []byte(rendered), 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
@@ -175,7 +179,12 @@ func cmdBrainGTDOrganize(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	if err := os.WriteFile(resolved.Path, []byte(braincatalog.BuildGTDIndexMarkdown(items, *sphere)), 0o644); err != nil {
+	rendered := braincatalog.BuildGTDIndexMarkdown(items, *sphere)
+	if err := validateRenderedBrainNote(rendered); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	if err := os.WriteFile(resolved.Path, []byte(rendered), 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
@@ -221,6 +230,9 @@ func cmdBrainGTDResurface(args []string) int {
 			}
 			rendered, err := note.Render()
 			if err != nil {
+				return err
+			}
+			if err := validateRenderedBrainGTD(rendered); err != nil {
 				return err
 			}
 			if err := os.WriteFile(snapshot.Source.Path, []byte(rendered), 0o644); err != nil {
@@ -276,7 +288,12 @@ func cmdBrainGTDDashboard(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	if err := os.WriteFile(resolved.Path, []byte(braincatalog.BuildGTDDashboardMarkdown(items, *sphere, *name)), 0o644); err != nil {
+	rendered := braincatalog.BuildGTDDashboardMarkdown(items, *sphere, *name)
+	if err := validateRenderedBrainNote(rendered); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	if err := os.WriteFile(resolved.Path, []byte(rendered), 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
@@ -323,7 +340,12 @@ func cmdBrainGTDReviewBatch(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	if err := os.WriteFile(resolved.Path, []byte(braincatalog.BuildGTDReviewBatchMarkdown(items, *sphere, *query)), 0o644); err != nil {
+	rendered := braincatalog.BuildGTDReviewBatchMarkdown(items, *sphere, *query)
+	if err := validateRenderedBrainNote(rendered); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	if err := os.WriteFile(resolved.Path, []byte(rendered), 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}

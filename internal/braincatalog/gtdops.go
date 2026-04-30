@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 	"unicode"
 )
 
@@ -23,11 +24,24 @@ func BuildGTDDashboardMarkdown(items []GTDListItem, sphere, name string) string 
 }
 
 func BuildGTDReviewBatchMarkdown(items []GTDListItem, sphere, query string) string {
-	grouped := groupGTDItems(items, query)
+	grouped := groupGTDItems(selectGTDReviewBatchItems(items, query), "")
 	return buildGTDMarkdown("GTD Review Batch: "+strings.TrimSpace(query), sphere, grouped)
 }
 
 func ExtractMeetingTasks(src string) []MeetingTask {
+	return ExtractIngestTasks("meetings", src)
+}
+
+func ExtractIngestTasks(source, src string) []MeetingTask {
+	switch strings.ToLower(strings.TrimSpace(source)) {
+	case "meetings", "mail", "todoist", "github", "gitlab", "evernote":
+		return extractCheckboxTasks(src)
+	default:
+		return nil
+	}
+}
+
+func extractCheckboxTasks(src string) []MeetingTask {
 	lines := strings.Split(src, "\n")
 	out := make([]MeetingTask, 0, len(lines))
 	for i, raw := range lines {
@@ -42,6 +56,81 @@ func ExtractMeetingTasks(src string) []MeetingTask {
 		out = append(out, MeetingTask{Line: i + 1, Text: text})
 	}
 	return out
+}
+
+func selectGTDReviewBatchItems(items []GTDListItem, query string) []GTDListItem {
+	now := time.Now().UTC()
+	filtered := make([]GTDListItem, 0, len(items))
+	for _, item := range items {
+		queue, why := gtdReviewBatchQueue(item, now)
+		if queue == "done" || queue == "closed" {
+			continue
+		}
+		if query != "" && !gtdItemMatchesQuery(item, query) {
+			continue
+		}
+		item.Status = queue
+		item.Why = why
+		filtered = append(filtered, item)
+	}
+	sort.Slice(filtered, func(i, j int) bool {
+		if filtered[i].Status != filtered[j].Status {
+			return gtdStatusRank(filtered[i].Status) < gtdStatusRank(filtered[j].Status)
+		}
+		if filtered[i].Due != filtered[j].Due {
+			return filtered[i].Due < filtered[j].Due
+		}
+		return strings.ToLower(filtered[i].Title) < strings.ToLower(filtered[j].Title)
+	})
+	return filtered
+}
+
+func gtdReviewBatchQueue(item GTDListItem, now time.Time) (string, string) {
+	status := normalizeGTDStatus(item.Status)
+	switch status {
+	case "done", "closed":
+		return status, "status=" + status
+	case "maybe_stale":
+		return "review", "status=maybe_stale"
+	case "deferred":
+		if due, ok := parseGTDReviewDate(item.FollowUp); ok && !due.After(now) {
+			return "next", "follow_up reached"
+		}
+		return "deferred", "follow_up future"
+	case "waiting":
+		return "waiting", "status=waiting"
+	case "someday":
+		return "someday", "status=someday"
+	case "inbox":
+		return "inbox", "status=inbox"
+	case "next":
+		return "next", "status=next"
+	}
+	if due, ok := parseGTDReviewDate(item.Due); ok && !due.After(now) {
+		return "review", "due overdue"
+	}
+	if status == "" {
+		return "inbox", "status=inbox"
+	}
+	return status, "status=" + status
+}
+
+func parseGTDReviewDate(raw string) (time.Time, bool) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return time.Time{}, false
+	}
+	if len(value) >= len("2006-01-02T15:04:05Z07:00") {
+		if t, err := time.Parse(time.RFC3339, value); err == nil {
+			return t.UTC(), true
+		}
+	}
+	if len(value) >= len("2006-01-02") {
+		if t, err := time.Parse("2006-01-02", value[:10]); err == nil {
+			return t.UTC(), true
+		}
+	}
+	return time.Time{}, false
 }
 
 func groupGTDItems(items []GTDListItem, query string) map[string][]GTDListItem {
@@ -63,7 +152,9 @@ func groupGTDItems(items []GTDListItem, query string) map[string][]GTDListItem {
 	})
 	grouped := map[string][]GTDListItem{
 		"next":     {},
+		"inbox":    {},
 		"waiting":  {},
+		"review":   {},
 		"deferred": {},
 		"someday":  {},
 		"done":     {},
@@ -95,7 +186,9 @@ func buildGTDMarkdown(title, sphere string, grouped map[string][]GTDListItem) st
 		title string
 	}{
 		{"next", "Next"},
+		{"inbox", "Inbox"},
 		{"waiting", "Waiting"},
+		{"review", "Review"},
 		{"deferred", "Deferred"},
 		{"someday", "Someday"},
 		{"done", "Done"},
@@ -119,6 +212,9 @@ func buildGTDMarkdown(title, sphere string, grouped map[string][]GTDListItem) st
 			}
 			if item.Actor != "" {
 				b.WriteString(" actor " + item.Actor)
+			}
+			if item.Why != "" {
+				b.WriteString(" because " + item.Why)
 			}
 			b.WriteByte('\n')
 		}
@@ -152,7 +248,7 @@ func gtdItemMatchesQuery(item GTDListItem, query string) bool {
 
 func normalizeGTDStatus(status string) string {
 	switch strings.ToLower(strings.TrimSpace(status)) {
-	case "next", "waiting", "deferred", "someday", "done", "closed":
+	case "inbox", "next", "waiting", "review", "deferred", "someday", "done", "closed":
 		return strings.ToLower(strings.TrimSpace(status))
 	default:
 		return "other"
@@ -161,20 +257,24 @@ func normalizeGTDStatus(status string) string {
 
 func gtdStatusRank(status string) int {
 	switch normalizeGTDStatus(status) {
-	case "next":
+	case "inbox":
 		return 0
-	case "waiting":
+	case "next":
 		return 1
-	case "deferred":
+	case "waiting":
 		return 2
-	case "someday":
+	case "review":
 		return 3
-	case "done":
+	case "deferred":
 		return 4
-	case "closed":
+	case "someday":
 		return 5
-	default:
+	case "done":
 		return 6
+	case "closed":
+		return 7
+	default:
+		return 8
 	}
 }
 
