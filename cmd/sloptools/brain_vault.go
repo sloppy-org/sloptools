@@ -3,9 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
-	iofs "io/fs"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/sloppy-org/sloptools/internal/brain"
@@ -14,14 +12,16 @@ import (
 
 func cmdBrainVault(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "brain vault requires validate")
+		fmt.Fprintln(os.Stderr, "brain vault requires list or validate")
 		return 2
 	}
 	switch args[0] {
+	case "list":
+		return cmdBrainVaultList(args[1:])
 	case "validate":
 		return cmdBrainVaultValidate(args[1:])
 	case "help", "-h", "--help":
-		fmt.Println("sloptools brain vault validate [flags]")
+		fmt.Println("sloptools brain vault <list|validate> [flags]")
 		fmt.Println("  --config PATH   vault config path (default ~/.config/sloptools/vaults.toml)")
 		fmt.Println("  --sphere NAME   vault sphere: work or private")
 		return 0
@@ -54,26 +54,8 @@ func cmdBrainVaultValidate(args []string) int {
 	}
 	var notes []map[string]interface{}
 	issues := 0
-	err = filepath.WalkDir(vault.BrainRoot(), func(path string, d iofs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if d.IsDir() {
-			return nil
-		}
-		if filepath.Ext(path) != ".md" {
-			return nil
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		rel, err := filepath.Rel(vault.Root, path)
-		if err != nil {
-			return err
-		}
-		source := brain.ResolvedPath{Sphere: vault.Sphere, VaultRoot: vault.Root, BrainRoot: vault.BrainRoot(), Path: filepath.Clean(path), Rel: filepath.ToSlash(rel)}
-		entry, err := brainCLIInspectNoteContent(cfg, source, string(data), true)
+	err = brain.WalkVaultNotes(cfg, brain.Sphere(*sphere), func(snapshot brain.NoteSnapshot) error {
+		entry, err := brainCLIInspectNoteContent(cfg, snapshot, true)
 		if err != nil {
 			return err
 		}
@@ -102,16 +84,33 @@ func cmdBrainVaultValidate(args []string) int {
 	})
 }
 
-func brainCLIInspectNoteContent(cfg *brain.Config, source brain.ResolvedPath, body string, validate bool) (map[string]interface{}, error) {
-	kind, note, parseDiags := brainCLINoteKind(body)
+func cmdBrainVaultList(args []string) int {
+	fs := flag.NewFlagSet("brain vault list", flag.ContinueOnError)
+	configPath := fs.String("config", "", "vault config path")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	cfg, err := brain.LoadConfig(*configPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	return printBrainJSON(map[string]interface{}{
+		"vaults": brain.ListVaults(cfg),
+		"count":  len(cfg.Vaults),
+	})
+}
+
+func brainCLIInspectNoteContent(cfg *brain.Config, snapshot brain.NoteSnapshot, validate bool) (map[string]interface{}, error) {
+	kind, note, parseDiags := brainCLINoteKind(snapshot.Body)
 	result := map[string]interface{}{
-		"source": source,
+		"source": snapshot.Source,
 		"kind":   kind,
 	}
 	switch kind {
 	case "commitment":
 		if validate {
-			parsed := braingtd.ParseAndValidate(body)
+			parsed := braingtd.ParseAndValidate(snapshot.Body)
 			result["parsed"] = parsed.Commitment
 			result["commitment"] = parsed.Commitment
 			result["diagnostics"] = parsed.Diagnostics
@@ -119,7 +118,7 @@ func brainCLIInspectNoteContent(cfg *brain.Config, source brain.ResolvedPath, bo
 			result["valid"] = len(parsed.Diagnostics) == 0
 			return result, nil
 		}
-		commitment, _, diags := braingtd.ParseCommitmentMarkdown(body)
+		commitment, _, diags := braingtd.ParseCommitmentMarkdown(snapshot.Body)
 		result["parsed"] = commitment
 		result["commitment"] = commitment
 		result["diagnostics"] = diags
@@ -129,9 +128,9 @@ func brainCLIInspectNoteContent(cfg *brain.Config, source brain.ResolvedPath, bo
 		var parsed brain.FolderNote
 		var diags []brain.MarkdownDiagnostic
 		if validate {
-			parsed, diags = brain.ValidateFolderNote(body, brain.LinkValidationContext{Config: cfg, Sphere: source.Sphere, Path: source.Path})
+			parsed, diags = brain.ValidateFolderNote(snapshot.Body, brain.LinkValidationContext{Config: cfg, Sphere: snapshot.Source.Sphere, Path: snapshot.Source.Path})
 		} else {
-			parsed, diags = brain.ParseFolderNote(body)
+			parsed, diags = brain.ParseFolderNote(snapshot.Body)
 		}
 		result["parsed"] = parsed
 		result["folder"] = parsed
@@ -145,9 +144,9 @@ func brainCLIInspectNoteContent(cfg *brain.Config, source brain.ResolvedPath, bo
 		var parsed brain.GlossaryNote
 		var diags []brain.MarkdownDiagnostic
 		if validate {
-			parsed, diags = brain.ValidateGlossaryNote(body, brain.LinkValidationContext{Config: cfg, Sphere: source.Sphere, Path: source.Path})
+			parsed, diags = brain.ValidateGlossaryNote(snapshot.Body, brain.LinkValidationContext{Config: cfg, Sphere: snapshot.Source.Sphere, Path: snapshot.Source.Path})
 		} else {
-			parsed, diags = brain.ParseGlossaryNote(body)
+			parsed, diags = brain.ParseGlossaryNote(snapshot.Body)
 		}
 		result["parsed"] = parsed
 		result["glossary"] = parsed
@@ -161,9 +160,9 @@ func brainCLIInspectNoteContent(cfg *brain.Config, source brain.ResolvedPath, bo
 		var parsed brain.AttentionFields
 		var diags []brain.MarkdownDiagnostic
 		if validate {
-			parsed, diags = brain.ValidateAttentionFields(body)
+			parsed, diags = brain.ValidateAttentionFields(snapshot.Body)
 		} else {
-			parsed, diags = brain.ParseAttentionFields(body)
+			parsed, diags = brain.ParseAttentionFields(snapshot.Body)
 		}
 		result["parsed"] = parsed
 		result["attention"] = parsed

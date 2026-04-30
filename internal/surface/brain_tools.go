@@ -22,14 +22,77 @@ func init() {
 			"path":        {Type: "string", Description: "Source note path, relative to the brain root or absolute inside the vault."},
 			"link":        {Type: "string", Description: "Link text to resolve."},
 		}},
-		Tool{Name: "brain_search", Description: "Search a configured brain vault with rg-backed exact, regex, link, or alias matching.", Required: []string{"sphere", "query"}, Properties: map[string]ToolProperty{
+		Tool{Name: "brain.config.get", Description: "Return the active brain vault configuration and resolved vault roots.", Properties: map[string]ToolProperty{
+			"config_path": {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},
+		}},
+		Tool{Name: "brain.vault.list", Description: "Return the configured work and private vault roots.", Properties: map[string]ToolProperty{
+			"config_path": {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},
+		}},
+		Tool{Name: "brain.folder.parse", Description: "Parse a folder note from the configured work/private vault and return structured content plus source-path metadata.", Required: []string{"sphere", "path"}, Properties: map[string]ToolProperty{
+			"config_path": {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},
+			"sphere":      {Type: "string", Description: "Vault sphere to inspect.", Enum: []string{"work", "private"}},
+			"path":        {Type: "string", Description: "Note path, relative to the brain root or absolute inside the vault."},
+		}},
+		Tool{Name: "brain.folder.validate", Description: "Validate a folder note from the configured work/private vault and return structured diagnostics plus source-path metadata.", Required: []string{"sphere", "path"}, Properties: map[string]ToolProperty{
+			"config_path": {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},
+			"sphere":      {Type: "string", Description: "Vault sphere to inspect.", Enum: []string{"work", "private"}},
+			"path":        {Type: "string", Description: "Note path, relative to the brain root or absolute inside the vault."},
+		}},
+		Tool{Name: "brain.folder.links", Description: "Extract folder note links from the configured work/private vault and return source-path metadata.", Required: []string{"sphere", "path"}, Properties: map[string]ToolProperty{
+			"config_path": {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},
+			"sphere":      {Type: "string", Description: "Vault sphere to inspect.", Enum: []string{"work", "private"}},
+			"path":        {Type: "string", Description: "Note path, relative to the brain root or absolute inside the vault."},
+		}},
+		Tool{Name: "brain.folder.audit", Description: "Audit every folder note in a configured vault and return diagnostics with source paths.", Required: []string{"sphere"}, Properties: map[string]ToolProperty{
+			"config_path": {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},
+			"sphere":      {Type: "string", Description: "Vault sphere to inspect.", Enum: []string{"work", "private"}},
+		}},
+		Tool{Name: "brain.glossary.parse", Description: "Parse a glossary note from the configured work/private vault and return structured content plus source-path metadata.", Required: []string{"sphere", "path"}, Properties: map[string]ToolProperty{
+			"config_path": {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},
+			"sphere":      {Type: "string", Description: "Vault sphere to inspect.", Enum: []string{"work", "private"}},
+			"path":        {Type: "string", Description: "Note path, relative to the brain root or absolute inside the vault."},
+		}},
+		Tool{Name: "brain.glossary.validate", Description: "Validate a glossary note from the configured work/private vault and return structured diagnostics plus source-path metadata.", Required: []string{"sphere", "path"}, Properties: map[string]ToolProperty{
+			"config_path": {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},
+			"sphere":      {Type: "string", Description: "Vault sphere to inspect.", Enum: []string{"work", "private"}},
+			"path":        {Type: "string", Description: "Note path, relative to the brain root or absolute inside the vault."},
+		}},
+		Tool{Name: "brain.attention.parse", Description: "Parse an attention note from the configured work/private vault and return structured content plus source-path metadata.", Required: []string{"sphere", "path"}, Properties: map[string]ToolProperty{
+			"config_path": {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},
+			"sphere":      {Type: "string", Description: "Vault sphere to inspect.", Enum: []string{"work", "private"}},
+			"path":        {Type: "string", Description: "Note path, relative to the brain root or absolute inside the vault."},
+		}},
+		Tool{Name: "brain.attention.validate", Description: "Validate an attention note from the configured work/private vault and return structured diagnostics plus source-path metadata.", Required: []string{"sphere", "path"}, Properties: map[string]ToolProperty{
+			"config_path": {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},
+			"sphere":      {Type: "string", Description: "Vault sphere to inspect.", Enum: []string{"work", "private"}},
+			"path":        {Type: "string", Description: "Note path, relative to the brain root or absolute inside the vault."},
+		}},
+		Tool{Name: "brain.entities.candidates", Description: "Extract deterministic entity candidates from reviewed notes in a configured vault.", Required: []string{"sphere"}, Properties: map[string]ToolProperty{
+			"config_path": {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},
+			"sphere":      {Type: "string", Description: "Vault sphere to inspect.", Enum: []string{"work", "private"}},
+			"limit":       {Type: "integer", Description: "Maximum candidates to return."},
+		}},
+		Tool{Name: "brain.gtd.parse", Description: "Parse every GTD commitment note in a configured vault and return structured content plus source-path metadata.", Required: []string{"sphere"}, Properties: map[string]ToolProperty{
+			"config_path": {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},
+			"sphere":      {Type: "string", Description: "Vault sphere to inspect.", Enum: []string{"work", "private"}},
+		}},
+		Tool{Name: "brain.gtd.list", Description: "Return a filtered GTD commitment list from a configured vault.", Required: []string{"sphere"}, Properties: map[string]ToolProperty{
+			"config_path": {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},
+			"sphere":      {Type: "string", Description: "Vault sphere to inspect.", Enum: []string{"work", "private"}},
+			"status":      {Type: "string", Description: "Optional status filter."},
+			"person":      {Type: "string", Description: "Optional person filter."},
+			"project":     {Type: "string", Description: "Optional project filter."},
+			"source":      {Type: "string", Description: "Optional source filter."},
+			"limit":       {Type: "integer", Description: "Maximum results to return."},
+		}},
+		Tool{Name: "brain.search", Description: "Search a configured brain vault with rg-backed exact, regex, link, or alias matching.", Required: []string{"sphere", "query"}, Properties: map[string]ToolProperty{
 			"config_path": {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},
 			"sphere":      {Type: "string", Description: "Vault sphere to search.", Enum: []string{"work", "private"}},
 			"query":       {Type: "string", Description: "Search query."},
 			"mode":        {Type: "string", Description: "Search mode.", Enum: []string{"text", "regex", "wikilink", "markdown_link", "alias"}},
 			"limit":       {Type: "integer", Description: "Maximum results to return. Defaults to 50."},
 		}},
-		Tool{Name: "brain_backlinks", Description: "Find Markdown and wikilink backlinks to a note in a configured brain vault.", Required: []string{"sphere", "target"}, Properties: map[string]ToolProperty{
+		Tool{Name: "brain.backlinks", Description: "Find Markdown and wikilink backlinks to a note in a configured brain vault.", Required: []string{"sphere", "target"}, Properties: map[string]ToolProperty{
 			"config_path": {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},
 			"sphere":      {Type: "string", Description: "Vault sphere to search.", Enum: []string{"work", "private"}},
 			"target":      {Type: "string", Description: "Target note path, relative to the brain root or absolute inside the vault."},

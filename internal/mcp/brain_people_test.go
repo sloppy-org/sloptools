@@ -143,6 +143,198 @@ func TestBrainPeopleRenderEmptyAndMissingPerson(t *testing.T) {
 	}
 }
 
+func TestBrainCatalogTools(t *testing.T) {
+	t.Run("vault list", func(t *testing.T) {
+		tmp := t.TempDir()
+		configPath := writeMCPBrainConfig(t, tmp)
+		s := NewServer(t.TempDir())
+
+		got, err := s.callTool("brain.vault.list", map[string]interface{}{
+			"config_path": configPath,
+		})
+		if err != nil {
+			t.Fatalf("brain.vault.list: %v", err)
+		}
+		if got["count"].(int) != 2 {
+			t.Fatalf("count = %#v", got["count"])
+		}
+	})
+
+	t.Run("folder audit", func(t *testing.T) {
+		tmp := t.TempDir()
+		configPath := writeMCPBrainConfig(t, tmp)
+		writeMCPBrainFile(t, filepath.Join(tmp, "work", "brain", "folders", "project.md"), `---
+kind: folder
+vault: nextcloud
+sphere: work
+source_folder: project
+status: broken
+projects: []
+people: []
+institutions: []
+topics: []
+---
+# project
+
+## Summary
+Summary.
+
+## Key Facts
+- Source folder: project
+
+## Important Files
+- None.
+
+## Related Folders
+- None.
+
+## Related Notes
+- None.
+
+## Notes
+Free prose.
+`)
+
+		s := NewServer(t.TempDir())
+		got, err := s.callTool("brain.folder.audit", map[string]interface{}{
+			"config_path": configPath,
+			"sphere":      "work",
+		})
+		if err != nil {
+			t.Fatalf("brain.folder.audit: %v", err)
+		}
+		if got["count"].(int) != 1 {
+			t.Fatalf("audit count = %#v", got["count"])
+		}
+		if got["valid"].(bool) {
+			t.Fatalf("expected invalid folder audit: %#v", got)
+		}
+	})
+
+	t.Run("entities candidates", func(t *testing.T) {
+		tmp := t.TempDir()
+		configPath := writeMCPBrainConfig(t, tmp)
+		writeMCPBrainFile(t, filepath.Join(tmp, "work", "brain", "folders", "project.md"), `---
+kind: folder
+vault: nextcloud
+sphere: work
+source_folder: project
+status: stale
+projects:
+  - Fusion
+people:
+  - Ada Lovelace
+institutions: []
+topics:
+  - Plasma
+---
+# project
+
+## Summary
+Summary.
+
+## Key Facts
+- Source folder: project
+
+## Important Files
+- None.
+
+## Related Folders
+- None.
+
+## Related Notes
+- None.
+
+## Notes
+Free prose.
+
+## Open Questions
+- None.
+`)
+		writeMCPBrainFile(t, filepath.Join(tmp, "work", "brain", "glossary", "ntv.md"), `---
+kind: glossary
+display_name: NTV
+aliases:
+  - NTV
+  - neoclassical toroidal viscosity
+sphere: work
+canonical_topic: "[[topics/plasma]]"
+---
+# NTV
+
+## Definition
+Neoclassical toroidal viscosity.
+`)
+
+		s := NewServer(t.TempDir())
+		got, err := s.callTool("brain.entities.candidates", map[string]interface{}{
+			"config_path": configPath,
+			"sphere":      "work",
+		})
+		if err != nil {
+			t.Fatalf("brain.entities.candidates: %v", err)
+		}
+		if got["count"].(int) < 4 {
+			t.Fatalf("candidate count = %#v", got["count"])
+		}
+	})
+
+	t.Run("gtd parse and list", func(t *testing.T) {
+		tmp := t.TempDir()
+		configPath := writeMCPBrainConfig(t, tmp)
+		writeMCPBrainFile(t, filepath.Join(tmp, "work", "brain", "gtd", "task.md"), `---
+kind: commitment
+sphere: work
+title: Reply to Ada
+status: next
+next_action: Send the reply
+context: email
+source_refs:
+  - mail:work:abc
+---
+# Reply to Ada
+
+## Summary
+Send the reply.
+
+## Next Action
+- [ ] Send the reply.
+
+## Evidence
+- mail:work:abc
+
+## Linked Items
+- None.
+
+## Review Notes
+- None.
+`)
+
+		s := NewServer(t.TempDir())
+		parsed, err := s.callTool("brain.gtd.parse", map[string]interface{}{
+			"config_path": configPath,
+			"sphere":      "work",
+		})
+		if err != nil {
+			t.Fatalf("brain.gtd.parse: %v", err)
+		}
+		if parsed["count"].(int) != 1 {
+			t.Fatalf("parse count = %#v", parsed["count"])
+		}
+		listed, err := s.callTool("brain.gtd.list", map[string]interface{}{
+			"config_path": configPath,
+			"sphere":      "work",
+			"status":      "next",
+		})
+		if err != nil {
+			t.Fatalf("brain.gtd.list: %v", err)
+		}
+		if listed["count"].(int) != 1 {
+			t.Fatalf("list count = %#v", listed["count"])
+		}
+	})
+}
+
 func assertPeopleLoopCount(t *testing.T, got map[string]interface{}, key string, want int) {
 	t.Helper()
 	items, ok := got[key].([]personOpenLoop)

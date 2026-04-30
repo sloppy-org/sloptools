@@ -10,6 +10,10 @@ import (
 
 func (s *Server) dispatchBrain(method string, args map[string]interface{}) (map[string]interface{}, error) {
 	switch method {
+	case "brain.config.get":
+		return s.brainConfigGet(args)
+	case "brain.vault.list":
+		return s.brainVaultList(args)
 	case "brain.note.parse":
 		return s.brainNoteParse(args)
 	case "brain.note.validate":
@@ -18,6 +22,28 @@ func (s *Server) dispatchBrain(method string, args map[string]interface{}) (map[
 		return s.brainVaultValidate(args)
 	case "brain.links.resolve":
 		return s.brainLinksResolve(args)
+	case "brain.folder.parse":
+		return s.brainNoteParse(args)
+	case "brain.folder.validate":
+		return s.brainNoteValidate(args)
+	case "brain.folder.links":
+		return s.brainFolderLinks(args)
+	case "brain.folder.audit":
+		return s.brainFolderAudit(args)
+	case "brain.glossary.parse":
+		return s.brainNoteParse(args)
+	case "brain.glossary.validate":
+		return s.brainNoteValidate(args)
+	case "brain.attention.parse":
+		return s.brainNoteParse(args)
+	case "brain.attention.validate":
+		return s.brainNoteValidate(args)
+	case "brain.entities.candidates":
+		return s.brainEntitiesCandidates(args)
+	case "brain.gtd.parse":
+		return s.brainGTDParseVault(args)
+	case "brain.gtd.list":
+		return s.brainGTDListVault(args)
 	case "brain.gtd.bind":
 		return s.brainGTDBind(args)
 	case "brain.gtd.dedup_scan":
@@ -36,9 +62,9 @@ func (s *Server) dispatchBrain(method string, args map[string]interface{}) (map[
 		return s.brainPeopleDashboard(args)
 	case "brain.people.render":
 		return s.brainPeopleRender(args)
-	case "brain_search":
+	case "brain.search", "brain_search":
 		return s.brainSearch(args)
-	case "brain_backlinks":
+	case "brain.backlinks", "brain_backlinks":
 		return s.brainBacklinks(args)
 	default:
 		return nil, errors.New("unknown brain method: " + method)

@@ -12,7 +12,7 @@ import (
 
 func cmdBrainGTD(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "brain gtd requires parse or validate")
+		fmt.Fprintln(os.Stderr, "brain gtd requires parse, validate, list, or update")
 		return 2
 	}
 	switch args[0] {
@@ -20,8 +20,12 @@ func cmdBrainGTD(args []string) int {
 		return cmdBrainGTDParse(args[1:])
 	case "validate":
 		return cmdBrainGTDValidate(args[1:])
+	case "list":
+		return cmdBrainGTDList(args[1:])
+	case "update":
+		return cmdBrainGTDUpdate(args[1:])
 	case "help", "-h", "--help":
-		fmt.Println("sloptools brain gtd <parse|validate> [flags]")
+		fmt.Println("sloptools brain gtd <parse|validate|list|update> [flags]")
 		fmt.Println("  --config PATH   vault config path (default ~/.config/sloptools/vaults.toml)")
 		fmt.Println("  --sphere NAME   vault sphere: work or private")
 		fmt.Println("  --path PATH     GTD note path")
@@ -34,7 +38,7 @@ func cmdBrainGTD(args []string) int {
 
 func cmdBrainFolder(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "brain folder requires parse, validate, or links")
+		fmt.Fprintln(os.Stderr, "brain folder requires parse, validate, links, or audit")
 		return 2
 	}
 	switch args[0] {
@@ -44,8 +48,10 @@ func cmdBrainFolder(args []string) int {
 		return cmdBrainFolderValidate(args[1:])
 	case "links":
 		return cmdBrainFolderLinks(args[1:])
+	case "audit":
+		return cmdBrainFolderAudit(args[1:])
 	case "help", "-h", "--help":
-		fmt.Println("sloptools brain folder <parse|validate|links> [flags]")
+		fmt.Println("sloptools brain folder <parse|validate|links|audit> [flags]")
 		fmt.Println("  --config PATH   vault config path (default ~/.config/sloptools/vaults.toml)")
 		fmt.Println("  --sphere NAME   vault sphere: work or private")
 		fmt.Println("  --path PATH     folder note path")
