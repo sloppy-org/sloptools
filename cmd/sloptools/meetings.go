@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -19,10 +20,11 @@ import (
 // cmdMeetings dispatches the `sloptools meetings <subcommand>` family.
 // `watch` enforces the canonical-host contract from sources.toml and
 // runs the polling INBOX pipeline; `ingest-once` is a manual trigger
-// that drains the INBOX exactly once and exits.
+// that drains the INBOX exactly once and exits. `summary` and `share`
+// mirror the meeting.summary.* and meeting.share.* MCP verbs.
 func cmdMeetings(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "meetings <watch|ingest-once> [flags]")
+		fmt.Fprintln(os.Stderr, "meetings <watch|ingest-once|summary|share> [flags]")
 		return 2
 	}
 	switch args[0] {
@@ -30,6 +32,10 @@ func cmdMeetings(args []string) int {
 		return cmdMeetingsWatch(args[1:], false)
 	case "ingest-once":
 		return cmdMeetingsWatch(args[1:], true)
+	case "summary":
+		return cmdMeetingsSummary(args[1:])
+	case "share":
+		return cmdMeetingsShare(args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "unknown meetings subcommand: %s\n", args[0])
 		return 2
@@ -207,4 +213,180 @@ func isContextCancelled(err error) bool {
 	}
 	msg := err.Error()
 	return strings.Contains(msg, context.Canceled.Error()) || strings.Contains(msg, context.DeadlineExceeded.Error())
+}
+
+// cmdMeetingsSummary mirrors the meeting.summary.draft / meeting.summary.send
+// MCP verbs for shell scripting. Output is JSON on stdout so callers can pipe
+// into jq.
+func cmdMeetingsSummary(args []string) int {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "meetings summary <draft|send> [flags]")
+		return 2
+	}
+	switch args[0] {
+	case "draft":
+		return cmdMeetingsSummaryDraft(args[1:])
+	case "send":
+		return cmdMeetingsSummarySend(args[1:])
+	default:
+		fmt.Fprintf(os.Stderr, "unknown meetings summary subcommand: %s\n", args[0])
+		return 2
+	}
+}
+
+func cmdMeetingsSummaryDraft(args []string) int {
+	fs := flag.NewFlagSet("meetings summary draft", flag.ContinueOnError)
+	sphere := fs.String("sphere", "", "vault sphere (work|private)")
+	slug := fs.String("slug", "", "meeting slug under meetings_root")
+	recipient := fs.String("recipient", "", "optional single recipient name")
+	configPath := fs.String("vault-config", "", "vault config path; defaults to ~/.config/sloptools/vaults.toml")
+	sourcesConfig := fs.String("sources-config", "", "meetings/sources config path; defaults to ~/.config/sloptools/sources.toml")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if strings.TrimSpace(*sphere) == "" || strings.TrimSpace(*slug) == "" {
+		fmt.Fprintln(os.Stderr, "--sphere and --slug are required")
+		return 2
+	}
+	server := mcp.NewServerWithStoreAndBrainConfig(".", nil, *configPath)
+	out, err := server.CallTool("meeting.summary.draft", map[string]interface{}{
+		"sphere":         *sphere,
+		"slug":           *slug,
+		"recipient":      *recipient,
+		"sources_config": *sourcesConfig,
+		"config_path":    *configPath,
+	})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	return printJSON(out)
+}
+
+func cmdMeetingsSummarySend(args []string) int {
+	fs := flag.NewFlagSet("meetings summary send", flag.ContinueOnError)
+	sphere := fs.String("sphere", "", "vault sphere (work|private)")
+	slug := fs.String("slug", "", "meeting slug under meetings_root")
+	recipient := fs.String("recipient", "", "recipient name (required)")
+	to := fs.String("to", "", "optional explicit recipient email")
+	accountID := fs.Int64("account-id", 0, "optional mail account id; defaults to [meetings.<sphere>].mail_account_id")
+	sendNow := fs.Bool("send-now", false, "send immediately instead of saving as draft")
+	configPath := fs.String("vault-config", "", "vault config path; defaults to ~/.config/sloptools/vaults.toml")
+	sourcesConfig := fs.String("sources-config", "", "meetings/sources config path; defaults to ~/.config/sloptools/sources.toml")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if strings.TrimSpace(*sphere) == "" || strings.TrimSpace(*slug) == "" || strings.TrimSpace(*recipient) == "" {
+		fmt.Fprintln(os.Stderr, "--sphere, --slug, and --recipient are required")
+		return 2
+	}
+	server := mcp.NewServerWithStoreAndBrainConfig(".", nil, *configPath)
+	args2 := map[string]interface{}{
+		"sphere":         *sphere,
+		"slug":           *slug,
+		"recipient":      *recipient,
+		"to":             *to,
+		"send_now":       *sendNow,
+		"sources_config": *sourcesConfig,
+		"config_path":    *configPath,
+	}
+	if *accountID > 0 {
+		args2["account_id"] = *accountID
+	}
+	out, err := server.CallTool("meeting.summary.send", args2)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	return printJSON(out)
+}
+
+func cmdMeetingsShare(args []string) int {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "meetings share <create|revoke> [flags]")
+		return 2
+	}
+	switch args[0] {
+	case "create":
+		return cmdMeetingsShareCreate(args[1:])
+	case "revoke":
+		return cmdMeetingsShareRevoke(args[1:])
+	default:
+		fmt.Fprintf(os.Stderr, "unknown meetings share subcommand: %s\n", args[0])
+		return 2
+	}
+}
+
+func cmdMeetingsShareCreate(args []string) int {
+	fs := flag.NewFlagSet("meetings share create", flag.ContinueOnError)
+	sphere := fs.String("sphere", "", "vault sphere (work|private)")
+	slug := fs.String("slug", "", "meeting slug under meetings_root")
+	url := fs.String("url", "", "optional pre-existing share URL; when empty the verb creates a Nextcloud public share via OCS")
+	token := fs.String("token", "", "optional share token; only used when --url is supplied")
+	permissions := fs.String("permissions", "", "share permissions (edit|read|comment)")
+	expiryDays := fs.Int("expiry-days", 0, "expiry window in days")
+	password := fs.Bool("password", false, "share is password-protected")
+	configPath := fs.String("vault-config", "", "vault config path; defaults to ~/.config/sloptools/vaults.toml")
+	sourcesConfig := fs.String("sources-config", "", "meetings/sources config path; defaults to ~/.config/sloptools/sources.toml")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if strings.TrimSpace(*sphere) == "" || strings.TrimSpace(*slug) == "" {
+		fmt.Fprintln(os.Stderr, "--sphere and --slug are required")
+		return 2
+	}
+	server := mcp.NewServerWithStoreAndBrainConfig(".", nil, *configPath)
+	out, err := server.CallTool("meeting.share.create", map[string]interface{}{
+		"sphere":         *sphere,
+		"slug":           *slug,
+		"url":            *url,
+		"token":          *token,
+		"permissions":    *permissions,
+		"expiry_days":    *expiryDays,
+		"password":       *password,
+		"sources_config": *sourcesConfig,
+		"config_path":    *configPath,
+	})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	return printJSON(out)
+}
+
+func cmdMeetingsShareRevoke(args []string) int {
+	fs := flag.NewFlagSet("meetings share revoke", flag.ContinueOnError)
+	sphere := fs.String("sphere", "", "vault sphere (work|private)")
+	slug := fs.String("slug", "", "meeting slug under meetings_root")
+	configPath := fs.String("vault-config", "", "vault config path; defaults to ~/.config/sloptools/vaults.toml")
+	sourcesConfig := fs.String("sources-config", "", "meetings/sources config path; defaults to ~/.config/sloptools/sources.toml")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if strings.TrimSpace(*sphere) == "" || strings.TrimSpace(*slug) == "" {
+		fmt.Fprintln(os.Stderr, "--sphere and --slug are required")
+		return 2
+	}
+	server := mcp.NewServerWithStoreAndBrainConfig(".", nil, *configPath)
+	out, err := server.CallTool("meeting.share.revoke", map[string]interface{}{
+		"sphere":         *sphere,
+		"slug":           *slug,
+		"sources_config": *sourcesConfig,
+		"config_path":    *configPath,
+	})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	return printJSON(out)
+}
+
+func printJSON(payload map[string]interface{}) int {
+	body, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	fmt.Println(string(body))
+	return 0
 }
