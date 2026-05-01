@@ -281,8 +281,11 @@ func loadGTDSources(path string) (gtdSources, error) {
 		rule.Sphere = strings.ToLower(strings.TrimSpace(rule.Sphere))
 		rule.Provider = strings.ToLower(strings.TrimSpace(rule.Provider))
 		rule.Ref = strings.TrimSpace(rule.Ref)
-		if rule.Provider == "" || rule.Ref == "" {
+		if rule.Provider == "" {
 			continue
+		}
+		if rule.Ref == "" {
+			rule.Ref = "*"
 		}
 		rules = append(rules, rule)
 	}
@@ -294,7 +297,10 @@ func (s gtdSources) writeable(note dedupNote, binding braingtd.SourceBinding) bo
 	ref := strings.TrimSpace(binding.Ref)
 	sphere := strings.ToLower(strings.TrimSpace(string(note.Resolved.Sphere)))
 	for _, rule := range s.rules {
-		if !rule.Writeable || !sourceProviderMatches(rule.Provider, provider) || rule.Ref != ref {
+		if !rule.Writeable || !sourceProviderMatches(rule.Provider, provider) {
+			continue
+		}
+		if rule.Ref != "*" && rule.Ref != ref {
 			continue
 		}
 		if rule.Sphere == "" || rule.Sphere == sphere {
@@ -450,6 +456,10 @@ func (s *Server) brainGTDIngest(args map[string]interface{}) (map[string]interfa
 	paths := stringListArg(args, "path")
 	if len(paths) == 0 {
 		paths = stringListArg(args, "paths")
+	}
+	if source == meetingsProvider {
+		sourcesConfig := strings.TrimSpace(strArg(args, "sources_config"))
+		return ingestMeetingsTool(cfg, sphere, paths, sourcesConfig, sourcesConfig != "")
 	}
 	if len(paths) == 0 {
 		return nil, errors.New("paths are required")

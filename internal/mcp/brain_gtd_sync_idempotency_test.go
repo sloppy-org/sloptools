@@ -3,10 +3,13 @@ package mcp
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	braingtd "github.com/sloppy-org/sloptools/internal/brain/gtd"
+	"github.com/sloppy-org/sloptools/internal/meetings"
 )
 
 func TestBrainGTDSyncRerunNoopsAlreadyClosedUpstream(t *testing.T) {
@@ -194,5 +197,255 @@ func TestBrainGTDSyncContinuesAfterProviderError(t *testing.T) {
 	}
 	if !strings.Contains(readGTDSyncFile(t, root, "work/brain/meetings/standup.md"), "[x]") {
 		t.Fatal("meeting binding did not continue after mail error")
+	}
+}
+
+const meetingsTestSourceRel = "brain/meetings/standup.md"
+
+const meetingsTestSource = `---
+title: Standup
+---
+# Standup
+
+## Action Checklist
+
+### Ada Lovelace
+- [ ] Reply to Ada about benchmarks @due:2026-05-02
+
+### Babbage
+- [ ] Send the analytical engine paper @follow:2026-05-10
+`
+
+func setupMeetingsIngestVault(t *testing.T) (*Server, string, string) {
+	t.Helper()
+	tmp := t.TempDir()
+	configPath := writeMCPBrainConfig(t, tmp)
+	writeMCPBrainFile(t, filepath.Join(tmp, "work", meetingsTestSourceRel), meetingsTestSource)
+	return NewServer(t.TempDir()), tmp, configPath
+}
+
+func TestBrainGTDIngestMeetingsStampsIDsAndCreatesPerPersonCommitments(t *testing.T) {
+	s, root, configPath := setupMeetingsIngestVault(t)
+	got, err := s.callTool("brain.gtd.ingest", map[string]interface{}{
+		"config_path": configPath,
+		"sphere":      "work",
+		"source":      "meetings",
+		"paths":       []interface{}{meetingsTestSourceRel},
+	})
+	if err != nil {
+		t.Fatalf("brain.gtd.ingest: %v", err)
+	}
+	if got["count"] != 2 {
+		t.Fatalf("count = %v, want 2: %#v", got["count"], got)
+	}
+	created, _ := got["created"].([]string)
+	if len(created) != 2 {
+		t.Fatalf("created = %#v", got["created"])
+	}
+	stamped, _ := got["stamped"].([]string)
+	if len(stamped) != 1 || stamped[0] != meetingsTestSourceRel {
+		t.Fatalf("stamped = %#v", got["stamped"])
+	}
+	source := readFile(t, filepath.Join(root, "work", meetingsTestSourceRel))
+	if strings.Count(source, "<!-- gtd:") != 2 {
+		t.Fatalf("expected 2 stamped IDs, got source:\n%s", source)
+	}
+	for _, rel := range created {
+		data := readFile(t, filepath.Join(root, "work", rel))
+		if !strings.Contains(data, "provider: meetings") {
+			t.Fatalf("missing meetings binding in %s:\n%s", rel, data)
+		}
+		if result := braingtd.ParseAndValidate(data); len(result.Diagnostics) != 0 {
+			t.Fatalf("invalid ingest output for %s: %#v\n%s", rel, result.Diagnostics, data)
+		}
+	}
+}
+
+func TestBrainGTDIngestMeetingsIsIdempotent(t *testing.T) {
+	s, _, configPath := setupMeetingsIngestVault(t)
+	args := map[string]interface{}{
+		"config_path": configPath,
+		"sphere":      "work",
+		"source":      "meetings",
+		"paths":       []interface{}{meetingsTestSourceRel},
+	}
+	if _, err := s.callTool("brain.gtd.ingest", args); err != nil {
+		t.Fatalf("first ingest: %v", err)
+	}
+	got, err := s.callTool("brain.gtd.ingest", args)
+	if err != nil {
+		t.Fatalf("second ingest: %v", err)
+	}
+	created, _ := got["created"].([]string)
+	if len(created) != 0 {
+		t.Fatalf("re-ingest must not create commitments, got %#v", got["created"])
+	}
+	skipped, _ := got["skipped"].([]string)
+	if len(skipped) != 2 {
+		t.Fatalf("re-ingest must skip both existing commitments, got %#v", got["skipped"])
+	}
+	if got["updated"] != false {
+		t.Fatalf("re-ingest must report updated=false, got %#v", got["updated"])
+	}
+}
+
+func TestBrainGTDIngestMeetingsClosesCommitmentsOnHandEditedCheckmark(t *testing.T) {
+	s, root, configPath := setupMeetingsIngestVault(t)
+	args := map[string]interface{}{
+		"config_path": configPath,
+		"sphere":      "work",
+		"source":      "meetings",
+		"paths":       []interface{}{meetingsTestSourceRel},
+	}
+	first, err := s.callTool("brain.gtd.ingest", args)
+	if err != nil {
+		t.Fatalf("first ingest: %v", err)
+	}
+	created, _ := first["created"].([]string)
+	if len(created) != 2 {
+		t.Fatalf("first ingest created = %#v", first["created"])
+	}
+	sourcePath := filepath.Join(root, "work", meetingsTestSourceRel)
+	data := readFile(t, sourcePath)
+	flipped := strings.Replace(data, "- [ ] Reply to Ada about benchmarks", "- [x] Reply to Ada about benchmarks", 1)
+	if flipped == data {
+		t.Fatalf("could not flip checkbox; source was:\n%s", data)
+	}
+	if err := os.WriteFile(sourcePath, []byte(flipped), 0o644); err != nil {
+		t.Fatalf("write flipped: %v", err)
+	}
+	second, err := s.callTool("brain.gtd.ingest", args)
+	if err != nil {
+		t.Fatalf("second ingest: %v", err)
+	}
+	closed, _ := second["closed"].([]string)
+	if len(closed) != 1 {
+		t.Fatalf("expected one closed commitment, got %#v", second["closed"])
+	}
+	closedData := readFile(t, filepath.Join(root, "work", closed[0]))
+	commitment, _, diags := braingtd.ParseCommitmentMarkdown(closedData)
+	if len(diags) != 0 {
+		t.Fatalf("parse closed commitment: %#v\n%s", diags, closedData)
+	}
+	if !strings.EqualFold(commitment.LocalOverlay.Status, "closed") {
+		t.Fatalf("local_overlay.status = %q, want closed:\n%s", commitment.LocalOverlay.Status, closedData)
+	}
+	if commitment.LocalOverlay.ClosedVia != "brain.gtd.ingest" {
+		t.Fatalf("local_overlay.closed_via = %q, want brain.gtd.ingest", commitment.LocalOverlay.ClosedVia)
+	}
+}
+
+func TestBrainGTDSyncFlipsMeetingsCheckboxByStableAnchor(t *testing.T) {
+	s, root, configPath := setupMeetingsIngestVault(t)
+	sourcesConfig := writeMeetingsSourcesConfig(t, root)
+	if _, err := s.callTool("brain.gtd.ingest", map[string]interface{}{
+		"config_path": configPath,
+		"sphere":      "work",
+		"source":      "meetings",
+		"paths":       []interface{}{meetingsTestSourceRel},
+	}); err != nil {
+		t.Fatalf("ingest: %v", err)
+	}
+	created := listCreatedCommitments(t, filepath.Join(root, "work", "brain", "gtd", "ingest"))
+	if len(created) != 2 {
+		t.Fatalf("expected 2 commitments in ingest dir, got %d", len(created))
+	}
+	target := pickAdaCommitment(t, created)
+	got, err := s.callTool("brain.gtd.set_status", map[string]interface{}{
+		"config_path":    configPath,
+		"sphere":         "work",
+		"path":           relWorkPath(t, root, target),
+		"status":         "closed",
+		"sources_config": sourcesConfig,
+	})
+	if err != nil {
+		t.Fatalf("brain.gtd.set_status: %v", err)
+	}
+	if got["status"] != "closed" {
+		t.Fatalf("status = %v, want closed", got["status"])
+	}
+	source := readFile(t, filepath.Join(root, "work", meetingsTestSourceRel))
+	if !strings.Contains(source, "- [x] Reply to Ada about benchmarks") {
+		t.Fatalf("expected source line flipped to [x]:\n%s", source)
+	}
+	if !strings.Contains(source, "- [ ] Send the analytical engine paper") {
+		t.Fatalf("Babbage line must remain unchecked:\n%s", source)
+	}
+}
+
+func writeMeetingsSourcesConfig(t *testing.T, root string) string {
+	t.Helper()
+	path := filepath.Join(root, "sources.toml")
+	body := `[[source]]
+sphere = "work"
+provider = "meetings"
+ref = "*"
+writeable = true
+`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("write sources.toml: %v", err)
+	}
+	return path
+}
+
+func readFile(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	return string(data)
+}
+
+func listCreatedCommitments(t *testing.T, dir string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read dir: %v", err)
+	}
+	var out []string
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".md" {
+			continue
+		}
+		out = append(out, filepath.Join(dir, entry.Name()))
+	}
+	return out
+}
+
+func pickAdaCommitment(t *testing.T, paths []string) string {
+	t.Helper()
+	for _, path := range paths {
+		data := readFile(t, path)
+		if strings.Contains(data, "Reply to Ada about benchmarks") {
+			return path
+		}
+	}
+	t.Fatalf("Ada commitment not found among %v", paths)
+	return ""
+}
+
+func relWorkPath(t *testing.T, root, abs string) string {
+	t.Helper()
+	rel, err := filepath.Rel(filepath.Join(root, "work"), abs)
+	if err != nil {
+		t.Fatalf("rel: %v", err)
+	}
+	return filepath.ToSlash(rel)
+}
+
+func TestMeetingSlugFromRelHandlesMeetingNotesFolder(t *testing.T) {
+	cases := map[string]string{
+		"brain/meetings/standup.md":                  "standup",
+		"MEETINGS/2026-04-29-board/MEETING_NOTES.md": "2026-04-29-board",
+	}
+	for input, want := range cases {
+		if got := meetingSlugFromRel(input); got != want {
+			t.Fatalf("meetingSlugFromRel(%q) = %q, want %q", input, got, want)
+		}
+	}
+	// Computed IDs are stable for the same (slug, person, text) tuple.
+	if meetings.ComputeID("standup", "Ada Lovelace", "x") != meetings.ComputeID("standup", "Ada Lovelace", "x") {
+		t.Fatal("ComputeID must be stable")
 	}
 }

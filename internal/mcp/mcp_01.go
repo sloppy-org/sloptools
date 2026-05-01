@@ -23,6 +23,8 @@ import (
 	"time"
 )
 
+const compactListLimit = 10
+
 const (
 	ServerName            = "sloppy"
 	ServerVersion         = "0.2.1"
