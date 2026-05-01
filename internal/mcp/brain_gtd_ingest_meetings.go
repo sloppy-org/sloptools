@@ -1,9 +1,11 @@
 package mcp
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -15,100 +17,172 @@ import (
 const meetingsProvider = "meetings"
 
 type meetingsIngestSummary struct {
-	Created  []string `json:"created"`
-	Closed   []string `json:"closed"`
-	Skipped  []string `json:"skipped"`
-	Stamped  []string `json:"stamped"`
-	Affected []string `json:"affected"`
+	Created   []string `json:"created"`
+	Closed    []string `json:"closed"`
+	Skipped   []string `json:"skipped"`
+	Stamped   []string `json:"stamped"`
+	Affected  []string `json:"affected"`
+	Walked    []string `json:"walked"`
+	LegacyHit []string `json:"legacy_hit"`
 }
 
-func (s *Server) ingestMeetings(cfg *brain.Config, sphere string, paths []string) (map[string]interface{}, error) {
-	summary, err := s.ingestMeetingsPaths(cfg, sphere, paths)
+// meetingBindingIndex is the lookup the ingest pass uses to decide
+// whether a parsed task is "already known" or needs a fresh commitment.
+// New stable IDs hit byStableID directly. During the post-stable-ID
+// transition window we also accept the legacy importer ref shape
+// `meetings:<sphere>:<slug>:<person>:<task-hash>` and dispense those
+// matches in source order, FIFO per (slug, normalized-person).
+type meetingBindingIndex struct {
+	byStableID map[string]dedupNote
+	legacy     map[meetings.LegacyRefKey][]dedupNote
+}
+
+type meetingIngestContext struct {
+	cfg        *brain.Config
+	sphere     string
+	bindings   meetingBindingIndex
+	sphereCfg  meetings.SphereConfig
+	candidates []string
+	now        string
+}
+
+func (s *Server) ingestMeetings(cfg *brain.Config, sphere string, paths []string, configPath string, configExplicit bool) (map[string]interface{}, error) {
+	summary, err := s.ingestMeetingsPaths(cfg, sphere, paths, configPath, configExplicit)
 	if err != nil {
 		return nil, err
 	}
 	return map[string]interface{}{
-		"sphere":  sphere,
-		"source":  meetingsProvider,
-		"count":   len(summary.Affected),
-		"paths":   summary.Affected,
-		"created": summary.Created,
-		"closed":  summary.Closed,
-		"skipped": summary.Skipped,
-		"stamped": summary.Stamped,
-		"updated": len(summary.Affected) > 0 || len(summary.Stamped) > 0,
+		"sphere":     sphere,
+		"source":     meetingsProvider,
+		"count":      len(summary.Affected),
+		"paths":      summary.Affected,
+		"created":    summary.Created,
+		"closed":     summary.Closed,
+		"skipped":    summary.Skipped,
+		"stamped":    summary.Stamped,
+		"walked":     summary.Walked,
+		"legacy_hit": summary.LegacyHit,
+		"updated":    len(summary.Affected) > 0 || len(summary.Stamped) > 0,
 	}, nil
 }
 
-func (s *Server) ingestMeetingsPaths(cfg *brain.Config, sphere string, paths []string) (meetingsIngestSummary, error) {
+func (s *Server) ingestMeetingsPaths(cfg *brain.Config, sphere string, paths []string, configPath string, configExplicit bool) (meetingsIngestSummary, error) {
 	summary := meetingsIngestSummary{}
-	existing, err := s.loadMeetingBindings(cfg, sphere)
+	bindings, err := s.loadMeetingBindings(cfg, sphere)
 	if err != nil {
 		return summary, err
 	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	for _, raw := range paths {
-		resolved, data, err := brain.ReadNoteFile(cfg, brain.Sphere(sphere), raw)
-		if err != nil {
+	meetingsCfg, err := loadMeetingsSphereConfig(configPath, configExplicit, sphere)
+	if err != nil {
+		return summary, err
+	}
+	candidates, err := loadBrainPeopleCandidates(cfg, sphere)
+	if err != nil {
+		return summary, err
+	}
+	resolved, walked, err := resolveMeetingPaths(cfg, sphere, paths, meetingsCfg.MeetingsRoot)
+	if err != nil {
+		return summary, err
+	}
+	summary.Walked = walked
+	if len(resolved) == 0 {
+		return summary, nil
+	}
+	ctx := meetingIngestContext{
+		cfg:        cfg,
+		sphere:     sphere,
+		bindings:   bindings,
+		sphereCfg:  meetingsCfg,
+		candidates: candidates,
+		now:        time.Now().UTC().Format(time.RFC3339),
+	}
+	for _, rel := range resolved {
+		if err := ctx.processNote(&summary, rel); err != nil {
 			return summary, err
-		}
-		slug := meetingSlugFromRel(resolved.Rel)
-		updated, tasks, changed := meetings.AssignIDs(slug, string(data))
-		if changed {
-			if err := os.WriteFile(resolved.Path, []byte(updated), 0o644); err != nil {
-				return summary, err
-			}
-			summary.Stamped = append(summary.Stamped, resolved.Rel)
-		}
-		if len(tasks) == 0 {
-			continue
-		}
-		for _, task := range tasks {
-			ref := slug + "#" + task.ID
-			binding := braingtd.SourceBinding{
-				Provider:  meetingsProvider,
-				Ref:       ref,
-				Location:  braingtd.BindingLocation{Path: resolved.Rel, Anchor: meetings.FormatComment(task.ID)},
-				Writeable: true,
-			}
-			note, found := existing[binding.StableID()]
-			if found {
-				closed, err := closeIfDone(note, task, now)
-				if err != nil {
-					return summary, err
-				}
-				if closed {
-					summary.Closed = append(summary.Closed, note.Entry.Path)
-					summary.Affected = append(summary.Affected, note.Entry.Path)
-				} else {
-					summary.Skipped = append(summary.Skipped, note.Entry.Path)
-				}
-				continue
-			}
-			if task.Done {
-				continue
-			}
-			created, err := createMeetingCommitment(cfg, sphere, slug, resolved.Rel, task, binding)
-			if err != nil {
-				return summary, err
-			}
-			summary.Created = append(summary.Created, created)
-			summary.Affected = append(summary.Affected, created)
 		}
 	}
 	return summary, nil
 }
 
-func (s *Server) loadMeetingBindings(cfg *brain.Config, sphere string) (map[string]dedupNote, error) {
+func (c *meetingIngestContext) processNote(summary *meetingsIngestSummary, rel string) error {
+	resolved, data, err := brain.ReadNoteFile(c.cfg, brain.Sphere(c.sphere), rel)
+	if err != nil {
+		return err
+	}
+	slug := meetingSlugFromRel(resolved.Rel)
+	updated, tasks, changed := meetings.AssignIDs(slug, string(data))
+	if changed {
+		if err := os.WriteFile(resolved.Path, []byte(updated), 0o644); err != nil {
+			return err
+		}
+		summary.Stamped = append(summary.Stamped, resolved.Rel)
+	}
+	for _, task := range tasks {
+		owner := meetings.ResolvePerson(c.sphereCfg.ResolveAlias(task.Person), c.sphereCfg.OwnerAliases, c.candidates)
+		task.Person = owner
+		if err := c.processTask(summary, slug, resolved.Rel, task); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *meetingIngestContext) processTask(summary *meetingsIngestSummary, slug, sourceRel string, task meetings.Task) error {
+	binding := braingtd.SourceBinding{
+		Provider:  meetingsProvider,
+		Ref:       slug + "#" + task.ID,
+		Location:  braingtd.BindingLocation{Path: sourceRel, Anchor: meetings.FormatComment(task.ID)},
+		Writeable: true,
+	}
+	if note, ok := c.bindings.byStableID[binding.StableID()]; ok {
+		return c.applyExisting(summary, note, task, false)
+	}
+	if note, ok := c.bindings.takeLegacy(slug, task.Person); ok {
+		summary.LegacyHit = append(summary.LegacyHit, note.Entry.Path)
+		return c.applyExisting(summary, note, task, true)
+	}
+	if task.Done {
+		return nil
+	}
+	created, err := createMeetingCommitment(c.cfg, c.sphere, slug, sourceRel, task, binding)
+	if err != nil {
+		return err
+	}
+	summary.Created = append(summary.Created, created)
+	summary.Affected = append(summary.Affected, created)
+	return nil
+}
+
+func (c *meetingIngestContext) applyExisting(summary *meetingsIngestSummary, note dedupNote, task meetings.Task, fromLegacy bool) error {
+	closed, err := closeIfDone(note, task, c.now)
+	if err != nil {
+		return err
+	}
+	if closed {
+		summary.Closed = append(summary.Closed, note.Entry.Path)
+		summary.Affected = append(summary.Affected, note.Entry.Path)
+		return nil
+	}
+	if fromLegacy {
+		summary.Affected = append(summary.Affected, note.Entry.Path)
+	}
+	summary.Skipped = append(summary.Skipped, note.Entry.Path)
+	return nil
+}
+
+func (s *Server) loadMeetingBindings(cfg *brain.Config, sphere string) (meetingBindingIndex, error) {
 	vault, ok := cfg.Vault(brain.Sphere(sphere))
 	if !ok {
-		return nil, fmt.Errorf("unknown vault %q", sphere)
+		return meetingBindingIndex{}, fmt.Errorf("unknown vault %q", sphere)
 	}
 	notes, err := readDedupNotes(vault)
 	if err != nil {
-		return nil, err
+		return meetingBindingIndex{}, err
 	}
-	out := make(map[string]dedupNote, len(notes))
+	index := meetingBindingIndex{
+		byStableID: make(map[string]dedupNote, len(notes)),
+		legacy:     make(map[meetings.LegacyRefKey][]dedupNote),
+	}
 	for _, note := range notes {
 		for _, binding := range note.Entry.Commitment.SourceBindings {
 			if !strings.EqualFold(binding.Provider, meetingsProvider) {
@@ -118,10 +192,105 @@ func (s *Server) loadMeetingBindings(cfg *brain.Config, sphere string) (map[stri
 			if id == "" {
 				continue
 			}
-			out[id] = note
+			if isStableMeetingsRef(binding.Ref) {
+				index.byStableID[id] = note
+				continue
+			}
+			if key, ok := meetings.ParseLegacyRef(binding.Ref); ok {
+				index.legacy[key] = append(index.legacy[key], note)
+			}
 		}
 	}
+	return index, nil
+}
+
+func (i *meetingBindingIndex) takeLegacy(slug, person string) (dedupNote, bool) {
+	key := meetings.LegacyRefKey{Slug: slug, Person: meetings.NormalizePersonName(person)}
+	if i.legacy == nil {
+		return dedupNote{}, false
+	}
+	queue, ok := i.legacy[key]
+	if !ok || len(queue) == 0 {
+		return dedupNote{}, false
+	}
+	note := queue[0]
+	i.legacy[key] = queue[1:]
+	return note, true
+}
+
+func isStableMeetingsRef(ref string) bool {
+	clean := strings.TrimSpace(ref)
+	return clean != "" && strings.Contains(clean, "#")
+}
+
+func loadMeetingsSphereConfig(path string, explicit bool, sphere string) (meetings.SphereConfig, error) {
+	resolved, hadExplicit, err := sloptoolsConfigPath(path, "sources.toml")
+	if err != nil {
+		return meetings.SphereConfig{}, err
+	}
+	cfg, err := meetings.Load(resolved, hadExplicit || explicit)
+	if err != nil {
+		return meetings.SphereConfig{}, err
+	}
+	if entry, ok := cfg.Sphere(sphere); ok {
+		return entry, nil
+	}
+	return meetings.SphereConfig{Sphere: strings.ToLower(strings.TrimSpace(sphere)), ShortMemoSeconds: meetings.DefaultShortMemoSeconds}, nil
+}
+
+func loadBrainPeopleCandidates(cfg *brain.Config, sphere string) ([]string, error) {
+	vault, ok := cfg.Vault(brain.Sphere(sphere))
+	if !ok {
+		return nil, fmt.Errorf("unknown vault %q", sphere)
+	}
+	dir := filepath.Join(vault.BrainRoot(), "people")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	out := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".md" {
+			continue
+		}
+		out = append(out, strings.TrimSuffix(entry.Name(), ".md"))
+	}
+	sort.Strings(out)
 	return out, nil
+}
+
+// resolveMeetingPaths returns the inputs the ingest pass should process.
+// Explicit paths pass through unchanged so callers can mix vault-
+// relative refs with absolute paths. When no paths are provided the
+// configured meetings_root is walked and the discovered absolute paths
+// are returned, alongside their vault-relative form for the audit trail.
+func resolveMeetingPaths(cfg *brain.Config, sphere string, paths []string, meetingsRoot string) ([]string, []string, error) {
+	if len(paths) > 0 {
+		return paths, nil, nil
+	}
+	if strings.TrimSpace(meetingsRoot) == "" {
+		return nil, nil, errors.New("paths are required: configure meetings_root in sources.toml or pass `paths`")
+	}
+	vault, ok := cfg.Vault(brain.Sphere(sphere))
+	if !ok {
+		return nil, nil, fmt.Errorf("unknown vault %q", sphere)
+	}
+	discovered, err := meetings.Discover(meetingsRoot)
+	if err != nil {
+		return nil, nil, err
+	}
+	walked := make([]string, 0, len(discovered.Paths))
+	for _, abs := range discovered.Paths {
+		rel, err := filepath.Rel(vault.Root, abs)
+		if err != nil || strings.HasPrefix(rel, "..") {
+			continue
+		}
+		walked = append(walked, filepath.ToSlash(rel))
+	}
+	return discovered.Paths, walked, nil
 }
 
 func closeIfDone(note dedupNote, task meetings.Task, now string) (bool, error) {

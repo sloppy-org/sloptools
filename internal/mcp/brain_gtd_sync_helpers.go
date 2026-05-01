@@ -457,11 +457,12 @@ func (s *Server) brainGTDIngest(args map[string]interface{}) (map[string]interfa
 	if len(paths) == 0 {
 		paths = stringListArg(args, "paths")
 	}
+	if source == meetingsProvider {
+		sourcesConfig := strings.TrimSpace(strArg(args, "sources_config"))
+		return s.ingestMeetings(cfg, sphere, paths, sourcesConfig, sourcesConfig != "")
+	}
 	if len(paths) == 0 {
 		return nil, errors.New("paths are required")
-	}
-	if source == meetingsProvider {
-		return s.ingestMeetings(cfg, sphere, paths)
 	}
 	created := make([]string, 0)
 	for _, rawPath := range paths {

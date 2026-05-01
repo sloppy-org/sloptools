@@ -119,12 +119,13 @@ func init() {
 			"q":           {Type: "string", Description: "Review query."},
 			"path":        {Type: "string", Description: "Optional output note path. Defaults to brain/gtd/reviews/<slug>.md."},
 		}},
-		Tool{Name: "brain.gtd.ingest", Description: "Ingest source notes into GTD commitment notes.", Required: []string{"sphere", "source", "paths"}, Properties: map[string]ToolProperty{
-			"config_path": {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},
-			"sphere":      {Type: "string", Description: "Vault sphere to inspect.", Enum: []string{"work", "private"}},
-			"source":      {Type: "string", Description: "Ingest source name. Initial support: meetings, mail, todoist, github, gitlab, evernote."},
-			"paths":       {Type: "array", Description: "Source note paths to ingest."},
-			"path":        {Type: "string", Description: "Alias for a single source path."},
+		Tool{Name: "brain.gtd.ingest", Description: "Ingest source notes into GTD commitment notes. For source=meetings, paths can be omitted to walk the configured meetings_root.", Required: []string{"sphere", "source"}, Properties: map[string]ToolProperty{
+			"config_path":    {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},
+			"sphere":         {Type: "string", Description: "Vault sphere to inspect.", Enum: []string{"work", "private"}},
+			"source":         {Type: "string", Description: "Ingest source name. Initial support: meetings, mail, todoist, github, gitlab, evernote."},
+			"paths":          {Type: "array", Description: "Source note paths to ingest. Optional for source=meetings when meetings_root is configured."},
+			"path":           {Type: "string", Description: "Alias for a single source path."},
+			"sources_config": {Type: "string", Description: "Optional sources/meetings config path. Defaults to ~/.config/sloptools/sources.toml."},
 		}},
 		Tool{Name: "brain.search", Description: "Search a configured brain vault with rg-backed exact, regex, link, or alias matching.", Required: []string{"sphere", "query"}, Properties: map[string]ToolProperty{
 			"config_path": {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},
