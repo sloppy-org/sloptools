@@ -207,8 +207,8 @@ func TestBrainGTDReviewListMergesMarkdownAndTodoistWithoutDuplicates(t *testing.
 	if err != nil {
 		t.Fatalf("CreateExternalAccount: %v", err)
 	}
-	start := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
-	deadline := time.Date(2026, 5, 7, 0, 0, 0, 0, time.UTC)
+	start := time.Now().UTC().Add(72 * time.Hour).Truncate(time.Hour)
+	deadline := start.Add(7 * 24 * time.Hour)
 	provider := &fakeTasksProvider{
 		name:      "todoist",
 		taskLists: []providerdata.TaskList{{ID: "work-proj", Name: "Work"}},
@@ -246,8 +246,10 @@ func TestBrainGTDReviewListMergesMarkdownAndTodoistWithoutDuplicates(t *testing.
 	if task == nil {
 		t.Fatalf("missing todoist task: %#v", items)
 	}
-	if task.Queue != "deferred" || task.FollowUp != "2026-05-01T00:00:00Z" || task.Due != "2026-05-07T00:00:00Z" {
-		t.Fatalf("task mapping = %#v", task)
+	wantFollowUp := start.Format(time.RFC3339)
+	wantDue := deadline.Format(time.RFC3339)
+	if task.Queue != "deferred" || task.FollowUp != wantFollowUp || task.Due != wantDue {
+		t.Fatalf("task mapping = %#v, want Queue=deferred FollowUp=%s Due=%s", task, wantFollowUp, wantDue)
 	}
 }
 
