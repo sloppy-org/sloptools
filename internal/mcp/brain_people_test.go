@@ -340,6 +340,52 @@ Send the reply.
 	})
 }
 
+func TestBrainProjectToolsDispatch(t *testing.T) {
+	tmp := t.TempDir()
+	configPath := writeMCPBrainConfig(t, tmp)
+	writeMCPBrainFile(t, filepath.Join(tmp, "work", "brain", "projects", "Alpha.md"), "# Alpha\n")
+	writeMCPBrainFile(t, filepath.Join(tmp, "work", "brain", "commitments", "task.md"), `---
+kind: commitment
+sphere: work
+status: next
+title: Alpha task
+outcome: Alpha task
+context: test
+people:
+  - Ada Example
+---
+# Alpha task
+`)
+	rulesPath := filepath.Join(tmp, "projects.toml")
+	writeMCPBrainFile(t, rulesPath, `[project.alpha]
+hub = "brain/projects/Alpha.md"
+match.people = ["Ada Example"]
+`)
+
+	s := NewServer(t.TempDir())
+	linked, err := s.callTool("brain.gtd.bulk_link", map[string]interface{}{"config_path": configPath, "sphere": "work", "rules": rulesPath})
+	if err != nil {
+		t.Fatalf("brain.gtd.bulk_link: %v", err)
+	}
+	if linked["linked"] != 1 {
+		t.Fatalf("linked = %#v, want 1", linked["linked"])
+	}
+	rendered, err := s.callTool("brain.projects.render", map[string]interface{}{"config_path": configPath, "sphere": "work", "hub": "brain/projects/Alpha.md"})
+	if err != nil {
+		t.Fatalf("brain.projects.render: %v", err)
+	}
+	if rendered["changed"] != true {
+		t.Fatalf("changed = %#v, want true", rendered["changed"])
+	}
+	listed, err := s.callTool("brain.projects.list", map[string]interface{}{"config_path": configPath, "sphere": "work"})
+	if err != nil {
+		t.Fatalf("brain.projects.list: %v", err)
+	}
+	if listed["count"] != 1 {
+		t.Fatalf("project count = %#v, want 1", listed["count"])
+	}
+}
+
 func assertPeopleLoopCount(t *testing.T, got map[string]interface{}, key string, want int) {
 	t.Helper()
 	items, ok := got[key].([]personOpenLoop)

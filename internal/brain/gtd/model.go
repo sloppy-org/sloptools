@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/sloppy-org/sloptools/internal/brain"
+	"gopkg.in/yaml.v3"
 )
 
 type Commitment struct {
@@ -106,7 +107,7 @@ func ParseCommitmentMarkdown(src string) (*Commitment, *brain.MarkdownNote, []br
 		commitment.WaitingFor = strings.TrimSpace(node.Value)
 	}
 	if node, ok := note.FrontMatterField("project"); ok {
-		commitment.Project = strings.TrimSpace(node.Value)
+		commitment.Project = frontMatterProject(node)
 	}
 	if node, ok := note.FrontMatterField("last_evidence_at"); ok {
 		commitment.LastEvidenceAt = strings.TrimSpace(node.Value)
@@ -124,6 +125,35 @@ func ParseCommitmentMarkdown(src string) (*Commitment, *brain.MarkdownNote, []br
 		commitment.SourceBindings = bindingsFromLegacyRefs(commitment.LegacySources)
 	}
 	return commitment, note, diags
+}
+
+func frontMatterProject(node *yaml.Node) string {
+	if node == nil {
+		return ""
+	}
+	if node.Kind == yaml.ScalarNode {
+		return strings.TrimSpace(node.Value)
+	}
+	if target, ok := wikilinkSequenceTarget(node); ok {
+		return "[[" + target + "]]"
+	}
+	var value string
+	if err := node.Decode(&value); err == nil {
+		return strings.TrimSpace(value)
+	}
+	return strings.TrimSpace(node.Value)
+}
+
+func wikilinkSequenceTarget(node *yaml.Node) (string, bool) {
+	if node.Kind != yaml.SequenceNode || len(node.Content) != 1 {
+		return "", false
+	}
+	inner := node.Content[0]
+	if inner.Kind != yaml.SequenceNode || len(inner.Content) != 1 {
+		return "", false
+	}
+	target := strings.TrimSpace(inner.Content[0].Value)
+	return target, target != ""
 }
 
 func ApplyCommitment(note *brain.MarkdownNote, commitment Commitment) error {
