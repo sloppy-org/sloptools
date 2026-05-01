@@ -340,11 +340,11 @@ func (r recipientResolver) resolve(name string) (string, string) {
 	if clean == "" {
 		return "", meetingSummaryDiagnosticNeedsRecipient
 	}
-	if value := r.sphereCfg.PeopleEmail(clean); value != "" {
-		return value, ""
-	}
 	if email := r.lookupBrainEmail(clean); email != "" {
 		return email, ""
+	}
+	if value := r.sphereCfg.PeopleEmail(clean); value != "" {
+		return value, ""
 	}
 	return "", meetingSummaryDiagnosticNeedsRecipient
 }

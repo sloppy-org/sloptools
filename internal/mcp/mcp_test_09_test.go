@@ -295,6 +295,45 @@ email: ada@example.com
 	}
 }
 
+func TestMeetingSummaryDraftPrefersBrainEmailOverPerUserOverride(t *testing.T) {
+	tmp := t.TempDir()
+	configPath := writeMCPBrainConfig(t, tmp)
+	meetingsRoot := filepath.Join(tmp, "work", "MEETINGS")
+	notesPath := filepath.Join(meetingsRoot, "2026-04-29-standup", "MEETING_NOTES.md")
+	writeMCPBrainFile(t, notesPath, summaryMeetingNote)
+	writeMCPBrainFile(t, filepath.Join(tmp, "work", "brain", "people", "Ada Lovelace.md"), `---
+email: brain@example.com
+---
+# Ada Lovelace
+`)
+	writeMCPBrainFile(t, filepath.Join(tmp, "work", "brain", "people", "Charles Babbage.md"), "# Charles Babbage\n")
+	writeMCPBrainFile(t, filepath.Join(tmp, "work", "brain", "people", "Christopher Albert.md"), "# Christopher Albert\n")
+
+	sourcesPath := writeMeetingsSummarySources(t, tmp, meetingsRoot, map[string]string{"Ada Lovelace": "override@example.com"}, "")
+
+	server := NewServer(t.TempDir())
+	got, err := server.callTool("meeting.summary.draft", map[string]interface{}{
+		"config_path":    configPath,
+		"sources_config": sourcesPath,
+		"sphere":         "work",
+		"slug":           "2026-04-29-standup",
+		"recipient":      "Ada Lovelace",
+	})
+	if err != nil {
+		t.Fatalf("meeting.summary.draft: %v", err)
+	}
+	drafts := got["drafts"].([]meetings.Draft)
+	if len(drafts) != 1 {
+		t.Fatalf("drafts = %#v", drafts)
+	}
+	if drafts[0].Email != "brain@example.com" {
+		t.Fatalf("brain frontmatter must win over per-user override; got %q", drafts[0].Email)
+	}
+	if drafts[0].Diagnostic != "" {
+		t.Fatalf("diagnostic should be empty: %q", drafts[0].Diagnostic)
+	}
+}
+
 func TestMeetingSummaryDraftEmitsNeedsRecipientWhenEmailMissing(t *testing.T) {
 	tmp := t.TempDir()
 	configPath := writeMCPBrainConfig(t, tmp)
