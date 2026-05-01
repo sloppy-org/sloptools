@@ -469,30 +469,3 @@ func (c *Client) FindMessagesRestricted(ctx context.Context, folderID string, of
 	}
 	return out, nil
 }
-
-func buildRestrictionXML(r FindRestriction) string {
-	var conditions []string
-	if strings.TrimSpace(r.From) != "" {
-		conditions = append(conditions, `<t:Contains ContainmentMode="Substring" ContainmentComparison="IgnoreCase"><t:FieldURI FieldURI="message:From" /><t:Constant Value="`+xmlEscapeAttr(r.From)+`" /></t:Contains>`)
-	}
-	if r.HasAttachment != nil {
-		value := "false"
-		if *r.HasAttachment {
-			value = "true"
-		}
-		conditions = append(conditions, `<t:IsEqualTo><t:FieldURI FieldURI="item:HasAttachments" /><t:FieldURIOrConstant><t:Constant Value="`+value+`" /></t:FieldURIOrConstant></t:IsEqualTo>`)
-	}
-	if !r.After.IsZero() {
-		conditions = append(conditions, `<t:IsGreaterThanOrEqualTo><t:FieldURI FieldURI="item:DateTimeReceived" /><t:FieldURIOrConstant><t:Constant Value="`+r.After.UTC().Format(time.RFC3339)+`" /></t:FieldURIOrConstant></t:IsGreaterThanOrEqualTo>`)
-	}
-	if !r.Before.IsZero() {
-		conditions = append(conditions, `<t:IsLessThanOrEqualTo><t:FieldURI FieldURI="item:DateTimeReceived" /><t:FieldURIOrConstant><t:Constant Value="`+r.Before.UTC().Format(time.RFC3339)+`" /></t:FieldURIOrConstant></t:IsLessThanOrEqualTo>`)
-	}
-	if len(conditions) == 0 {
-		return ""
-	}
-	if len(conditions) == 1 {
-		return "\n      <m:Restriction>" + conditions[0] + "</m:Restriction>"
-	}
-	return "\n      <m:Restriction><t:And>" + strings.Join(conditions, "") + "</t:And></m:Restriction>"
-}
