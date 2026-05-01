@@ -1,11 +1,12 @@
 // Package meetings — watcher.go implements the canonical-host voice-memo
-// pipeline described in issue #56. A polling loop watches the configured
-// `inbox` directory; every new audio file is classified, transcribed,
-// and either written as a quick-commitment (short memo) or rendered into
-// a `MEETING_NOTES.md` and re-ingested via brain.gtd.ingest (long memo).
-// Successful processing deletes the source audio; failures leave the
-// audio in place and write a `<basename>.failed` sidecar with the error
-// chain for human triage.
+// pipeline described in issue #56. An inotify watch (via fsnotify) on the
+// configured `inbox` directory dispatches each new audio file to the
+// pipeline; every meeting note found under `meetings_root` is also
+// inotify-tracked so manual edits trigger an immediate re-ingest. On
+// startup the watcher backfills both inputs by walking the trees once
+// before the inotify subscription takes over. Successful pipeline runs
+// delete the source audio; failures leave the audio in place and write
+// a `<basename>.failed` sidecar with the error chain for human triage.
 package meetings
 
 import (
@@ -18,6 +19,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/fsnotify/fsnotify"
 )
 
 // AudioPipeline is the per-file work the watcher dispatches once it has
@@ -39,19 +42,20 @@ func (f AudioPipelineFunc) Process(ctx context.Context, audioPath string) error 
 
 // NotesIngester re-ingests a single meeting notes file after the watcher
 // detects an mtime change. Implementations typically wrap
-// `brain.gtd.ingest --source meetings`. Errors are recorded by the
-// watcher but do not stop the polling loop.
+// `brain.gtd.ingest --source meetings`. Errors are recorded as
+// `<path>.failed` sidecars; the watcher does not stop on ingest errors.
 type NotesIngester func(ctx context.Context, notePath string) error
 
-// Watcher polls a configured INBOX folder and routes audio files to a
-// pipeline. When NotesIngester is set the watcher additionally tracks
-// `MEETING_NOTES.md` files (and loose `<slug>.md` files) under
-// cfg.MeetingsRoot. On startup the watcher walks every existing note
-// and treats it like a new file (per issue #56 backfill contract,
-// idempotent because re-ingest stamps stable IDs). On subsequent scans
-// it re-ingests any file whose mtime moved or that newly appeared. The
-// struct is safe to use from a single goroutine; concurrent callers
-// must serialise themselves.
+// Watcher inotify-watches a configured INBOX folder and routes audio
+// files to a pipeline. When NotesIngester is set the watcher
+// additionally tracks `MEETING_NOTES.md` files (and loose `<slug>.md`
+// files) under cfg.MeetingsRoot. On startup the watcher walks every
+// existing note and treats it like a new file (per issue #56 backfill
+// contract, idempotent because re-ingest stamps stable IDs). Once the
+// inotify subscription is up, audio drops fire immediately and meeting
+// note edits dispatch a targeted rescan that only re-ingests files
+// whose mtime moved or that newly appeared. The struct is safe to use
+// from a single goroutine; concurrent callers must serialise themselves.
 type Watcher struct {
 	cfg         SphereConfig
 	hostname    string
@@ -59,16 +63,11 @@ type Watcher struct {
 	notesIngest NotesIngester
 	notesMtime  map[string]time.Time
 	clock       func() time.Time
-	interval    time.Duration
 }
 
 // FailedSidecarSuffix is appended to the audio filename when processing
 // fails so subsequent watcher passes know to skip the file.
 const FailedSidecarSuffix = ".failed"
-
-// DefaultWatcherInterval is the polling cadence used when the caller
-// passes a non-positive interval.
-const DefaultWatcherInterval = 3 * time.Second
 
 // audioExtensions lists the file types accepted by the pipeline. Lower-case.
 var audioExtensions = map[string]bool{
@@ -77,21 +76,23 @@ var audioExtensions = map[string]bool{
 }
 
 // NewWatcher validates the canonical-host contract and returns a ready
-// Watcher. cfg must declare an Inbox path; CanonicalHost is enforced
-// when non-empty by comparing hostname (case-insensitive). The pipeline
-// is mandatory; interval defaults to DefaultWatcherInterval when ≤ 0.
-func NewWatcher(cfg SphereConfig, hostname string, pipeline AudioPipeline, interval time.Duration) (*Watcher, error) {
+// Watcher. cfg must declare an Inbox path and a CanonicalHost; the
+// hostname comparison is case-insensitive. The pipeline is mandatory.
+// Issue #56 requires single-worker execution: the watcher refuses to
+// start when canonical_host is missing so a misconfigured workstation
+// cannot silently process the queue alongside the canonical host.
+func NewWatcher(cfg SphereConfig, hostname string, pipeline AudioPipeline) (*Watcher, error) {
 	if strings.TrimSpace(cfg.Inbox) == "" {
 		return nil, errors.New("watcher: inbox is required")
 	}
 	if pipeline == nil {
 		return nil, errors.New("watcher: pipeline is required")
 	}
-	if cfg.CanonicalHost != "" && !strings.EqualFold(cfg.CanonicalHost, hostname) {
-		return nil, &CanonicalHostError{Host: hostname, Wanted: cfg.CanonicalHost}
+	if strings.TrimSpace(cfg.CanonicalHost) == "" {
+		return nil, errors.New("watcher: canonical_host is required (single-worker contract per issue #56)")
 	}
-	if interval <= 0 {
-		interval = DefaultWatcherInterval
+	if !strings.EqualFold(cfg.CanonicalHost, hostname) {
+		return nil, &CanonicalHostError{Host: hostname, Wanted: cfg.CanonicalHost}
 	}
 	return &Watcher{
 		cfg:        cfg,
@@ -99,7 +100,6 @@ func NewWatcher(cfg SphereConfig, hostname string, pipeline AudioPipeline, inter
 		pipeline:   pipeline,
 		notesMtime: map[string]time.Time{},
 		clock:      time.Now,
-		interval:   interval,
 	}, nil
 }
 
@@ -127,14 +127,21 @@ func (e *CanonicalHostError) Error() string {
 }
 
 // RunOnce processes every audio file currently sitting in INBOX, then
-// returns. It is the unit of work the polling loop schedules and the
-// natural entry-point for tests. The first error from a per-file
-// pipeline failure is logged via the sidecar but RunOnce keeps draining
-// remaining files; the returned error is the last underlying error
-// encountered while walking the directory itself. When a NotesIngester
-// is installed the same call also detects mtime changes under
-// cfg.MeetingsRoot and re-ingests the changed paths.
+// returns. It is the unit of work the inotify loop calls for backfill
+// and the natural entry-point for tests and the `ingest-once` CLI
+// subcommand. Per-file pipeline failures surface as sidecars but
+// RunOnce keeps draining remaining files; the returned error is the
+// last underlying error encountered while walking the directory itself.
+// When a NotesIngester is installed the same call also detects mtime
+// changes under cfg.MeetingsRoot and re-ingests the changed paths.
 func (w *Watcher) RunOnce(ctx context.Context) error {
+	if err := w.scanInbox(ctx); err != nil {
+		return err
+	}
+	return w.scanMeetingNotes(ctx)
+}
+
+func (w *Watcher) scanInbox(ctx context.Context) error {
 	files, err := w.scan()
 	if err != nil {
 		return err
@@ -144,9 +151,6 @@ func (w *Watcher) RunOnce(ctx context.Context) error {
 			return ctx.Err()
 		}
 		w.processOne(ctx, audio)
-	}
-	if err := w.scanMeetingNotes(ctx); err != nil {
-		return err
 	}
 	return nil
 }
@@ -190,22 +194,113 @@ func (w *Watcher) scanMeetingNotes(ctx context.Context) error {
 	return nil
 }
 
-// Run drives RunOnce in a loop until ctx is cancelled. Per-file errors
-// are recorded as `.failed` sidecars; transient scan errors propagate
-// out so the caller can decide whether to keep retrying.
+// Run subscribes to inotify events on cfg.Inbox and (when
+// notesIngest is set) on every directory under cfg.MeetingsRoot, then
+// dispatches audio files and meeting-note rescans as events arrive. The
+// initial backfill is done synchronously via RunOnce before the event
+// loop starts so existing files are processed once even if no events
+// fire. Run blocks until ctx is cancelled or the underlying inotify
+// stream returns a fatal error.
 func (w *Watcher) Run(ctx context.Context) error {
-	ticker := time.NewTicker(w.interval)
-	defer ticker.Stop()
+	fsw, err := fsnotify.NewWatcher()
+	if err != nil {
+		return fmt.Errorf("watcher: create fsnotify: %w", err)
+	}
+	defer fsw.Close()
+	if err := w.RunOnce(ctx); err != nil {
+		return err
+	}
+	if err := fsw.Add(w.cfg.Inbox); err != nil {
+		return fmt.Errorf("watcher: watch inbox %s: %w", w.cfg.Inbox, err)
+	}
+	notesDirs, err := w.addNotesWatches(fsw)
+	if err != nil {
+		return err
+	}
 	for {
-		if err := w.RunOnce(ctx); err != nil {
-			return err
-		}
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-ticker.C:
+		case ev, ok := <-fsw.Events:
+			if !ok {
+				return nil
+			}
+			w.handleEvent(ctx, fsw, ev, notesDirs)
+		case watchErr, ok := <-fsw.Errors:
+			if !ok {
+				return nil
+			}
+			if watchErr != nil {
+				return fmt.Errorf("watcher: fsnotify error: %w", watchErr)
+			}
 		}
 	}
+}
+
+func (w *Watcher) handleEvent(ctx context.Context, fsw *fsnotify.Watcher, ev fsnotify.Event, notesDirs map[string]struct{}) {
+	inbox := filepath.Clean(w.cfg.Inbox)
+	if isUnder(ev.Name, inbox) {
+		_ = w.scanInbox(ctx)
+	}
+	if w.notesIngest == nil {
+		return
+	}
+	root := filepath.Clean(w.cfg.MeetingsRoot)
+	if root == "" || root == "." || !isUnder(ev.Name, root) {
+		return
+	}
+	if ev.Op.Has(fsnotify.Create) {
+		if info, err := os.Stat(ev.Name); err == nil && info.IsDir() {
+			if _, watched := notesDirs[ev.Name]; !watched {
+				if err := fsw.Add(ev.Name); err == nil {
+					notesDirs[ev.Name] = struct{}{}
+				}
+			}
+		}
+	}
+	_ = w.scanMeetingNotes(ctx)
+}
+
+func (w *Watcher) addNotesWatches(fsw *fsnotify.Watcher) (map[string]struct{}, error) {
+	dirs := map[string]struct{}{}
+	root := strings.TrimSpace(w.cfg.MeetingsRoot)
+	if w.notesIngest == nil || root == "" {
+		return dirs, nil
+	}
+	if _, err := os.Stat(root); err != nil {
+		if os.IsNotExist(err) {
+			return dirs, nil
+		}
+		return dirs, err
+	}
+	walkErr := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
+			return err
+		}
+		if !d.IsDir() {
+			return nil
+		}
+		if err := fsw.Add(path); err != nil {
+			return fmt.Errorf("watcher: watch %s: %w", path, err)
+		}
+		dirs[path] = struct{}{}
+		return nil
+	})
+	return dirs, walkErr
+}
+
+func isUnder(child, parent string) bool {
+	if parent == "" {
+		return false
+	}
+	clean := filepath.Clean(child)
+	if clean == parent {
+		return true
+	}
+	return strings.HasPrefix(clean, parent+string(os.PathSeparator))
 }
 
 func (w *Watcher) processOne(ctx context.Context, path string) {

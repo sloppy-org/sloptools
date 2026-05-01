@@ -41,7 +41,6 @@ func cmdMeetingsWatch(args []string, oneShot bool) int {
 	sphere := fs.String("sphere", "", "vault sphere (work|private)")
 	configPath := fs.String("vault-config", "", "vault config path; defaults to ~/.config/sloptools/vaults.toml")
 	sourcesConfig := fs.String("sources-config", "", "meetings/sources config path; defaults to ~/.config/sloptools/sources.toml")
-	intervalFlag := fs.Duration("interval", meetings.DefaultWatcherInterval, "polling interval between scans")
 	hostnameFlag := fs.String("hostname", "", "override hostname for canonical-host check (defaults to os.Hostname)")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -84,7 +83,7 @@ func cmdMeetingsWatch(args []string, oneShot bool) int {
 		host = current
 	}
 	pipeline := meetingsPipelineFromConfig(sphereCfg, *sphere, *configPath, resolvedSources)
-	watcher, err := meetings.NewWatcher(sphereCfg, host, pipeline, *intervalFlag)
+	watcher, err := meetings.NewWatcher(sphereCfg, host, pipeline)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1

@@ -13,7 +13,7 @@ import (
 func TestNewWatcherRefusesNonCanonicalHost(t *testing.T) {
 	cfg := SphereConfig{Inbox: t.TempDir(), CanonicalHost: "mailuefterl"}
 	pipeline := AudioPipelineFunc(func(context.Context, string) error { return nil })
-	if _, err := NewWatcher(cfg, "laptop-2", pipeline, 0); err == nil {
+	if _, err := NewWatcher(cfg, "laptop-2", pipeline); err == nil {
 		t.Fatal("expected canonical-host refusal")
 	} else if hostErr := new(CanonicalHostError); !errors.As(err, &hostErr) {
 		t.Fatalf("expected CanonicalHostError, got %T: %v", err, err)
@@ -23,16 +23,20 @@ func TestNewWatcherRefusesNonCanonicalHost(t *testing.T) {
 func TestNewWatcherAcceptsMatchingHostCaseInsensitive(t *testing.T) {
 	cfg := SphereConfig{Inbox: t.TempDir(), CanonicalHost: "Mailuefterl"}
 	pipeline := AudioPipelineFunc(func(context.Context, string) error { return nil })
-	if _, err := NewWatcher(cfg, "MAILUEFTERL", pipeline, 0); err != nil {
+	if _, err := NewWatcher(cfg, "MAILUEFTERL", pipeline); err != nil {
 		t.Fatalf("matching host must accept, got %v", err)
 	}
 }
 
-func TestNewWatcherWithoutCanonicalHostSkipsCheck(t *testing.T) {
+func TestNewWatcherRequiresCanonicalHost(t *testing.T) {
 	cfg := SphereConfig{Inbox: t.TempDir()}
 	pipeline := AudioPipelineFunc(func(context.Context, string) error { return nil })
-	if _, err := NewWatcher(cfg, "any-host", pipeline, 0); err != nil {
-		t.Fatalf("no canonical_host should not enforce, got %v", err)
+	_, err := NewWatcher(cfg, "any-host", pipeline)
+	if err == nil {
+		t.Fatal("expected error when canonical_host is empty (single-worker contract)")
+	}
+	if !strings.Contains(err.Error(), "canonical_host is required") {
+		t.Fatalf("error should explain missing canonical_host, got %v", err)
 	}
 }
 
@@ -213,6 +217,74 @@ func TestRunOnceCallsNotesIngesterOnNewNote(t *testing.T) {
 	}
 }
 
+func TestRunDispatchesAudioOnInotifyEvent(t *testing.T) {
+	inbox := t.TempDir()
+	seen := make(chan string, 4)
+	pipeline := AudioPipelineFunc(func(_ context.Context, path string) error {
+		seen <- path
+		return nil
+	})
+	w := mustWatcher(t, SphereConfig{Inbox: inbox, CanonicalHost: "host"}, "host", pipeline)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	runErr := make(chan error, 1)
+	go func() { runErr <- w.Run(ctx) }()
+	// Wait for backfill + Add(inbox). 200ms is generous; the inotify
+	// subscription is microseconds in practice but the test goroutine
+	// must reach the select before we drop the file.
+	time.Sleep(200 * time.Millisecond)
+	audio := filepath.Join(inbox, "memo-event.m4a")
+	mustWriteBytes(t, audio, []byte("audio"))
+	select {
+	case got := <-seen:
+		if got != audio {
+			t.Fatalf("dispatched %s, want %s", got, audio)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout: inotify event never reached pipeline")
+	}
+	cancel()
+	if err := <-runErr; err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatalf("Run: %v", err)
+	}
+}
+
+func TestRunDispatchesNotesOnInotifyEvent(t *testing.T) {
+	inbox := t.TempDir()
+	root := t.TempDir()
+	noteDir := filepath.Join(root, "2026-05-01-board")
+	if err := os.MkdirAll(noteDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	notePath := filepath.Join(noteDir, "MEETING_NOTES.md")
+	pipeline := AudioPipelineFunc(func(context.Context, string) error { return nil })
+	cfg := SphereConfig{Inbox: inbox, MeetingsRoot: root, CanonicalHost: "host"}
+	w := mustWatcher(t, cfg, "host", pipeline)
+	seen := make(chan string, 4)
+	w.SetNotesIngester(func(_ context.Context, p string) error {
+		seen <- p
+		return nil
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	runErr := make(chan error, 1)
+	go func() { runErr <- w.Run(ctx) }()
+	time.Sleep(200 * time.Millisecond)
+	mustWriteBytes(t, notePath, []byte("# Board\n"))
+	select {
+	case got := <-seen:
+		if got != notePath {
+			t.Fatalf("dispatched %s, want %s", got, notePath)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout: meeting-note inotify event never reached ingester")
+	}
+	cancel()
+	if err := <-runErr; err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatalf("Run: %v", err)
+	}
+}
+
 func TestSphereConfigClassifyHonoursShortMemoCutoff(t *testing.T) {
 	cfg := SphereConfig{ShortMemoSeconds: 60}
 	if got := cfg.Classify(45); got != MemoShort {
@@ -228,7 +300,10 @@ func TestSphereConfigClassifyHonoursShortMemoCutoff(t *testing.T) {
 
 func mustWatcher(t *testing.T, cfg SphereConfig, host string, pipeline AudioPipeline) *Watcher {
 	t.Helper()
-	w, err := NewWatcher(cfg, host, pipeline, 0)
+	if strings.TrimSpace(cfg.CanonicalHost) == "" {
+		cfg.CanonicalHost = host
+	}
+	w, err := NewWatcher(cfg, host, pipeline)
 	if err != nil {
 		t.Fatalf("NewWatcher: %v", err)
 	}
