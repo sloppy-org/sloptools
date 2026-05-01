@@ -32,13 +32,16 @@ func TestRenderHubReplacesOnlyOpenLoopsAndIsIdempotent(t *testing.T) {
 	for _, want := range []string{
 		"Intro.\n\n## Open Loops\n",
 		"### Chris owes\n- [ ] [[commitments/ask|Ask for alpha budget]] — due 2026-05-03",
-		"### Waiting on others\n- [ ] [[commitments/wait|Review alpha plan]] — [[people/Ada Example|Ada Example]] — follow up 2026-05-05",
+		"### Waiting on others\n- [ ] [[people/Ada Example|Ada Example]] — Review alpha plan — follow up 2026-05-05",
 		"### Closed (last 14 days)\n- [x] [[commitments/closed|Filed alpha report]] — closed 2026-04-25",
 		"## Notes\nKeep me.\n",
 	} {
 		if !strings.Contains(rendered, want) {
 			t.Fatalf("rendered missing %q:\n%s", want, rendered)
 		}
+	}
+	if strings.Contains(rendered, "[[commitments/wait|Review alpha plan]] — [[people/Ada Example|Ada Example]]") {
+		t.Fatalf("waiting item uses commitment-first order:\n%s", rendered)
 	}
 	info := statProjectTestFile(t, hub)
 	second, err := RenderHub(cfg, brain.SphereWork, "brain/projects/Alpha.md", now)
