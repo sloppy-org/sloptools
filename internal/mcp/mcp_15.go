@@ -49,8 +49,14 @@ func (s *Server) dispatchBrain(method string, args map[string]interface{}) (map[
 		return s.brainGTDParseVault(args)
 	case "brain.gtd.list":
 		return s.brainGTDListVault(args)
+	case "brain.projects.render":
+		return s.brainProjectsRender(args)
+	case "brain.projects.list":
+		return s.brainProjectsList(args)
 	case "brain.gtd.write":
 		return s.brainGTDWrite(args)
+	case "brain.gtd.bulk_link":
+		return s.brainGTDBulkLink(args)
 	case "brain.gtd.bind":
 		return s.brainGTDBind(args)
 	case "brain.gtd.dedup_scan":

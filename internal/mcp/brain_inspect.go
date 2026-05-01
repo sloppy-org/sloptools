@@ -4,10 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/sloppy-org/sloptools/internal/brain"
 	braingtd "github.com/sloppy-org/sloptools/internal/brain/gtd"
 	"github.com/sloppy-org/sloptools/internal/braincatalog"
+	"github.com/sloppy-org/sloptools/internal/brainprojects"
 	"github.com/sloppy-org/sloptools/internal/store"
 )
 
@@ -294,6 +296,59 @@ func (s *Server) brainGTDListVault(args map[string]interface{}) (map[string]inte
 		},
 		"items": items,
 		"count": len(items),
+	}, nil
+}
+
+func (s *Server) brainProjectsRender(args map[string]interface{}) (map[string]interface{}, error) {
+	cfg, err := brain.LoadConfig(s.brainConfigArg(args))
+	if err != nil {
+		return nil, err
+	}
+	hub := strArg(args, "hub")
+	if hub == "" {
+		hub = strArg(args, "path")
+	}
+	result, err := brainprojects.RenderHub(cfg, brain.Sphere(strArg(args, "sphere")), hub, time.Now().UTC())
+	if err != nil {
+		return nil, err
+	}
+	return map[string]interface{}{"sphere": result.Sphere, "hub": result.Hub, "changed": result.Changed}, nil
+}
+
+func (s *Server) brainProjectsList(args map[string]interface{}) (map[string]interface{}, error) {
+	cfg, err := brain.LoadConfig(s.brainConfigArg(args))
+	if err != nil {
+		return nil, err
+	}
+	hubs, err := brainprojects.ListHubs(cfg, brain.Sphere(strArg(args, "sphere")), time.Now().UTC())
+	if err != nil {
+		return nil, err
+	}
+	return map[string]interface{}{"sphere": strArg(args, "sphere"), "projects": hubs, "count": len(hubs)}, nil
+}
+
+func (s *Server) brainGTDBulkLink(args map[string]interface{}) (map[string]interface{}, error) {
+	cfg, err := brain.LoadConfig(s.brainConfigArg(args))
+	if err != nil {
+		return nil, err
+	}
+	rules := strArg(args, "rules")
+	if rules == "" {
+		rules = strArg(args, "rules_path")
+	}
+	if rules == "" {
+		rules = strArg(args, "project_config")
+	}
+	result, err := brainprojects.BulkLink(cfg, brain.Sphere(strArg(args, "sphere")), rules)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]interface{}{
+		"sphere":    result.Sphere,
+		"linked":    result.Linked,
+		"skipped":   result.Skipped,
+		"ambiguous": result.Ambiguous,
+		"paths":     result.Paths,
 	}, nil
 }
 
