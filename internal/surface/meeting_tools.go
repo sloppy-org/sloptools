@@ -19,18 +19,18 @@ func init() {
 			"account_id":     {Type: "integer", Description: "Optional mail account id; defaults to [meetings.<sphere>].mail_account_id."},
 			"send_now":       {Type: "boolean", Description: "When true, send immediately instead of saving as a draft. Default false."},
 		}},
-		Tool{Name: "meeting.share.create", Description: "Persist the public share metadata for a meeting note. The actual Nextcloud share is created via helpy nextcloud_share_create; this verb records the URL so meeting.summary.draft can embed it.", Required: []string{"sphere", "slug"}, Properties: map[string]ToolProperty{
+		Tool{Name: "meeting.share.create", Description: "Create a public Nextcloud share for the resolved meeting folder/file via the OCS share API and persist its URL/token/id so meeting.summary.draft can embed the live link. Falls back to recording a caller-supplied URL when no Nextcloud credentials are configured.", Required: []string{"sphere", "slug"}, Properties: map[string]ToolProperty{
 			"config_path":    {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},
 			"sources_config": {Type: "string", Description: "Optional sources/meetings config path. Defaults to ~/.config/sloptools/sources.toml."},
 			"sphere":         {Type: "string", Description: "Vault sphere to update.", Enum: []string{"work", "private"}},
 			"slug":           {Type: "string", Description: "Meeting slug."},
-			"url":            {Type: "string", Description: "Public share URL produced by helpy nextcloud_share_create."},
-			"token":          {Type: "string", Description: "Optional share token returned by Nextcloud."},
+			"url":            {Type: "string", Description: "Optional pre-existing share URL. When set, the verb records it instead of issuing an OCS share create request."},
+			"token":          {Type: "string", Description: "Optional share token; only used when url is supplied."},
 			"permissions":    {Type: "string", Description: "Share permissions. Defaults to the per-sphere config or edit.", Enum: []string{"edit", "read", "comment"}},
 			"expiry_days":    {Type: "integer", Description: "Optional expiry window in days."},
-			"password":       {Type: "boolean", Description: "Whether the share is password-protected."},
+			"password":       {Type: "boolean", Description: "When true, the verb generates a strong password and protects the share with it."},
 		}},
-		Tool{Name: "meeting.share.revoke", Description: "Remove the persisted public share metadata for a meeting. Live revocation via helpy must be performed by the caller.", Required: []string{"sphere", "slug"}, Properties: map[string]ToolProperty{
+		Tool{Name: "meeting.share.revoke", Description: "Revoke the public Nextcloud share for a meeting via OCS DELETE (when a share id is recorded) and remove the persisted .share.json state. Errors out if the recorded share cannot be revoked, so the live link does not leak.", Required: []string{"sphere", "slug"}, Properties: map[string]ToolProperty{
 			"config_path":    {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},
 			"sources_config": {Type: "string", Description: "Optional sources/meetings config path. Defaults to ~/.config/sloptools/sources.toml."},
 			"sphere":         {Type: "string", Description: "Vault sphere to update.", Enum: []string{"work", "private"}},

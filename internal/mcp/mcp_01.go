@@ -13,6 +13,7 @@ import (
 	"github.com/sloppy-org/sloptools/internal/email"
 	"github.com/sloppy-org/sloptools/internal/groupware"
 	"github.com/sloppy-org/sloptools/internal/mailboxsettings"
+	"github.com/sloppy-org/sloptools/internal/meetings"
 	"github.com/sloppy-org/sloptools/internal/store"
 	"github.com/sloppy-org/sloptools/internal/tasks"
 	"io"
@@ -54,6 +55,7 @@ type Server struct {
 	newMailboxSettingsProvider func(context.Context, store.ExternalAccount) (mailboxsettings.OOFProvider, error)
 	newContactsProvider        func(context.Context, store.ExternalAccount) (contacts.Provider, error)
 	newTasksProvider           func(context.Context, store.ExternalAccount) (tasks.Provider, error)
+	newNextcloudShareClient    func(meetings.NextcloudConfig) (meetings.NextcloudShareClient, error)
 }
 
 type handoffEnvelope struct {
@@ -78,6 +80,7 @@ func NewServerWithStore(projectDir string, st *store.Store) *Server {
 	srv.newTasksProvider = func(ctx context.Context, account store.ExternalAccount) (tasks.Provider, error) {
 		return srv.groupware.TasksFor(ctx, account.ID)
 	}
+	srv.newNextcloudShareClient = meetings.NewNextcloudShareClient
 	return srv
 }
 

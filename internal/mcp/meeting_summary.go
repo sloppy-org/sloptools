@@ -124,74 +124,94 @@ func (s *Server) meetingSummarySend(args map[string]interface{}) (map[string]int
 }
 
 func (s *Server) meetingShareCreate(args map[string]interface{}) (map[string]interface{}, error) {
-	ctx, err := s.loadMeetingSummaryContext(args)
+	mctx, err := s.loadMeetingSummaryContext(args)
 	if err != nil {
 		return nil, err
 	}
-	state, _, err := meetings.LoadShareState(ctx.target)
+	state, _, err := meetings.LoadShareState(mctx.target)
 	if err != nil {
 		return nil, err
 	}
-	if url := strings.TrimSpace(strArg(args, "url")); url != "" {
-		state.URL = url
-	}
-	if token := strings.TrimSpace(strArg(args, "token")); token != "" {
-		state.Token = token
-	}
-	if perms := strings.TrimSpace(strArg(args, "permissions")); perms != "" {
-		state.Permissions = strings.ToLower(perms)
-	}
-	if state.Permissions == "" {
-		state.Permissions = ctx.sphereCfg.Share.Permissions
-	}
+	state.Permissions = meetings.ChooseSharePermissions(state.Permissions, strArg(args, "permissions"), mctx.sphereCfg.Share.Permissions)
 	if days := intArg(args, "expiry_days", 0); days > 0 {
 		state.ExpiryDays = days
-	} else if state.ExpiryDays == 0 && ctx.sphereCfg.Share.ExpiryDays > 0 {
-		state.ExpiryDays = ctx.sphereCfg.Share.ExpiryDays
+	} else if state.ExpiryDays == 0 && mctx.sphereCfg.Share.ExpiryDays > 0 {
+		state.ExpiryDays = mctx.sphereCfg.Share.ExpiryDays
 	}
 	if password, ok := args["password"]; ok {
 		if value, ok := password.(bool); ok {
 			state.Password = value
 		}
-	} else if state.Password == false && ctx.sphereCfg.Share.Password {
+	} else if !state.Password && mctx.sphereCfg.Share.Password {
 		state.Password = true
+	}
+	suppliedURL := strings.TrimSpace(strArg(args, "url"))
+	suppliedToken := strings.TrimSpace(strArg(args, "token"))
+	if suppliedURL != "" {
+		state.URL = suppliedURL
+		if suppliedToken != "" {
+			state.Token = suppliedToken
+		}
+	} else {
+		record, err := meetings.CreateLiveShare(mctx.target, mctx.sphereCfg, state, mctx.target.Slug, s.newNextcloudShareClient)
+		if err != nil {
+			return nil, err
+		}
+		state.ID = record.ID
+		state.URL = record.URL
+		state.Token = record.Token
 	}
 	if state.CreatedAt == "" {
 		state.CreatedAt = time.Now().UTC().Format(time.RFC3339)
 	}
-	if err := meetings.WriteShareState(ctx.target, state); err != nil {
+	if err := meetings.WriteShareState(mctx.target, state); err != nil {
 		return nil, err
 	}
-	url, live := meetings.ShareLink(ctx.target, state, true, ctx.sphereCfg.Share)
+	url, live := meetings.ShareLink(mctx.target, state, true, mctx.sphereCfg.Share)
 	return map[string]interface{}{
-		"slug":                ctx.target.Slug,
-		"sphere":              ctx.sphere,
-		"kind":                string(ctx.target.Kind),
-		"absolute_path":       ctx.target.AbsolutePath,
-		"vault_relative_path": ctx.target.VaultRelativePath,
-		"state_path":          ctx.target.StatePath,
+		"slug":                mctx.target.Slug,
+		"sphere":              mctx.sphere,
+		"kind":                string(mctx.target.Kind),
+		"absolute_path":       mctx.target.AbsolutePath,
+		"vault_relative_path": mctx.target.VaultRelativePath,
+		"state_path":          mctx.target.StatePath,
 		"permissions":         state.Permissions,
 		"expiry_days":         state.ExpiryDays,
 		"password":            state.Password,
 		"url":                 url,
 		"live":                live,
+		"share_id":            state.ID,
+		"token":               state.Token,
 	}, nil
 }
 
 func (s *Server) meetingShareRevoke(args map[string]interface{}) (map[string]interface{}, error) {
-	ctx, err := s.loadMeetingSummaryContext(args)
+	mctx, err := s.loadMeetingSummaryContext(args)
 	if err != nil {
 		return nil, err
 	}
-	if err := meetings.RemoveShareState(ctx.target); err != nil {
+	state, hadState, err := meetings.LoadShareState(mctx.target)
+	if err != nil {
+		return nil, err
+	}
+	revoked := false
+	if hadState && strings.TrimSpace(state.ID) != "" {
+		if err := meetings.RevokeLiveShare(mctx.sphereCfg, state.ID, s.newNextcloudShareClient); err != nil {
+			return nil, err
+		}
+		revoked = true
+	}
+	if err := meetings.RemoveShareState(mctx.target); err != nil {
 		return nil, err
 	}
 	return map[string]interface{}{
-		"slug":          ctx.target.Slug,
-		"sphere":        ctx.sphere,
-		"state_path":    ctx.target.StatePath,
-		"absolute_path": ctx.target.AbsolutePath,
-		"revoked":       true,
+		"slug":            mctx.target.Slug,
+		"sphere":          mctx.sphere,
+		"state_path":      mctx.target.StatePath,
+		"absolute_path":   mctx.target.AbsolutePath,
+		"revoked":         true,
+		"share_id":        state.ID,
+		"share_id_purged": revoked,
 	}, nil
 }
 
@@ -413,4 +433,3 @@ func meetingSummaryToMap(result MeetingSummaryDraftResult) map[string]interface{
 		"count":      result.Count,
 	}
 }
-

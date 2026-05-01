@@ -31,6 +31,7 @@ type SphereConfig struct {
 	TranscribeCommand []string
 	RenderCommand     []string
 	Share             ShareConfig
+	Nextcloud         NextcloudConfig
 }
 
 // ShareConfig captures the per-sphere defaults that the summary
@@ -59,17 +60,25 @@ type configFile struct {
 }
 
 type rawSphereConfig struct {
-	Inbox             string            `toml:"inbox"`
-	MeetingsRoot      string            `toml:"meetings_root"`
-	CanonicalHost     string            `toml:"canonical_host"`
-	Owner             string            `toml:"owner"`
-	MailAccountID     int64             `toml:"mail_account_id"`
-	ShortMemoSeconds  int               `toml:"short_memo_seconds"`
-	OwnerAliases      map[string]string `toml:"owner_aliases"`
-	PeopleEmails      map[string]string `toml:"people_emails"`
-	TranscribeCommand []string          `toml:"transcribe_command"`
-	RenderCommand     []string          `toml:"render_command"`
-	Share             rawShareConfig    `toml:"share"`
+	Inbox             string             `toml:"inbox"`
+	MeetingsRoot      string             `toml:"meetings_root"`
+	CanonicalHost     string             `toml:"canonical_host"`
+	Owner             string             `toml:"owner"`
+	MailAccountID     int64              `toml:"mail_account_id"`
+	ShortMemoSeconds  int                `toml:"short_memo_seconds"`
+	OwnerAliases      map[string]string  `toml:"owner_aliases"`
+	PeopleEmails      map[string]string  `toml:"people_emails"`
+	TranscribeCommand []string           `toml:"transcribe_command"`
+	RenderCommand     []string           `toml:"render_command"`
+	Share             rawShareConfig     `toml:"share"`
+	Nextcloud         rawNextcloudConfig `toml:"nextcloud"`
+}
+
+type rawNextcloudConfig struct {
+	BaseURL      string `toml:"base_url"`
+	User         string `toml:"user"`
+	AppPassword  string `toml:"app_password"`
+	LocalSyncDir string `toml:"local_sync_dir"`
 }
 
 type rawShareConfig struct {
@@ -165,6 +174,7 @@ func normalizeSphere(sphere string, raw rawSphereConfig) (SphereConfig, error) {
 		TranscribeCommand: append([]string(nil), raw.TranscribeCommand...),
 		RenderCommand:     append([]string(nil), raw.RenderCommand...),
 		Share:             normalizeShare(raw.Share),
+		Nextcloud:         normalizeNextcloud(raw.Nextcloud),
 	}
 	if cfg.ShortMemoSeconds <= 0 {
 		cfg.ShortMemoSeconds = DefaultShortMemoSeconds
@@ -192,6 +202,16 @@ func normalizeSphere(sphere string, raw rawSphereConfig) (SphereConfig, error) {
 		}
 	}
 	return cfg, nil
+}
+
+func normalizeNextcloud(raw rawNextcloudConfig) NextcloudConfig {
+	cfg := NextcloudConfig{
+		BaseURL:      strings.TrimRight(strings.TrimSpace(raw.BaseURL), "/"),
+		User:         strings.TrimSpace(raw.User),
+		AppPassword:  strings.TrimSpace(raw.AppPassword),
+		LocalSyncDir: cleanPath(raw.LocalSyncDir),
+	}
+	return cfg
 }
 
 func normalizeShare(raw rawShareConfig) ShareConfig {

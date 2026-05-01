@@ -47,6 +47,7 @@ type ShareTarget struct {
 type ShareState struct {
 	Slug        string          `json:"slug"`
 	Kind        ShareTargetKind `json:"kind"`
+	ID          string          `json:"id,omitempty"`
 	URL         string          `json:"url,omitempty"`
 	Token       string          `json:"token,omitempty"`
 	Permissions string          `json:"permissions,omitempty"`
