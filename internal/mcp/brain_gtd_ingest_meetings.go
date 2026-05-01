@@ -46,11 +46,7 @@ type meetingIngestContext struct {
 	now        string
 }
 
-func (s *Server) ingestMeetings(cfg *brain.Config, sphere string, paths []string, configPath string, configExplicit bool) (map[string]interface{}, error) {
-	summary, err := s.ingestMeetingsPaths(cfg, sphere, paths, configPath, configExplicit)
-	if err != nil {
-		return nil, err
-	}
+func ingestMeetingsResult(summary meetingsIngestSummary, sphere string) map[string]interface{} {
 	return map[string]interface{}{
 		"sphere":     sphere,
 		"source":     meetingsProvider,
@@ -63,12 +59,38 @@ func (s *Server) ingestMeetings(cfg *brain.Config, sphere string, paths []string
 		"walked":     summary.Walked,
 		"legacy_hit": summary.LegacyHit,
 		"updated":    len(summary.Affected) > 0 || len(summary.Stamped) > 0,
-	}, nil
+	}
 }
 
-func (s *Server) ingestMeetingsPaths(cfg *brain.Config, sphere string, paths []string, configPath string, configExplicit bool) (meetingsIngestSummary, error) {
+// IngestMeetings runs `brain.gtd.ingest --source meetings` outside of the
+// MCP request loop. It is the entry point used by the `sloptools meetings`
+// CLI so the watcher can trigger ingestion in-process after writing a
+// `MEETING_NOTES.md` or detecting an mtime change. brainConfigPath, sphere,
+// and paths follow the same semantics as the MCP tool; sourcesPath defaults
+// to ~/.config/sloptools/sources.toml when empty.
+func IngestMeetings(brainConfigPath, sphere string, paths []string, sourcesPath string) (map[string]interface{}, error) {
+	cfg, err := brain.LoadConfig(brainConfigPath)
+	if err != nil {
+		return nil, err
+	}
+	summary, err := ingestMeetingsPaths(cfg, sphere, paths, sourcesPath, sourcesPath != "")
+	if err != nil {
+		return nil, err
+	}
+	return ingestMeetingsResult(summary, sphere), nil
+}
+
+func ingestMeetingsTool(cfg *brain.Config, sphere string, paths []string, configPath string, configExplicit bool) (map[string]interface{}, error) {
+	summary, err := ingestMeetingsPaths(cfg, sphere, paths, configPath, configExplicit)
+	if err != nil {
+		return nil, err
+	}
+	return ingestMeetingsResult(summary, sphere), nil
+}
+
+func ingestMeetingsPaths(cfg *brain.Config, sphere string, paths []string, configPath string, configExplicit bool) (meetingsIngestSummary, error) {
 	summary := meetingsIngestSummary{}
-	bindings, err := s.loadMeetingBindings(cfg, sphere)
+	bindings, err := loadMeetingBindings(cfg, sphere)
 	if err != nil {
 		return summary, err
 	}
@@ -170,7 +192,7 @@ func (c *meetingIngestContext) applyExisting(summary *meetingsIngestSummary, not
 	return nil
 }
 
-func (s *Server) loadMeetingBindings(cfg *brain.Config, sphere string) (meetingBindingIndex, error) {
+func loadMeetingBindings(cfg *brain.Config, sphere string) (meetingBindingIndex, error) {
 	vault, ok := cfg.Vault(brain.Sphere(sphere))
 	if !ok {
 		return meetingBindingIndex{}, fmt.Errorf("unknown vault %q", sphere)

@@ -37,15 +37,27 @@ func (f AudioPipelineFunc) Process(ctx context.Context, audioPath string) error 
 	return f(ctx, audioPath)
 }
 
+// NotesIngester re-ingests a single meeting notes file after the watcher
+// detects an mtime change. Implementations typically wrap
+// `brain.gtd.ingest --source meetings`. Errors are recorded by the
+// watcher but do not stop the polling loop.
+type NotesIngester func(ctx context.Context, notePath string) error
+
 // Watcher polls a configured INBOX folder and routes audio files to a
-// pipeline. The struct is safe to use from a single goroutine; concurrent
-// callers must serialise themselves.
+// pipeline. When NotesIngester is set the watcher additionally tracks
+// mtime changes for `MEETING_NOTES.md` files (and loose `<slug>.md`
+// files) under cfg.MeetingsRoot, re-ingesting any file whose mtime moved
+// since the previous scan. The struct is safe to use from a single
+// goroutine; concurrent callers must serialise themselves.
 type Watcher struct {
-	cfg      SphereConfig
-	hostname string
-	pipeline AudioPipeline
-	clock    func() time.Time
-	interval time.Duration
+	cfg         SphereConfig
+	hostname    string
+	pipeline    AudioPipeline
+	notesIngest NotesIngester
+	notesMtime  map[string]time.Time
+	notesSeeded bool
+	clock       func() time.Time
+	interval    time.Duration
 }
 
 // FailedSidecarSuffix is appended to the audio filename when processing
@@ -79,7 +91,26 @@ func NewWatcher(cfg SphereConfig, hostname string, pipeline AudioPipeline, inter
 	if interval <= 0 {
 		interval = DefaultWatcherInterval
 	}
-	return &Watcher{cfg: cfg, hostname: hostname, pipeline: pipeline, clock: time.Now, interval: interval}, nil
+	return &Watcher{
+		cfg:        cfg,
+		hostname:   hostname,
+		pipeline:   pipeline,
+		notesMtime: map[string]time.Time{},
+		clock:      time.Now,
+		interval:   interval,
+	}, nil
+}
+
+// SetNotesIngester installs the callback the watcher invokes when a
+// previously-seen meeting note's mtime advances or a new note appears
+// under cfg.MeetingsRoot. Passing nil disables notes watching. The first
+// scan after installation seeds the mtime map without firing the
+// callback so an existing note tree is not re-ingested unconditionally
+// on startup.
+func (w *Watcher) SetNotesIngester(ingest NotesIngester) {
+	w.notesIngest = ingest
+	w.notesMtime = map[string]time.Time{}
+	w.notesSeeded = false
 }
 
 // CanonicalHostError is returned when NewWatcher refuses to start
@@ -98,7 +129,9 @@ func (e *CanonicalHostError) Error() string {
 // natural entry-point for tests. The first error from a per-file
 // pipeline failure is logged via the sidecar but RunOnce keeps draining
 // remaining files; the returned error is the last underlying error
-// encountered while walking the directory itself.
+// encountered while walking the directory itself. When a NotesIngester
+// is installed the same call also detects mtime changes under
+// cfg.MeetingsRoot and re-ingests the changed paths.
 func (w *Watcher) RunOnce(ctx context.Context) error {
 	files, err := w.scan()
 	if err != nil {
@@ -110,6 +143,50 @@ func (w *Watcher) RunOnce(ctx context.Context) error {
 		}
 		w.processOne(ctx, audio)
 	}
+	if err := w.scanMeetingNotes(ctx); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (w *Watcher) scanMeetingNotes(ctx context.Context) error {
+	if w.notesIngest == nil || strings.TrimSpace(w.cfg.MeetingsRoot) == "" {
+		return nil
+	}
+	discovered, err := Discover(w.cfg.MeetingsRoot)
+	if err != nil {
+		return err
+	}
+	seedRun := !w.notesSeeded
+	live := make(map[string]struct{}, len(discovered.Paths))
+	for _, path := range discovered.Paths {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		live[path] = struct{}{}
+		info, err := os.Stat(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return err
+		}
+		modified := info.ModTime()
+		previous, known := w.notesMtime[path]
+		w.notesMtime[path] = modified
+		if seedRun || (known && !modified.After(previous)) {
+			continue
+		}
+		if err := w.notesIngest(ctx, path); err != nil {
+			w.writeSidecar(path, fmt.Errorf("ingest meeting notes: %w", err))
+		}
+	}
+	for path := range w.notesMtime {
+		if _, ok := live[path]; !ok {
+			delete(w.notesMtime, path)
+		}
+	}
+	w.notesSeeded = true
 	return nil
 }
 

@@ -1,6 +1,8 @@
 package mcp
 
 import (
+	"crypto/sha1"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -11,7 +13,124 @@ import (
 
 	"github.com/sloppy-org/sloptools/internal/brain"
 	braingtd "github.com/sloppy-org/sloptools/internal/brain/gtd"
+	"github.com/sloppy-org/sloptools/internal/meetings"
 )
+
+// WriteQuickMeetingCommitment renders and writes an inbox-status GTD
+// commitment for a short voice memo. The commitment carries
+// `provider: meetings`, `status: inbox`, the recognised outcome as both
+// title and `## Next Action`, and the verbatim transcript under
+// `## Evidence`. The written file's ref is `<slug>#<id>` where `id` is a
+// stable hash of the audio basename plus transcript so re-running the
+// pipeline against the same audio is idempotent. Co-located with the
+// dedup helpers so brain_gtd_ingest_meetings.go stays under the 500-line
+// per-file limit while the mcp package sits at its 50-file cap.
+func WriteQuickMeetingCommitment(brainConfigPath, sphere, outcome, transcript, audioPath string) (string, error) {
+	if strings.TrimSpace(sphere) == "" {
+		return "", errors.New("sphere is required")
+	}
+	if strings.TrimSpace(outcome) == "" {
+		return "", errors.New("outcome is required")
+	}
+	if strings.TrimSpace(transcript) == "" {
+		return "", errors.New("transcript is required")
+	}
+	if strings.TrimSpace(audioPath) == "" {
+		return "", errors.New("audio path is required")
+	}
+	cfg, err := brain.LoadConfig(brainConfigPath)
+	if err != nil {
+		return "", err
+	}
+	base := filepath.Base(audioPath)
+	slug := slugifyAudioBase(base)
+	id := quickMemoID(base, transcript)
+	out := filepath.ToSlash(filepath.Join("brain", "gtd", "ingest", slug+"-"+id+".md"))
+	target, err := brain.ResolveNotePath(cfg, brain.Sphere(sphere), out)
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(filepath.Dir(target.Path), 0o755); err != nil {
+		return "", err
+	}
+	binding := braingtd.SourceBinding{
+		Provider:  meetingsProvider,
+		Ref:       slug + "#" + id,
+		Location:  braingtd.BindingLocation{Path: filepath.ToSlash(audioPath)},
+		Writeable: true,
+	}
+	rendered := renderQuickMeetingCommitment(sphere, outcome, transcript, base, binding)
+	if err := validateRenderedBrainGTD(rendered); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(target.Path, []byte(rendered), 0o644); err != nil {
+		return "", err
+	}
+	return target.Rel, nil
+}
+
+func renderQuickMeetingCommitment(sphere, outcome, transcript, audioBase string, binding braingtd.SourceBinding) string {
+	locationLine := ""
+	if locationPath := strings.TrimSpace(binding.Location.Path); locationPath != "" {
+		locationLine = "    location:\n      path: " + locationPath + "\n"
+	}
+	body := fmt.Sprintf(`---
+kind: commitment
+sphere: %s
+title: %q
+status: inbox
+context: meetings
+source_bindings:
+  - provider: %s
+    ref: %q
+    writeable: true
+%s---
+# %s
+
+## Summary
+Quick voice memo: %s.
+
+## Next Action
+- [ ] %s
+
+## Evidence
+- audio: %s
+- transcript: %s
+
+## Linked Items
+- None.
+
+## Review Notes
+- Captured from voice memo %s.
+`,
+		sphere, outcome, binding.Provider, binding.Ref, locationLine,
+		outcome, audioBase, outcome, audioBase,
+		transcriptForEvidence(transcript), audioBase,
+	)
+	return strings.TrimSpace(body) + "\n"
+}
+
+func transcriptForEvidence(transcript string) string {
+	collapsed := strings.Join(strings.Fields(transcript), " ")
+	if len(collapsed) > 600 {
+		return collapsed[:600] + "..."
+	}
+	return collapsed
+}
+
+func slugifyAudioBase(name string) string {
+	stem := strings.TrimSuffix(name, filepath.Ext(name))
+	cleaned := slugify(stem)
+	if cleaned == "" {
+		return "voice-memo"
+	}
+	return cleaned
+}
+
+func quickMemoID(audioBase, transcript string) string {
+	sum := sha1.Sum([]byte(audioBase + "\x00" + transcript))
+	return hex.EncodeToString(sum[:])[:meetings.IDLength]
+}
 
 type dedupNote struct {
 	Entry    braingtd.CommitmentEntry

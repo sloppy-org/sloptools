@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestNewWatcherRefusesNonCanonicalHost(t *testing.T) {
@@ -120,6 +121,82 @@ func TestRunOnceMissingInboxIsNotAnError(t *testing.T) {
 	}
 	if called != 0 {
 		t.Fatalf("missing inbox should not invoke pipeline, got %d", called)
+	}
+}
+
+func TestRunOnceSeedsMeetingNotesWithoutFiringIngester(t *testing.T) {
+	inbox := t.TempDir()
+	root := t.TempDir()
+	pre := filepath.Join(root, "2026-04-29-standup", "MEETING_NOTES.md")
+	mustWriteBytes(t, pre, []byte("# Standup\n"))
+	cfg := SphereConfig{Inbox: inbox, MeetingsRoot: root}
+	pipeline := AudioPipelineFunc(func(context.Context, string) error { return nil })
+	w := mustWatcher(t, cfg, "host", pipeline)
+	called := 0
+	w.SetNotesIngester(func(_ context.Context, _ string) error {
+		called++
+		return nil
+	})
+	if err := w.RunOnce(context.Background()); err != nil {
+		t.Fatalf("RunOnce seed: %v", err)
+	}
+	if called != 0 {
+		t.Fatalf("seed scan must not call ingester, got %d", called)
+	}
+}
+
+func TestRunOnceCallsNotesIngesterOnMtimeAdvance(t *testing.T) {
+	inbox := t.TempDir()
+	root := t.TempDir()
+	notePath := filepath.Join(root, "2026-04-29-standup", "MEETING_NOTES.md")
+	mustWriteBytes(t, notePath, []byte("# Standup\n"))
+	cfg := SphereConfig{Inbox: inbox, MeetingsRoot: root}
+	pipeline := AudioPipelineFunc(func(context.Context, string) error { return nil })
+	w := mustWatcher(t, cfg, "host", pipeline)
+	var seen []string
+	w.SetNotesIngester(func(_ context.Context, p string) error {
+		seen = append(seen, p)
+		return nil
+	})
+	if err := w.RunOnce(context.Background()); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if len(seen) != 0 {
+		t.Fatalf("seed must not emit; got %v", seen)
+	}
+	future := time.Now().Add(2 * time.Second)
+	if err := os.Chtimes(notePath, future, future); err != nil {
+		t.Fatalf("chtimes: %v", err)
+	}
+	if err := w.RunOnce(context.Background()); err != nil {
+		t.Fatalf("second run: %v", err)
+	}
+	if len(seen) != 1 || seen[0] != notePath {
+		t.Fatalf("expected one ingest of %s, got %v", notePath, seen)
+	}
+}
+
+func TestRunOnceCallsNotesIngesterOnNewNote(t *testing.T) {
+	inbox := t.TempDir()
+	root := t.TempDir()
+	cfg := SphereConfig{Inbox: inbox, MeetingsRoot: root}
+	pipeline := AudioPipelineFunc(func(context.Context, string) error { return nil })
+	w := mustWatcher(t, cfg, "host", pipeline)
+	var seen []string
+	w.SetNotesIngester(func(_ context.Context, p string) error {
+		seen = append(seen, p)
+		return nil
+	})
+	if err := w.RunOnce(context.Background()); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	notePath := filepath.Join(root, "2026-05-01-board", "MEETING_NOTES.md")
+	mustWriteBytes(t, notePath, []byte("# Board\n"))
+	if err := w.RunOnce(context.Background()); err != nil {
+		t.Fatalf("second run: %v", err)
+	}
+	if len(seen) != 1 || seen[0] != notePath {
+		t.Fatalf("expected new note ingest, got %v", seen)
 	}
 }
 

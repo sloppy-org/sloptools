@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/sloppy-org/sloptools/internal/brain"
+	"github.com/sloppy-org/sloptools/internal/mcp"
 	"github.com/sloppy-org/sloptools/internal/meetings"
 )
 
@@ -82,12 +83,13 @@ func cmdMeetingsWatch(args []string, oneShot bool) int {
 		}
 		host = current
 	}
-	pipeline := meetingsPipelineFromConfig(sphereCfg, *sphere)
+	pipeline := meetingsPipelineFromConfig(sphereCfg, *sphere, *configPath, resolvedSources)
 	watcher, err := meetings.NewWatcher(sphereCfg, host, pipeline, *intervalFlag)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
+	watcher.SetNotesIngester(meetingsNotesIngester(*sphere, *configPath, resolvedSources))
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	if oneShot {
@@ -104,12 +106,14 @@ func cmdMeetingsWatch(args []string, oneShot bool) int {
 	return 0
 }
 
-// meetingsPipelineFromConfig wires the production pipeline. The default
-// transcribe and render commands come from the per-sphere config; the
-// long-memo branch writes a `MEETING_NOTES.md` under meetings_root and
-// shells out to `sloptools brain gtd ingest --source meetings` so the
-// idempotent ingest path is the single source of truth.
-func meetingsPipelineFromConfig(cfg meetings.SphereConfig, sphere string) meetings.Pipeline {
+// meetingsPipelineFromConfig wires the production pipeline. Both branches
+// route through the same brain.gtd write/ingest paths: the short branch
+// calls mcp.WriteQuickMeetingCommitment so the captured request becomes a
+// real `provider: meetings, status: inbox` GTD commitment with the
+// transcript as evidence; the long branch writes the rendered
+// `MEETING_NOTES.md` and immediately invokes mcp.IngestMeetings so the
+// idempotent ingest path remains the single source of truth.
+func meetingsPipelineFromConfig(cfg meetings.SphereConfig, sphere, brainConfigPath, sourcesPath string) meetings.Pipeline {
 	now := func() time.Time { return time.Now().UTC() }
 	pipeline := meetings.Pipeline{
 		Cfg:           cfg,
@@ -118,11 +122,23 @@ func meetingsPipelineFromConfig(cfg meetings.SphereConfig, sphere string) meetin
 		Transcribe:    meetings.CommandTranscriber(cfg.TranscribeCommand),
 		QuickRender:   wrapRenderer(meetings.CommandRenderer(cfg.RenderCommand, map[string]string{"MEMO_KIND": "quick"})),
 		LongRender:    wrapLongRenderer(meetings.CommandRenderer(cfg.RenderCommand, map[string]string{"MEMO_KIND": "long"})),
-		WriteQuick:    writeQuickCommitment(cfg, sphere),
-		IngestMeeting: ingestLongMeeting(cfg, sphere),
+		WriteQuick:    writeQuickCommitment(brainConfigPath),
+		IngestMeeting: ingestLongMeeting(cfg, brainConfigPath, sourcesPath),
 		NowFunc:       now,
 	}
 	return pipeline
+}
+
+// meetingsNotesIngester returns the watcher callback that re-runs
+// `brain.gtd.ingest --source meetings` for a single MEETING_NOTES.md (or
+// loose meeting note) after the watcher detects an mtime change. The
+// callback receives the absolute path on disk so we forward it as the
+// only entry in the ingest paths list.
+func meetingsNotesIngester(sphere, brainConfigPath, sourcesPath string) meetings.NotesIngester {
+	return func(_ context.Context, notePath string) error {
+		_, err := mcp.IngestMeetings(brainConfigPath, sphere, []string{notePath}, sourcesPath)
+		return err
+	}
 }
 
 func wrapRenderer(fn func(ctx context.Context, transcript string) (string, error)) meetings.QuickRenderer {
@@ -142,22 +158,18 @@ func wrapLongRenderer(fn func(ctx context.Context, transcript string) (string, e
 	}
 }
 
-func writeQuickCommitment(cfg meetings.SphereConfig, sphere string) meetings.QuickWriter {
-	return func(_ context.Context, _ string, outcome, transcript, audioPath string) error {
-		dir := filepath.Join(cfg.MeetingsRoot, "_quick")
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return err
-		}
-		stamp := time.Now().UTC().Format("20060102-150405")
-		path := filepath.Join(dir, stamp+"-"+filepath.Base(audioPath)+".md")
-		body := fmt.Sprintf("---\nkind: commitment\nsphere: %s\ntitle: %q\nstatus: inbox\ncontext: meetings\n---\n# %s\n\n## Summary\nQuick voice memo on %s.\n\n## Next Action\n- [ ] %s\n\n## Evidence\n- transcript: %s\n\n## Linked Items\n- None.\n\n## Review Notes\n- Captured from voice memo %s.\n",
-			sphere, outcome, outcome, stamp, outcome, transcriptOneLine(transcript), filepath.Base(audioPath))
-		return os.WriteFile(path, []byte(body), 0o644)
+func writeQuickCommitment(brainConfigPath string) meetings.QuickWriter {
+	return func(_ context.Context, sphere, outcome, transcript, audioPath string) error {
+		_, err := mcp.WriteQuickMeetingCommitment(brainConfigPath, sphere, outcome, transcript, audioPath)
+		return err
 	}
 }
 
-func ingestLongMeeting(cfg meetings.SphereConfig, sphere string) meetings.LongIngester {
-	return func(_ context.Context, _ string, slug, body string) (string, error) {
+func ingestLongMeeting(cfg meetings.SphereConfig, brainConfigPath, sourcesPath string) meetings.LongIngester {
+	return func(_ context.Context, sphere, slug, body string) (string, error) {
+		if strings.TrimSpace(cfg.MeetingsRoot) == "" {
+			return "", fmt.Errorf("meetings_root is not configured for sphere %q", sphere)
+		}
 		dir := filepath.Join(cfg.MeetingsRoot, slug)
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return "", err
@@ -166,17 +178,11 @@ func ingestLongMeeting(cfg meetings.SphereConfig, sphere string) meetings.LongIn
 		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 			return "", err
 		}
-		_ = sphere
+		if _, err := mcp.IngestMeetings(brainConfigPath, sphere, []string{path}, sourcesPath); err != nil {
+			return "", fmt.Errorf("brain.gtd.ingest --source meetings %s: %w", path, err)
+		}
 		return path, nil
 	}
-}
-
-func transcriptOneLine(transcript string) string {
-	collapsed := strings.Join(strings.Fields(transcript), " ")
-	if len(collapsed) > 280 {
-		return collapsed[:280] + "..."
-	}
-	return collapsed
 }
 
 func defaultMeetingsConfigPath(path string) (string, error) {

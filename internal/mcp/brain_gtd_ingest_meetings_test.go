@@ -216,6 +216,77 @@ Legacy importer commitment.
 	}
 }
 
+func TestWriteQuickMeetingCommitmentRendersInboxCommitmentWithTranscript(t *testing.T) {
+	tmp := t.TempDir()
+	configPath := writeMCPBrainConfig(t, tmp)
+	if err := os.MkdirAll(filepath.Join(tmp, "work", "brain"), 0o755); err != nil {
+		t.Fatalf("mkdir brain: %v", err)
+	}
+	audio := "/tmp/inbox/2026-05-01-103015-memo.m4a"
+	rel, err := WriteQuickMeetingCommitment(configPath, "work", "send Ada the budget by Friday", "Hey, just send Ada the budget by Friday please.", audio)
+	if err != nil {
+		t.Fatalf("WriteQuickMeetingCommitment: %v", err)
+	}
+	body := readFile(t, filepath.Join(tmp, "work", rel))
+	for _, want := range []string{
+		"provider: meetings",
+		"status: inbox",
+		"context: meetings",
+		"send Ada the budget by Friday",
+		"transcript: Hey, just send Ada the budget by Friday please.",
+		"audio: 2026-05-01-103015-memo.m4a",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("body missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(rel, "_quick") {
+		t.Fatalf("quick commitment must not write under meetings_root/_quick: rel=%s", rel)
+	}
+}
+
+func TestWriteQuickMeetingCommitmentIsIdempotentForSameAudio(t *testing.T) {
+	tmp := t.TempDir()
+	configPath := writeMCPBrainConfig(t, tmp)
+	if err := os.MkdirAll(filepath.Join(tmp, "work", "brain"), 0o755); err != nil {
+		t.Fatalf("mkdir brain: %v", err)
+	}
+	first, err := WriteQuickMeetingCommitment(configPath, "work", "ping payroll", "Remember to ping payroll about the new hire.", "/tmp/inbox/2026-05-01-payroll.m4a")
+	if err != nil {
+		t.Fatalf("first: %v", err)
+	}
+	second, err := WriteQuickMeetingCommitment(configPath, "work", "ping payroll", "Remember to ping payroll about the new hire.", "/tmp/inbox/2026-05-01-payroll.m4a")
+	if err != nil {
+		t.Fatalf("second: %v", err)
+	}
+	if first != second {
+		t.Fatalf("expected same path for identical audio+transcript, got %q vs %q", first, second)
+	}
+}
+
+func TestIngestMeetingsExportedHelperWalksConfiguredRoot(t *testing.T) {
+	tmp := t.TempDir()
+	configPath := writeMCPBrainConfig(t, tmp)
+	if err := os.MkdirAll(filepath.Join(tmp, "work", "brain"), 0o755); err != nil {
+		t.Fatalf("mkdir brain: %v", err)
+	}
+	meetingsRoot := filepath.Join(tmp, "work", "MEETINGS")
+	writeMCPBrainFile(t, filepath.Join(meetingsRoot, "2026-05-01-board", "MEETING_NOTES.md"), meetingsBackfillNote("Board", "Review Q3 plan"))
+	sourcesPath := writeMeetingsBackfillSourcesConfig(t, tmp, meetingsRoot, nil)
+
+	got, err := IngestMeetings(configPath, "work", nil, sourcesPath)
+	if err != nil {
+		t.Fatalf("IngestMeetings: %v", err)
+	}
+	if got["count"].(int) != 1 {
+		t.Fatalf("count = %#v: %#v", got["count"], got)
+	}
+	walked, _ := got["walked"].([]string)
+	if len(walked) != 1 {
+		t.Fatalf("walked = %#v", walked)
+	}
+}
+
 func meetingsBackfillNote(title, action string) string {
 	return `---
 title: ` + title + `
