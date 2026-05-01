@@ -469,4 +469,3 @@ func (c *Client) FindMessagesRestricted(ctx context.Context, folderID string, of
 	}
 	return out, nil
 }
-
