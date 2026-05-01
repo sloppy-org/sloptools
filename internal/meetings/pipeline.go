@@ -48,16 +48,16 @@ type LongIngester func(ctx context.Context, sphere, slug, body string) (string, 
 // individual steps are injected so tests can drive the pipeline without
 // real ffprobe / whisper binaries.
 type Pipeline struct {
-	Cfg            SphereConfig
-	Sphere         string
-	Probe          DurationProbe
-	Transcribe     Transcriber
-	QuickRender    QuickRenderer
-	LongRender     LongRenderer
-	WriteQuick     QuickWriter
-	IngestMeeting  LongIngester
-	NowFunc        func() time.Time
-	SlugFromAudio  func(audioPath string, now time.Time) string
+	Cfg           SphereConfig
+	Sphere        string
+	Probe         DurationProbe
+	Transcribe    Transcriber
+	QuickRender   QuickRenderer
+	LongRender    LongRenderer
+	WriteQuick    QuickWriter
+	IngestMeeting LongIngester
+	NowFunc       func() time.Time
+	SlugFromAudio func(audioPath string, now time.Time) string
 }
 
 // Process implements AudioPipeline by running the classify → transcribe

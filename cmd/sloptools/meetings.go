@@ -112,13 +112,13 @@ func cmdMeetingsWatch(args []string, oneShot bool) int {
 func meetingsPipelineFromConfig(cfg meetings.SphereConfig, sphere string) meetings.Pipeline {
 	now := func() time.Time { return time.Now().UTC() }
 	pipeline := meetings.Pipeline{
-		Cfg:         cfg,
-		Sphere:      sphere,
-		Probe:       meetings.FFProbeDurationProbe(""),
-		Transcribe:  meetings.CommandTranscriber(cfg.TranscribeCommand),
-		QuickRender: wrapRenderer(meetings.CommandRenderer(cfg.RenderCommand, map[string]string{"MEMO_KIND": "quick"})),
-		LongRender:  wrapLongRenderer(meetings.CommandRenderer(cfg.RenderCommand, map[string]string{"MEMO_KIND": "long"})),
-		WriteQuick:  writeQuickCommitment(cfg, sphere),
+		Cfg:           cfg,
+		Sphere:        sphere,
+		Probe:         meetings.FFProbeDurationProbe(""),
+		Transcribe:    meetings.CommandTranscriber(cfg.TranscribeCommand),
+		QuickRender:   wrapRenderer(meetings.CommandRenderer(cfg.RenderCommand, map[string]string{"MEMO_KIND": "quick"})),
+		LongRender:    wrapLongRenderer(meetings.CommandRenderer(cfg.RenderCommand, map[string]string{"MEMO_KIND": "long"})),
+		WriteQuick:    writeQuickCommitment(cfg, sphere),
 		IngestMeeting: ingestLongMeeting(cfg, sphere),
 		NowFunc:       now,
 	}
