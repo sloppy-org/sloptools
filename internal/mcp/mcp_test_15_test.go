@@ -360,7 +360,13 @@ Ignore this.
 ## Review Notes
 - None.
 `)
-	writeMCPBrainFile(t, filepath.Join(tmp, "work", "brain", "meetings", "standup.md"), "- [ ] Follow up with Ada\n")
+	writeMCPBrainFile(t, filepath.Join(tmp, "work", "brain", "meetings", "standup.md"), `# Standup
+
+## Action Checklist
+
+### Ada Lovelace
+- [ ] Follow up with Ada
+`)
 
 	s := NewServer(t.TempDir())
 	organized, err := s.callTool("brain.gtd.organize", map[string]interface{}{

@@ -22,6 +22,7 @@
 - `internal/mailboxsettings`: mailbox setting providers (Gmail and EWS) covering out-of-office state and delegation/shared-mailbox listing.
 - `internal/mailtriage`: mail triage models, distillation, hybrid routing, and LLM integration.
 - `internal/mcp`: MCP server, tool registration, domain/mail/calendar/handoff handlers, and compose/flag flows.
+- `internal/meetings`: per-person meeting-note parser with stable comment-anchored task IDs for idempotent ingest.
 - `internal/modelprofile`: model-profile definitions and validation.
 - `internal/protocol`: protocol bootstrap helpers.
 - `internal/providerdata`: provider-neutral data models.
