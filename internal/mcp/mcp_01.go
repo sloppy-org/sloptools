@@ -183,6 +183,14 @@ func (s *Server) callTool(name string, args map[string]interface{}) (map[string]
 	return nil, errors.New("unknown tool: " + name)
 }
 
+// CallTool exposes the server's tool dispatcher for in-process callers
+// such as the sloptools CLI mirror commands. It returns the same
+// structured payload as the MCP `tools/call` envelope's
+// `structuredContent` field.
+func (s *Server) CallTool(name string, args map[string]interface{}) (map[string]interface{}, error) {
+	return s.callTool(name, args)
+}
+
 func RunStdio(projectDir string) int {
 	return RunStdioWithStore(projectDir, nil)
 }

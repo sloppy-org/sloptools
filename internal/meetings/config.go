@@ -23,10 +23,30 @@ type SphereConfig struct {
 	Inbox             string
 	MeetingsRoot      string
 	CanonicalHost     string
+	Owner             string
+	MailAccountID     int64
 	ShortMemoSeconds  int
 	OwnerAliases      map[string]string
+	PeopleEmails      map[string]string
 	TranscribeCommand []string
 	RenderCommand     []string
+	Share             ShareConfig
+}
+
+// ShareConfig captures the per-sphere defaults that the summary
+// drafter and share verbs need. URLTemplate (when set) is rendered
+// with the literal placeholder `{vault_relative_path}` replaced by
+// the meeting note path so users get a deterministic link without
+// running helpy. Permissions default to "edit" per the issue spec.
+type ShareConfig struct {
+	URLTemplate         string
+	NoteLinkFallback    string
+	Permissions         string
+	ExpiryDays          int
+	Password            bool
+	DeleteOnArchive     bool
+	NextcloudShareRoot  string
+	NextcloudShareFiles bool
 }
 
 // Config is the parsed `[meetings.<sphere>]` map keyed by lower-case sphere.
@@ -42,10 +62,25 @@ type rawSphereConfig struct {
 	Inbox             string            `toml:"inbox"`
 	MeetingsRoot      string            `toml:"meetings_root"`
 	CanonicalHost     string            `toml:"canonical_host"`
+	Owner             string            `toml:"owner"`
+	MailAccountID     int64             `toml:"mail_account_id"`
 	ShortMemoSeconds  int               `toml:"short_memo_seconds"`
 	OwnerAliases      map[string]string `toml:"owner_aliases"`
+	PeopleEmails      map[string]string `toml:"people_emails"`
 	TranscribeCommand []string          `toml:"transcribe_command"`
 	RenderCommand     []string          `toml:"render_command"`
+	Share             rawShareConfig    `toml:"share"`
+}
+
+type rawShareConfig struct {
+	URLTemplate         string `toml:"url_template"`
+	NoteLinkFallback    string `toml:"note_link_fallback"`
+	Permissions         string `toml:"permissions"`
+	ExpiryDays          int    `toml:"expiry_days"`
+	Password            bool   `toml:"password"`
+	DeleteOnArchive     bool   `toml:"delete_on_meeting_archive"`
+	NextcloudShareRoot  string `toml:"nextcloud_share_root"`
+	NextcloudShareFiles bool   `toml:"nextcloud_share_single_files"`
 }
 
 // Load reads the meetings configuration from path. A missing file when
@@ -124,9 +159,12 @@ func normalizeSphere(sphere string, raw rawSphereConfig) (SphereConfig, error) {
 		Inbox:             cleanPath(raw.Inbox),
 		MeetingsRoot:      cleanPath(raw.MeetingsRoot),
 		CanonicalHost:     strings.TrimSpace(raw.CanonicalHost),
+		Owner:             strings.TrimSpace(raw.Owner),
+		MailAccountID:     raw.MailAccountID,
 		ShortMemoSeconds:  raw.ShortMemoSeconds,
 		TranscribeCommand: append([]string(nil), raw.TranscribeCommand...),
 		RenderCommand:     append([]string(nil), raw.RenderCommand...),
+		Share:             normalizeShare(raw.Share),
 	}
 	if cfg.ShortMemoSeconds <= 0 {
 		cfg.ShortMemoSeconds = DefaultShortMemoSeconds
@@ -142,7 +180,48 @@ func normalizeSphere(sphere string, raw rawSphereConfig) (SphereConfig, error) {
 			cfg.OwnerAliases[key] = value
 		}
 	}
+	if len(raw.PeopleEmails) > 0 {
+		cfg.PeopleEmails = make(map[string]string, len(raw.PeopleEmails))
+		for name, email := range raw.PeopleEmails {
+			key := strings.ToLower(strings.TrimSpace(name))
+			value := strings.TrimSpace(email)
+			if key == "" || value == "" {
+				continue
+			}
+			cfg.PeopleEmails[key] = value
+		}
+	}
 	return cfg, nil
+}
+
+func normalizeShare(raw rawShareConfig) ShareConfig {
+	cfg := ShareConfig{
+		URLTemplate:         strings.TrimSpace(raw.URLTemplate),
+		NoteLinkFallback:    strings.TrimSpace(raw.NoteLinkFallback),
+		Permissions:         strings.ToLower(strings.TrimSpace(raw.Permissions)),
+		ExpiryDays:          raw.ExpiryDays,
+		Password:            raw.Password,
+		DeleteOnArchive:     raw.DeleteOnArchive,
+		NextcloudShareRoot:  strings.TrimSpace(raw.NextcloudShareRoot),
+		NextcloudShareFiles: raw.NextcloudShareFiles,
+	}
+	if cfg.Permissions == "" {
+		cfg.Permissions = "edit"
+	}
+	return cfg
+}
+
+// PeopleEmail returns the configured override email for name, normalised
+// case-insensitively, or "" when no override is registered.
+func (c SphereConfig) PeopleEmail(name string) string {
+	clean := strings.TrimSpace(name)
+	if clean == "" || c.PeopleEmails == nil {
+		return ""
+	}
+	if email, ok := c.PeopleEmails[strings.ToLower(clean)]; ok {
+		return strings.TrimSpace(email)
+	}
+	return ""
 }
 
 func cleanPath(value string) string {
