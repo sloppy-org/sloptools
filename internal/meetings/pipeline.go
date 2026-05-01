@@ -85,8 +85,9 @@ func (p Pipeline) Process(ctx context.Context, audioPath string) error {
 		if err != nil {
 			return fmt.Errorf("render quick: %w", err)
 		}
-		if strings.TrimSpace(outcome) == "" {
-			return errors.New("render quick: empty outcome")
+		outcome, err = EnforceQuickOutcomeContract(outcome)
+		if err != nil {
+			return fmt.Errorf("render quick: %w", err)
 		}
 		return p.WriteQuick(ctx, p.Sphere, outcome, transcript, audioPath)
 	default:

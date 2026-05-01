@@ -81,6 +81,28 @@ func TestPipelineRoutesLongMemoToMeetingPath(t *testing.T) {
 	}
 }
 
+func TestPipelineRejectsMultiLineQuickOutcome(t *testing.T) {
+	pipeline := Pipeline{
+		Cfg:        SphereConfig{ShortMemoSeconds: 60},
+		Sphere:     "work",
+		Probe:      func(context.Context, string) (int, error) { return 25, nil },
+		Transcribe: func(context.Context, string) (string, error) { return "Send the budget", nil },
+		QuickRender: func(context.Context, string) (string, error) {
+			return "Send the budget\nAlso CC Ben", nil
+		},
+		LongRender: func(context.Context, string, string) (string, error) { return "x", nil },
+		WriteQuick: func(context.Context, string, string, string, string) error {
+			t.Fatal("WriteQuick must not run when contract is violated")
+			return nil
+		},
+		IngestMeeting: func(context.Context, string, string, string) (string, error) { return "", nil },
+	}
+	err := pipeline.Process(context.Background(), "/tmp/memo.m4a")
+	if err == nil || !strings.Contains(err.Error(), "one line") {
+		t.Fatalf("pipeline must enforce QuickMemoSystemPrompt contract, got %v", err)
+	}
+}
+
 func TestPipelineEmptyTranscriptIsAFailure(t *testing.T) {
 	pipeline := Pipeline{
 		Cfg:           SphereConfig{ShortMemoSeconds: 60},

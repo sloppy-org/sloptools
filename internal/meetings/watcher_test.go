@@ -124,24 +124,33 @@ func TestRunOnceMissingInboxIsNotAnError(t *testing.T) {
 	}
 }
 
-func TestRunOnceSeedsMeetingNotesWithoutFiringIngester(t *testing.T) {
+func TestRunOnceBackfillsExistingMeetingNotesOnStartup(t *testing.T) {
 	inbox := t.TempDir()
 	root := t.TempDir()
-	pre := filepath.Join(root, "2026-04-29-standup", "MEETING_NOTES.md")
-	mustWriteBytes(t, pre, []byte("# Standup\n"))
+	first := filepath.Join(root, "2026-04-29-standup", "MEETING_NOTES.md")
+	second := filepath.Join(root, "2026-04-30-board", "MEETING_NOTES.md")
+	mustWriteBytes(t, first, []byte("# Standup\n"))
+	mustWriteBytes(t, second, []byte("# Board\n"))
 	cfg := SphereConfig{Inbox: inbox, MeetingsRoot: root}
 	pipeline := AudioPipelineFunc(func(context.Context, string) error { return nil })
 	w := mustWatcher(t, cfg, "host", pipeline)
-	called := 0
-	w.SetNotesIngester(func(_ context.Context, _ string) error {
-		called++
+	var seen []string
+	w.SetNotesIngester(func(_ context.Context, p string) error {
+		seen = append(seen, p)
 		return nil
 	})
 	if err := w.RunOnce(context.Background()); err != nil {
-		t.Fatalf("RunOnce seed: %v", err)
+		t.Fatalf("backfill RunOnce: %v", err)
 	}
-	if called != 0 {
-		t.Fatalf("seed scan must not call ingester, got %d", called)
+	if len(seen) != 2 || seen[0] != first || seen[1] != second {
+		t.Fatalf("startup must backfill every existing note, got %v", seen)
+	}
+	seen = nil
+	if err := w.RunOnce(context.Background()); err != nil {
+		t.Fatalf("second RunOnce: %v", err)
+	}
+	if len(seen) != 0 {
+		t.Fatalf("second pass without changes must not re-ingest, got %v", seen)
 	}
 }
 
@@ -159,11 +168,12 @@ func TestRunOnceCallsNotesIngesterOnMtimeAdvance(t *testing.T) {
 		return nil
 	})
 	if err := w.RunOnce(context.Background()); err != nil {
-		t.Fatalf("seed: %v", err)
+		t.Fatalf("backfill: %v", err)
 	}
-	if len(seen) != 0 {
-		t.Fatalf("seed must not emit; got %v", seen)
+	if len(seen) != 1 || seen[0] != notePath {
+		t.Fatalf("backfill must emit existing note once, got %v", seen)
 	}
+	seen = nil
 	future := time.Now().Add(2 * time.Second)
 	if err := os.Chtimes(notePath, future, future); err != nil {
 		t.Fatalf("chtimes: %v", err)
@@ -188,7 +198,10 @@ func TestRunOnceCallsNotesIngesterOnNewNote(t *testing.T) {
 		return nil
 	})
 	if err := w.RunOnce(context.Background()); err != nil {
-		t.Fatalf("seed: %v", err)
+		t.Fatalf("initial empty-root run: %v", err)
+	}
+	if len(seen) != 0 {
+		t.Fatalf("empty root must not emit; got %v", seen)
 	}
 	notePath := filepath.Join(root, "2026-05-01-board", "MEETING_NOTES.md")
 	mustWriteBytes(t, notePath, []byte("# Board\n"))

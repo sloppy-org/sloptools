@@ -45,17 +45,19 @@ type NotesIngester func(ctx context.Context, notePath string) error
 
 // Watcher polls a configured INBOX folder and routes audio files to a
 // pipeline. When NotesIngester is set the watcher additionally tracks
-// mtime changes for `MEETING_NOTES.md` files (and loose `<slug>.md`
-// files) under cfg.MeetingsRoot, re-ingesting any file whose mtime moved
-// since the previous scan. The struct is safe to use from a single
-// goroutine; concurrent callers must serialise themselves.
+// `MEETING_NOTES.md` files (and loose `<slug>.md` files) under
+// cfg.MeetingsRoot. On startup the watcher walks every existing note
+// and treats it like a new file (per issue #56 backfill contract,
+// idempotent because re-ingest stamps stable IDs). On subsequent scans
+// it re-ingests any file whose mtime moved or that newly appeared. The
+// struct is safe to use from a single goroutine; concurrent callers
+// must serialise themselves.
 type Watcher struct {
 	cfg         SphereConfig
 	hostname    string
 	pipeline    AudioPipeline
 	notesIngest NotesIngester
 	notesMtime  map[string]time.Time
-	notesSeeded bool
 	clock       func() time.Time
 	interval    time.Duration
 }
@@ -101,16 +103,16 @@ func NewWatcher(cfg SphereConfig, hostname string, pipeline AudioPipeline, inter
 	}, nil
 }
 
-// SetNotesIngester installs the callback the watcher invokes when a
-// previously-seen meeting note's mtime advances or a new note appears
-// under cfg.MeetingsRoot. Passing nil disables notes watching. The first
-// scan after installation seeds the mtime map without firing the
-// callback so an existing note tree is not re-ingested unconditionally
-// on startup.
+// SetNotesIngester installs the callback the watcher invokes for every
+// meeting note found under cfg.MeetingsRoot. The first scan after
+// installation walks every existing `MEETING_NOTES.md` (or loose
+// `<slug>.md`) and fires the callback once per note so historical
+// material is backfilled per the issue #56 acceptance contract.
+// Subsequent scans only re-fire when mtime advances or a new note
+// appears. Passing nil disables notes watching.
 func (w *Watcher) SetNotesIngester(ingest NotesIngester) {
 	w.notesIngest = ingest
 	w.notesMtime = map[string]time.Time{}
-	w.notesSeeded = false
 }
 
 // CanonicalHostError is returned when NewWatcher refuses to start
@@ -157,7 +159,6 @@ func (w *Watcher) scanMeetingNotes(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	seedRun := !w.notesSeeded
 	live := make(map[string]struct{}, len(discovered.Paths))
 	for _, path := range discovered.Paths {
 		if ctx.Err() != nil {
@@ -174,7 +175,7 @@ func (w *Watcher) scanMeetingNotes(ctx context.Context) error {
 		modified := info.ModTime()
 		previous, known := w.notesMtime[path]
 		w.notesMtime[path] = modified
-		if seedRun || (known && !modified.After(previous)) {
+		if known && !modified.After(previous) {
 			continue
 		}
 		if err := w.notesIngest(ctx, path); err != nil {
@@ -186,7 +187,6 @@ func (w *Watcher) scanMeetingNotes(ctx context.Context) error {
 			delete(w.notesMtime, path)
 		}
 	}
-	w.notesSeeded = true
 	return nil
 }
 

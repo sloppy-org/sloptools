@@ -112,7 +112,9 @@ func cmdMeetingsWatch(args []string, oneShot bool) int {
 // real `provider: meetings, status: inbox` GTD commitment with the
 // transcript as evidence; the long branch writes the rendered
 // `MEETING_NOTES.md` and immediately invokes mcp.IngestMeetings so the
-// idempotent ingest path remains the single source of truth.
+// idempotent ingest path remains the single source of truth. The quick
+// branch uses meetings.OpencodeQuickRenderer so the canonical
+// QuickMemoSystemPrompt and one-line outcome contract are enforced.
 func meetingsPipelineFromConfig(cfg meetings.SphereConfig, sphere, brainConfigPath, sourcesPath string) meetings.Pipeline {
 	now := func() time.Time { return time.Now().UTC() }
 	pipeline := meetings.Pipeline{
@@ -120,7 +122,7 @@ func meetingsPipelineFromConfig(cfg meetings.SphereConfig, sphere, brainConfigPa
 		Sphere:        sphere,
 		Probe:         meetings.FFProbeDurationProbe(""),
 		Transcribe:    meetings.CommandTranscriber(cfg.TranscribeCommand),
-		QuickRender:   wrapRenderer(meetings.CommandRenderer(cfg.RenderCommand, map[string]string{"MEMO_KIND": "quick"})),
+		QuickRender:   meetings.OpencodeQuickRenderer(cfg.RenderCommand),
 		LongRender:    wrapLongRenderer(meetings.CommandRenderer(cfg.RenderCommand, map[string]string{"MEMO_KIND": "long"})),
 		WriteQuick:    writeQuickCommitment(brainConfigPath),
 		IngestMeeting: ingestLongMeeting(cfg, brainConfigPath, sourcesPath),
@@ -139,10 +141,6 @@ func meetingsNotesIngester(sphere, brainConfigPath, sourcesPath string) meetings
 		_, err := mcp.IngestMeetings(brainConfigPath, sphere, []string{notePath}, sourcesPath)
 		return err
 	}
-}
-
-func wrapRenderer(fn func(ctx context.Context, transcript string) (string, error)) meetings.QuickRenderer {
-	return func(ctx context.Context, transcript string) (string, error) { return fn(ctx, transcript) }
 }
 
 func wrapLongRenderer(fn func(ctx context.Context, transcript string) (string, error)) meetings.LongRenderer {
