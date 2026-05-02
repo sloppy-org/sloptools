@@ -7,6 +7,7 @@ SLOPTOOLS_BIN="${SLOPTOOLS_BIN:-$(command -v sloptools 2>/dev/null || echo "")}"
 DATA_DIR="${SLOPTOOLS_DATA_DIR:-${HOME}/.local/share/sloppy}"
 PROJECT_DIR="${SLOPTOOLS_PROJECT_DIR:-${HOME}}"
 SERVER_NAME="${SLOPTOOLS_MCP_NAME:-sloppy}"
+VAULT_CONFIG="${SLOPTOOLS_VAULT_CONFIG:-${HOME}/.config/sloptools/vaults.toml}"
 
 if [[ -z "${SLOPTOOLS_BIN}" ]]; then
   echo "sloptools binary not found. Install it first or set SLOPTOOLS_BIN." >&2
@@ -19,13 +20,13 @@ fi
 
 mkdir -p "$(dirname "${SETTINGS_PATH}")" "${DATA_DIR}"
 
-python3 - "${SETTINGS_PATH}" "${SLOPTOOLS_BIN}" "${PROJECT_DIR}" "${DATA_DIR}" "${SERVER_NAME}" <<'PY'
+python3 - "${SETTINGS_PATH}" "${SLOPTOOLS_BIN}" "${PROJECT_DIR}" "${DATA_DIR}" "${SERVER_NAME}" "${VAULT_CONFIG}" <<'PY'
 import json
 import sys
 from pathlib import Path
 
 path = Path(sys.argv[1])
-bin_, project_dir, data_dir, name = sys.argv[2:6]
+bin_, project_dir, data_dir, name, vault_config = sys.argv[2:7]
 
 if path.exists() and path.read_text(encoding="utf-8").strip():
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -41,7 +42,16 @@ if not isinstance(servers, dict):
 data["mcpServers"] = servers
 servers[name] = {
     "command": bin_,
-    "args": ["mcp-server", "--project-dir", project_dir, "--data-dir", data_dir],
+    "args": [
+        "mcp-server",
+        "--stdio",
+        "--vault-config",
+        vault_config,
+        "--project-dir",
+        project_dir,
+        "--data-dir",
+        data_dir,
+    ],
 }
 
 path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -51,3 +61,4 @@ echo "registered ${SERVER_NAME} with qwen (stdio): ${SLOPTOOLS_BIN} mcp-server"
 echo "  settings:    ${SETTINGS_PATH}"
 echo "  project-dir: ${PROJECT_DIR}"
 echo "  data-dir:    ${DATA_DIR}"
+echo "  vault-config:${VAULT_CONFIG}"
