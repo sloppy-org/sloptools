@@ -6,6 +6,13 @@ Provides domain tools for workspace management, items, artifacts, actors,
 email, calendar, handoffs, temporary files, and canvas relay via the
 [Model Context Protocol](https://modelcontextprotocol.io/).
 
+There are exactly two external agent-facing MCP servers in the sloppy stack:
+
+- `sloppy` = `sloptools mcp-server`
+- `helpy` = `helpy mcp-stdio`
+
+`slopshell` is the UI/runtime layer and is not an agent-facing MCP server.
+
 ## Table of Contents
 
 - [MCP Server](#mcp-server)
@@ -80,7 +87,7 @@ doesn't exist):
 ```jsonc
 {
   "mcpServers": {
-    "sloptools": {
+    "sloppy": {
       "command": "sloptools",
       "args": ["mcp-server", "--stdio", "--vault-config", "~/.config/sloptools/vaults.toml"]
     }
@@ -88,7 +95,7 @@ doesn't exist):
 }
 ```
 
-After installation, call `mcp__sloptools__brain.vault.validate` with
+After installation, call `mcp__sloppy__brain.vault.validate` with
 `sphere` and, if needed, `config_path`.
 
 ### opencode
@@ -105,12 +112,13 @@ configured opencode JSON file with this command array:
 Use `scripts/setup-codex-mcp.sh`. It registers the same stdio command through
 `codex mcp add`.
 
-### slopshell
+### slopshell runtime
 
-For embedded Slopshell use, run the HTTP MCP server on a private Unix socket
-with `sloptools server --mcp-unix-socket "$XDG_RUNTIME_DIR/sloppy/mcp.sock"`.
-The socket is created with mode `0600`; no manual stdio registration is needed
-inside Slopshell.
+For private Slopshell runtime integration, run the MCP server on a private Unix
+socket with `sloptools server --mcp-unix-socket "$XDG_RUNTIME_DIR/sloppy/mcp.sock"`.
+That socket is for local Slopshell runtime/backend traffic, not coding-agent
+registration. The socket is created with mode `0600`; external agents should
+still register the stdio server name `sloppy`.
 
 ## Documentation
 
