@@ -12,6 +12,7 @@ import (
 	"github.com/sloppy-org/sloptools/internal/providerdata"
 	"github.com/sloppy-org/sloptools/internal/sourceitems"
 	"github.com/sloppy-org/sloptools/internal/tasks"
+	"github.com/sloppy-org/sloptools/pkg/taskgtd"
 )
 
 type gtdReviewItem struct {
@@ -29,6 +30,7 @@ type gtdReviewItem struct {
 	Labels       []string `json:"labels,omitempty"`
 	Actor        string   `json:"actor,omitempty"`
 	Project      string   `json:"project,omitempty"`
+	ParentID     string   `json:"parent_id,omitempty"`
 	ExistingPath string   `json:"existing_path,omitempty"`
 }
 
@@ -54,9 +56,10 @@ func (s *Server) brainGTDReviewList(args map[string]interface{}) (map[string]int
 	if sources["source"] || sources["sources"] || sources["issues"] {
 		s.addIssueGTDItems(args, &build)
 	}
+	build.items = filterGTDReviewItems(build.items, args)
 	sort.SliceStable(build.items, func(i, j int) bool {
 		if build.items[i].Queue != build.items[j].Queue {
-			return gtdQueueRank(build.items[i].Queue) < gtdQueueRank(build.items[j].Queue)
+			return taskgtd.QueueRank(build.items[i].Queue) < taskgtd.QueueRank(build.items[j].Queue)
 		}
 		if build.items[i].Due != build.items[j].Due {
 			return build.items[i].Due < build.items[j].Due
@@ -125,8 +128,13 @@ func (s *Server) addTaskGTDItems(args map[string]interface{}, build *gtdReviewBu
 			build.errors = append(build.errors, err.Error())
 			continue
 		}
+		parentIDs := taskgtd.ParentTaskIDs(taskGTDTasks(items))
 		for _, item := range items {
-			build.addOrSkipExisting(gtdReviewItemFromTask(account.Sphere, provider.ProviderName(), list, item))
+			reviewItem := gtdReviewItemFromTask(account.Sphere, provider.ProviderName(), list, item)
+			if parentIDs[strings.TrimSpace(item.ID)] {
+				reviewItem.Kind = "project"
+			}
+			build.addOrSkipExisting(reviewItem)
 		}
 	}
 }
@@ -220,7 +228,7 @@ func gtdReviewItemFromCommitment(note dedupNote) gtdReviewItem {
 		Source:   "markdown",
 		Title:    firstNonEmpty(c.Outcome, c.Title, c.NextAction, filepath.Base(note.Entry.Path)),
 		Status:   status,
-		Queue:    gtdQueue(status, c.FollowUp, time.Now().UTC()),
+		Queue:    taskgtd.Queue(status, c.FollowUp, time.Now().UTC()),
 		Path:     note.Entry.Path,
 		Due:      c.Due,
 		FollowUp: c.FollowUp,
@@ -231,23 +239,106 @@ func gtdReviewItemFromCommitment(note dedupNote) gtdReviewItem {
 }
 
 func gtdReviewItemFromTask(sphere, providerName string, list providerdata.TaskList, task providerdata.TaskItem) gtdReviewItem {
-	binding := braingtd.SourceBinding{Provider: providerName, Ref: taskBindingRef(list.ID, task)}
-	status := taskGTDStatus(list, task)
+	modelList := taskGTDList(list)
+	modelTask := taskGTDTask(task)
+	binding := braingtd.SourceBinding{Provider: providerName, Ref: taskgtd.BindingRef(list.ID, modelTask)}
+	status := taskgtd.Status(modelList, modelTask, time.Now().UTC())
 	return gtdReviewItem{
 		ID:        binding.StableID(),
 		Source:    providerName,
 		SourceRef: binding.Ref,
 		Title:     task.Title,
 		Status:    status,
-		Queue:     gtdQueue(status, timeString(task.StartAt), time.Now().UTC()),
+		Queue:     taskgtd.Queue(status, taskgtd.TimeString(task.StartAt), time.Now().UTC()),
 		Kind:      "task",
 		URL:       task.ProviderURL,
-		Due:       timeString(task.Due),
-		FollowUp:  timeString(task.StartAt),
+		Due:       taskgtd.TimeString(task.Due),
+		FollowUp:  taskgtd.TimeString(task.StartAt),
 		Labels:    append([]string(nil), task.Labels...),
 		Actor:     firstNonEmpty(task.AssigneeName, task.AssigneeID),
 		Project:   firstNonEmpty(list.Name, task.ProjectID, sphere),
+		ParentID:  strings.TrimSpace(task.ParentID),
 	}
+}
+
+func taskGTDList(list providerdata.TaskList) taskgtd.List {
+	return taskgtd.List{
+		ID:             list.ID,
+		Name:           list.Name,
+		Primary:        list.Primary,
+		IsInboxProject: list.IsInboxProject,
+	}
+}
+
+func taskGTDTasks(tasks []providerdata.TaskItem) []taskgtd.Task {
+	out := make([]taskgtd.Task, 0, len(tasks))
+	for _, task := range tasks {
+		out = append(out, taskGTDTask(task))
+	}
+	return out
+}
+
+func taskGTDTask(task providerdata.TaskItem) taskgtd.Task {
+	return taskgtd.Task{
+		ID:           task.ID,
+		ListID:       task.ListID,
+		Title:        task.Title,
+		ProjectID:    task.ProjectID,
+		ParentID:     task.ParentID,
+		ProviderRef:  task.ProviderRef,
+		Labels:       append([]string(nil), task.Labels...),
+		StartAt:      task.StartAt,
+		Due:          task.Due,
+		Completed:    task.Completed,
+		AssigneeID:   task.AssigneeID,
+		AssigneeName: task.AssigneeName,
+		ProviderURL:  task.ProviderURL,
+	}
+}
+
+func filterGTDReviewItems(items []gtdReviewItem, args map[string]interface{}) []gtdReviewItem {
+	if len(items) == 0 {
+		return items
+	}
+	out := items[:0]
+	for _, item := range items {
+		if gtdReviewItemMatches(item, args) {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func gtdReviewItemMatches(item gtdReviewItem, args map[string]interface{}) bool {
+	if queue := strings.TrimSpace(strArg(args, "queue")); queue != "" && !strings.EqualFold(item.Queue, queue) {
+		return false
+	}
+	if project := strings.TrimSpace(strArg(args, "project")); project != "" && !strings.EqualFold(item.Project, project) {
+		return false
+	}
+	return reviewTimeMatches(item.Due, args, "due_after", false) &&
+		reviewTimeMatches(item.Due, args, "due_before", true) &&
+		reviewTimeMatches(item.FollowUp, args, "follow_up_after", false) &&
+		reviewTimeMatches(item.FollowUp, args, "follow_up_before", true)
+}
+
+func reviewTimeMatches(value string, args map[string]interface{}, key string, before bool) bool {
+	boundText := strings.TrimSpace(strArg(args, key))
+	if boundText == "" {
+		return true
+	}
+	bound := parseRFC3339OrDate(boundText)
+	if bound.IsZero() {
+		return false
+	}
+	t := parseRFC3339OrDate(value)
+	if t.IsZero() {
+		return false
+	}
+	if before {
+		return t.Before(bound) || t.Equal(bound)
+	}
+	return t.After(bound) || t.Equal(bound)
 }
 
 func gtdReviewItemFromSourceItem(source providerdata.SourceItem) gtdReviewItem {
@@ -262,48 +353,13 @@ func gtdReviewItemFromSourceItem(source providerdata.SourceItem) gtdReviewItem {
 		SourceRef: binding.Ref,
 		Title:     source.Title,
 		Status:    status,
-		Queue:     gtdQueue(status, "", time.Now().UTC()),
+		Queue:     taskgtd.Queue(status, "", time.Now().UTC()),
 		Kind:      source.Kind,
 		URL:       source.URL,
 		Labels:    append([]string(nil), source.Labels...),
 		Actor:     firstNonEmpty(strings.Join(source.Assignees, ", "), source.Author),
 		Project:   source.Container,
 	}
-}
-
-func taskBindingRef(listID string, task providerdata.TaskItem) string {
-	id := strings.TrimSpace(task.ProviderRef)
-	if id == "" {
-		id = strings.TrimSpace(task.ID)
-	}
-	list := strings.TrimSpace(firstNonEmpty(task.ListID, listID))
-	if list == "" {
-		return id
-	}
-	return list + "/" + id
-}
-
-func taskGTDStatus(list providerdata.TaskList, task providerdata.TaskItem) string {
-	if task.Completed {
-		return "done"
-	}
-	for _, label := range task.Labels {
-		switch strings.ToLower(strings.TrimSpace(label)) {
-		case "waiting", "waiting-for", "waiting_for":
-			return "waiting"
-		case "someday", "maybe", "someday-maybe", "someday_maybe":
-			return "someday"
-		case "maybe_stale", "needs-review", "needs_review":
-			return "maybe_stale"
-		}
-	}
-	if task.StartAt != nil && task.StartAt.After(time.Now().UTC()) {
-		return "deferred"
-	}
-	if list.Primary || list.IsInboxProject {
-		return "inbox"
-	}
-	return "next"
 }
 
 func effectiveGTDStatus(c braingtd.Commitment) string {
@@ -313,72 +369,12 @@ func effectiveGTDStatus(c braingtd.Commitment) string {
 	return strings.ToLower(strings.TrimSpace(c.Status))
 }
 
-func gtdQueue(status, followUp string, now time.Time) string {
-	switch strings.ToLower(strings.TrimSpace(status)) {
-	case "closed", "done", "dropped":
-		return "done"
-	case "waiting":
-		return "waiting"
-	case "deferred":
-		if readyAt(followUp, now) {
-			return "next"
-		}
-		return "deferred"
-	case "someday":
-		return "someday"
-	case "maybe_stale", "needs_review":
-		return "review"
-	case "next":
-		return "next"
-	default:
-		return "inbox"
-	}
-}
-
-func readyAt(raw string, now time.Time) bool {
-	if strings.TrimSpace(raw) == "" {
-		return false
-	}
-	if t := parseRFC3339OrDate(raw); !t.IsZero() {
-		return !t.After(now)
-	}
-	return false
-}
-
-func timeString(value *time.Time) string {
-	if value == nil || value.IsZero() {
-		return ""
-	}
-	return value.UTC().Format(time.RFC3339)
-}
-
 func sourceClosed(state string) bool {
 	switch strings.ToLower(strings.TrimSpace(state)) {
 	case "closed", "merged", "done":
 		return true
 	default:
 		return false
-	}
-}
-
-func gtdQueueRank(queue string) int {
-	switch queue {
-	case "inbox":
-		return 0
-	case "next":
-		return 1
-	case "waiting":
-		return 2
-	case "deferred":
-		return 3
-	case "review":
-		return 4
-	case "someday":
-		return 5
-	case "done":
-		return 6
-	default:
-		return 7
 	}
 }
 

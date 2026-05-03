@@ -253,6 +253,64 @@ func TestBrainGTDReviewListMergesMarkdownAndTodoistWithoutDuplicates(t *testing.
 	}
 }
 
+func TestBrainGTDReviewListExposesTaskHierarchyAndFilters(t *testing.T) {
+	s, st, _ := newDomainServerForTest(t)
+	account, err := st.CreateExternalAccount(store.SphereWork, store.ExternalProviderTodoist, "Todoist", map[string]any{})
+	if err != nil {
+		t.Fatalf("CreateExternalAccount: %v", err)
+	}
+	due := time.Now().UTC().Add(24 * time.Hour).Truncate(time.Hour)
+	provider := &fakeTasksProvider{
+		name:      "todoist",
+		taskLists: []providerdata.TaskList{{ID: "work-proj", Name: "Work"}},
+		tasksByList: map[string][]providerdata.TaskItem{
+			"work-proj": {
+				{ID: "parent", ListID: "work-proj", ProviderRef: "parent", Title: "Publish manual"},
+				{ID: "child", ListID: "work-proj", ProviderRef: "child", ParentID: "parent", Title: "Check references", Due: &due},
+			},
+		},
+	}
+	s.newTasksProvider = func(_ context.Context, got store.ExternalAccount) (tasks.Provider, error) {
+		if got.ID != account.ID {
+			t.Fatalf("account ID = %d, want %d", got.ID, account.ID)
+		}
+		return provider, nil
+	}
+
+	got, err := s.callTool("brain.gtd.review_list", map[string]interface{}{
+		"sphere":     "work",
+		"sources":    []interface{}{"tasks"},
+		"account_id": account.ID,
+		"queue":      "next",
+		"project":    "Work",
+	})
+	if err != nil {
+		t.Fatalf("brain.gtd.review_list: %v", err)
+	}
+	items := got["items"].([]gtdReviewItem)
+	parent := itemByID(items, "todoist:work-proj/parent")
+	child := itemByID(items, "todoist:work-proj/child")
+	if parent == nil || parent.Kind != "project" {
+		t.Fatalf("parent item = %#v, want kind=project in %#v", parent, items)
+	}
+	if child == nil || child.ParentID != "parent" {
+		t.Fatalf("child item = %#v, want parent_id=parent in %#v", child, items)
+	}
+
+	filtered, err := s.callTool("brain.gtd.review_list", map[string]interface{}{
+		"sphere":     "work",
+		"sources":    []interface{}{"tasks"},
+		"account_id": account.ID,
+		"due_before": due.Add(time.Hour).Format(time.RFC3339),
+	})
+	if err != nil {
+		t.Fatalf("brain.gtd.review_list filtered: %v", err)
+	}
+	if gotItems := filtered["items"].([]gtdReviewItem); len(gotItems) != 1 || gotItems[0].ID != "todoist:work-proj/child" {
+		t.Fatalf("filtered items = %#v, want only due child", gotItems)
+	}
+}
+
 func TestGTDReviewItemFromSourceItemMapsIssueState(t *testing.T) {
 	item := gtdReviewItemFromSourceItem(providerdata.SourceItem{
 		Provider:  "github",
