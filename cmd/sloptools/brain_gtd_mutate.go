@@ -30,6 +30,7 @@ func cmdBrainGTDWrite(args []string) int {
 	waitingFor := fs.String("waiting-for", "", "commitment waiting-for")
 	project := fs.String("project", "", "commitment project")
 	track := fs.String("track", "", "commitment track")
+	clearTrack := fs.Bool("clear-track", false, "clear commitment track")
 	lastEvidenceAt := fs.String("last-evidence-at", "", "commitment last evidence timestamp")
 	reviewState := fs.String("review-state", "", "commitment review state")
 	people := fs.String("people", "", "comma-separated people")
@@ -108,9 +109,6 @@ func cmdBrainGTDWrite(args []string) int {
 	if strings.TrimSpace(*project) != "" {
 		updated.Project = strings.TrimSpace(*project)
 	}
-	if strings.TrimSpace(*track) != "" {
-		updated.Track = strings.TrimSpace(*track)
-	}
 	if strings.TrimSpace(*lastEvidenceAt) != "" {
 		updated.LastEvidenceAt = strings.TrimSpace(*lastEvidenceAt)
 	}
@@ -122,6 +120,13 @@ func cmdBrainGTDWrite(args []string) int {
 	}
 	if strings.TrimSpace(*labels) != "" {
 		updated.Labels = splitCommaList(*labels)
+	}
+	if *clearTrack {
+		updated.Labels = braingtd.WithTrackLabel(updated.Labels, "")
+		updated.Track = ""
+	} else if strings.TrimSpace(*track) != "" {
+		updated.Labels = braingtd.WithTrackLabel(updated.Labels, strings.TrimSpace(*track))
+		updated.Track = ""
 	}
 	if strings.TrimSpace(*bindingProvider) != "" || strings.TrimSpace(*bindingRef) != "" || strings.TrimSpace(*bindingURL) != "" {
 		updated.SourceBindings = []braingtd.SourceBinding{{
@@ -347,6 +352,7 @@ func cmdBrainGTDReviewBatch(args []string) int {
 	configPath := fs.String("config", "", "vault config path")
 	sphere := fs.String("sphere", "", "vault sphere")
 	query := fs.String("q", "", "review query")
+	track := fs.String("track", "", "attention track filter")
 	path := fs.String("path", "", "output note path")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -355,8 +361,13 @@ func cmdBrainGTDReviewBatch(args []string) int {
 		fmt.Fprintln(os.Stderr, "--sphere is required")
 		return 2
 	}
-	if strings.TrimSpace(*query) == "" {
-		fmt.Fprintln(os.Stderr, "--q is required")
+	queryText := strings.TrimSpace(*query)
+	trackText := strings.TrimSpace(*track)
+	if queryText == "" && trackText != "" {
+		queryText = trackText
+	}
+	if queryText == "" {
+		fmt.Fprintln(os.Stderr, "--q or --track is required")
 		return 2
 	}
 	cfg, err := brain.LoadConfig(*configPath)
@@ -364,14 +375,14 @@ func cmdBrainGTDReviewBatch(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	items, err := braincatalog.ListGTDVault(cfg, brain.Sphere(*sphere), braincatalog.GTDListFilter{})
+	items, err := braincatalog.ListGTDVault(cfg, brain.Sphere(*sphere), braincatalog.GTDListFilter{Track: trackText})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
 	output := strings.TrimSpace(*path)
 	if output == "" {
-		output = filepath.ToSlash(filepath.Join("brain", "gtd", "reviews", slugify(*query)+".md"))
+		output = filepath.ToSlash(filepath.Join("brain", "gtd", "reviews", slugify(queryText)+".md"))
 	}
 	resolved, err := brain.ResolveNotePath(cfg, brain.Sphere(*sphere), output)
 	if err != nil {
@@ -382,7 +393,7 @@ func cmdBrainGTDReviewBatch(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	rendered := braincatalog.BuildGTDReviewBatchMarkdown(items, *sphere, *query)
+	rendered := braincatalog.BuildGTDReviewBatchMarkdown(items, *sphere, queryText)
 	if err := validateRenderedBrainNote(rendered); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
@@ -391,5 +402,5 @@ func cmdBrainGTDReviewBatch(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	return printBrainJSON(map[string]interface{}{"sphere": *sphere, "q": *query, "path": resolved.Rel, "count": len(items), "updated": true})
+	return printBrainJSON(map[string]interface{}{"sphere": *sphere, "q": queryText, "track": trackText, "path": resolved.Rel, "count": len(items), "updated": true})
 }

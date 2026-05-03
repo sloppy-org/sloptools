@@ -327,6 +327,8 @@ func decodeAny[T any](raw interface{}) (T, error) {
 }
 
 func writeCommitmentFrontMatter(note *brain.MarkdownNote, commitment braingtd.Commitment) error {
+	commitment.NormalizeTrackLabel()
+	note.DeleteFrontMatterField("track")
 	for key, value := range map[string]interface{}{
 		"kind":             commitment.Kind,
 		"title":            commitment.Title,
@@ -340,7 +342,6 @@ func writeCommitmentFrontMatter(note *brain.MarkdownNote, commitment braingtd.Co
 		"actor":            commitment.Actor,
 		"waiting_for":      commitment.WaitingFor,
 		"project":          commitment.Project,
-		"track":            commitment.Track,
 		"last_evidence_at": commitment.LastEvidenceAt,
 		"review_state":     commitment.ReviewState,
 		"people":           commitment.People,
@@ -392,7 +393,8 @@ func overlayCommitment(base braingtd.Commitment, updates map[string]interface{})
 		out.Project = v
 	}
 	if v, ok := stringArgFromMap(updates, "track"); ok {
-		out.Track = v
+		out.Labels = braingtd.WithTrackLabel(out.Labels, v)
+		out.Track = ""
 	}
 	if v, ok := stringArgFromMap(updates, "last_evidence_at"); ok {
 		out.LastEvidenceAt = v

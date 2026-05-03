@@ -8,12 +8,30 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sloppy-org/sloptools/internal/brain"
 	braingtd "github.com/sloppy-org/sloptools/internal/brain/gtd"
+	"github.com/sloppy-org/sloptools/internal/mcp/gtdfocus"
 	"github.com/sloppy-org/sloptools/internal/providerdata"
 	"github.com/sloppy-org/sloptools/internal/sourceitems"
 	"github.com/sloppy-org/sloptools/internal/tasks"
 	"github.com/sloppy-org/sloptools/pkg/taskgtd"
 )
+
+func (s *Server) brainGTDTracks(args map[string]interface{}) (map[string]interface{}, error) {
+	cfg, err := brain.LoadConfig(s.brainConfigArg(args))
+	if err != nil {
+		return nil, err
+	}
+	return gtdfocus.Tracks(cfg, strings.TrimSpace(strArg(args, "sphere")))
+}
+
+func (s *Server) brainGTDFocus(args map[string]interface{}) (map[string]interface{}, error) {
+	st, err := s.requireStore()
+	if err != nil {
+		return nil, err
+	}
+	return gtdfocus.Focus(st, strings.TrimSpace(strArg(args, "sphere")), args)
+}
 
 type gtdReviewItem struct {
 	ID           string   `json:"id"`

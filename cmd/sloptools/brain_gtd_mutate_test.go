@@ -20,6 +20,7 @@ kind: commitment
 sphere: work
 title: Reply to Ada
 status: next
+track: research-fusion
 context: email
 source_bindings:
   - provider: mail
@@ -153,6 +154,39 @@ Prepare slides.
 	}
 
 	stdout, stderr, code = captureRun(t, []string{
+		"brain", "gtd", "write",
+		"--config", configPath,
+		"--sphere", "work",
+		"--path", notePath,
+		"--clear-track",
+	})
+	if code != 0 {
+		t.Fatalf("clear-track exit code = %d, stderr=%q", code, stderr)
+	}
+	cleared, err := os.ReadFile(filepath.Join(tmp, "work", notePath))
+	if err != nil {
+		t.Fatalf("read clear-track note: %v", err)
+	}
+	clearedCommitment, _, clearedDiags := braingtd.ParseCommitmentMarkdown(string(cleared))
+	if len(clearedDiags) != 0 {
+		t.Fatalf("clear-track note invalid: %#v\n%s", clearedDiags, string(cleared))
+	}
+	if clearedCommitment.Track != "" {
+		t.Fatalf("clear-track commitment track = %q, want empty", clearedCommitment.Track)
+	}
+
+	stdout, stderr, code = captureRun(t, []string{
+		"brain", "gtd", "write",
+		"--config", configPath,
+		"--sphere", "work",
+		"--path", notePath,
+		"--track", "research-fusion",
+	})
+	if code != 0 {
+		t.Fatalf("restore track exit code = %d, stderr=%q", code, stderr)
+	}
+
+	stdout, stderr, code = captureRun(t, []string{
 		"brain", "gtd", "organize",
 		"--config", configPath,
 		"--sphere", "work",
@@ -221,6 +255,30 @@ Prepare slides.
 	}
 	if diags := brain.ValidateMarkdownNote(string(reviewData), brain.MarkdownParseOptions{}); len(diags) != 0 {
 		t.Fatalf("review batch output invalid: %#v\n%s", diags, string(reviewData))
+	}
+
+	stdout, stderr, code = captureRun(t, []string{
+		"brain", "gtd", "review-batch",
+		"--config", configPath,
+		"--sphere", "work",
+		"--track", "research-fusion",
+	})
+	if code != 0 {
+		t.Fatalf("review-batch track exit code = %d, stderr=%q", code, stderr)
+	}
+	var trackReview map[string]interface{}
+	if err := json.Unmarshal([]byte(stdout), &trackReview); err != nil {
+		t.Fatalf("decode track review stdout: %v\n%s", err, stdout)
+	}
+	if int(trackReview["count"].(float64)) != 1 || trackReview["track"] != "research-fusion" {
+		t.Fatalf("track review = %#v, want one research-fusion item", trackReview)
+	}
+	trackReviewData, err := os.ReadFile(filepath.Join(tmp, "work", trackReview["path"].(string)))
+	if err != nil {
+		t.Fatalf("read track review output: %v", err)
+	}
+	if !strings.Contains(string(trackReviewData), "Reply sent") || strings.Contains(string(trackReviewData), "Prepare slides") {
+		t.Fatalf("track review did not filter by track:\n%s", string(trackReviewData))
 	}
 
 	for _, source := range []string{"meetings", "mail", "todoist", "github", "gitlab", "evernote"} {

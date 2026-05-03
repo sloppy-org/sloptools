@@ -22,6 +22,8 @@ func TestBrainSurfaceExportsLockedMutatingTools(t *testing.T) {
 		"brain.backlinks",
 		"brain.gtd.parse",
 		"brain.gtd.list",
+		"brain.gtd.tracks",
+		"brain.gtd.focus",
 		"brain.projects.render",
 		"brain.projects.list",
 		"brain.gtd.write",

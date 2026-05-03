@@ -56,7 +56,7 @@ Free prose.
 }
 
 func TestCommitmentEffectiveTrackFallsBackToLabels(t *testing.T) {
-	commitment := Commitment{Labels: []string{"mode/deep", "track/software-compilers"}}
+	commitment := Commitment{Labels: []string{"mode/deep", "Track/software-compilers"}}
 	if got := commitment.EffectiveTrack(); got != "software-compilers" {
 		t.Fatalf("EffectiveTrack() = %q, want software-compilers", got)
 	}

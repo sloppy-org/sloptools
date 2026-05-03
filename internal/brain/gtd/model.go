@@ -9,18 +9,21 @@ import (
 )
 
 type Commitment struct {
-	Title          string          `json:"title,omitempty" yaml:"title,omitempty"`
-	Kind           string          `json:"kind,omitempty" yaml:"kind,omitempty"`
-	Sphere         string          `json:"sphere,omitempty" yaml:"sphere,omitempty"`
-	Status         string          `json:"status,omitempty" yaml:"status,omitempty"`
-	Outcome        string          `json:"outcome,omitempty" yaml:"outcome,omitempty"`
-	NextAction     string          `json:"next_action,omitempty" yaml:"next_action,omitempty"`
-	Context        string          `json:"context,omitempty" yaml:"context,omitempty"`
-	FollowUp       string          `json:"follow_up,omitempty" yaml:"follow_up,omitempty"`
-	Due            string          `json:"due,omitempty" yaml:"due,omitempty"`
-	Actor          string          `json:"actor,omitempty" yaml:"actor,omitempty"`
-	WaitingFor     string          `json:"waiting_for,omitempty" yaml:"waiting_for,omitempty"`
-	Project        string          `json:"project,omitempty" yaml:"project,omitempty"`
+	Title      string `json:"title,omitempty" yaml:"title,omitempty"`
+	Kind       string `json:"kind,omitempty" yaml:"kind,omitempty"`
+	Sphere     string `json:"sphere,omitempty" yaml:"sphere,omitempty"`
+	Status     string `json:"status,omitempty" yaml:"status,omitempty"`
+	Outcome    string `json:"outcome,omitempty" yaml:"outcome,omitempty"`
+	NextAction string `json:"next_action,omitempty" yaml:"next_action,omitempty"`
+	Context    string `json:"context,omitempty" yaml:"context,omitempty"`
+	FollowUp   string `json:"follow_up,omitempty" yaml:"follow_up,omitempty"`
+	Due        string `json:"due,omitempty" yaml:"due,omitempty"`
+	Actor      string `json:"actor,omitempty" yaml:"actor,omitempty"`
+	WaitingFor string `json:"waiting_for,omitempty" yaml:"waiting_for,omitempty"`
+	Project    string `json:"project,omitempty" yaml:"project,omitempty"`
+	// Track is a derived compatibility field. Canonical storage is the
+	// labels entry track/<name>; legacy track front matter is read only so
+	// old notes can be normalized without losing information.
 	Track          string          `json:"track,omitempty" yaml:"track,omitempty"`
 	LastEvidenceAt string          `json:"last_evidence_at,omitempty" yaml:"last_evidence_at,omitempty"`
 	ReviewState    string          `json:"review_state,omitempty" yaml:"review_state,omitempty"`
@@ -164,6 +167,11 @@ func ApplyCommitment(note *brain.MarkdownNote, commitment Commitment) error {
 	if note == nil {
 		return fmt.Errorf("note is nil")
 	}
+	commitment.NormalizeTrackLabel()
+	note.DeleteFrontMatterField("track")
+	if err := note.SetFrontMatterField("labels", commitment.Labels); err != nil {
+		return err
+	}
 	if err := note.SetFrontMatterField("source_bindings", commitment.SourceBindings); err != nil {
 		return err
 	}
@@ -206,10 +214,10 @@ func (c Commitment) DedupHints() []string {
 }
 
 func (c Commitment) EffectiveTrack() string {
-	if track := strings.TrimSpace(c.Track); track != "" {
+	if track := TrackFromLabels(c.Labels); track != "" {
 		return track
 	}
-	return TrackFromLabels(c.Labels)
+	return strings.TrimSpace(c.Track)
 }
 
 func TrackFromLabels(labels []string) string {
@@ -218,13 +226,46 @@ func TrackFromLabels(labels []string) string {
 		if clean == "" {
 			continue
 		}
+		lower := strings.ToLower(clean)
 		for _, prefix := range []string{"track/", "track:"} {
-			if rest := strings.TrimSpace(strings.TrimPrefix(clean, prefix)); rest != clean && rest != "" {
+			if !strings.HasPrefix(lower, prefix) {
+				continue
+			}
+			if rest := strings.TrimSpace(clean[len(prefix):]); rest != "" {
 				return rest
 			}
 		}
 	}
 	return ""
+}
+
+func (c *Commitment) NormalizeTrackLabel() {
+	if c == nil {
+		return
+	}
+	track := c.EffectiveTrack()
+	c.Labels = WithTrackLabel(c.Labels, track)
+	c.Track = ""
+}
+
+func WithTrackLabel(labels []string, track string) []string {
+	out := make([]string, 0, len(labels)+1)
+	for _, label := range labels {
+		clean := strings.TrimSpace(label)
+		if clean == "" || isTrackLabel(clean) {
+			continue
+		}
+		out = append(out, clean)
+	}
+	if cleanTrack := strings.TrimSpace(track); cleanTrack != "" {
+		out = append(out, "track/"+cleanTrack)
+	}
+	return compactStrings(out)
+}
+
+func isTrackLabel(label string) bool {
+	lower := strings.ToLower(strings.TrimSpace(label))
+	return strings.HasPrefix(lower, "track/") || strings.HasPrefix(lower, "track:")
 }
 
 func (o LocalOverlay) Empty() bool {

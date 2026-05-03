@@ -3,12 +3,14 @@ package mcp
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/sloppy-org/sloptools/internal/contacts"
+	"github.com/sloppy-org/sloptools/internal/mcp/gtdfocus"
 	"github.com/sloppy-org/sloptools/internal/providerdata"
 	"github.com/sloppy-org/sloptools/internal/store"
 )
@@ -31,6 +33,48 @@ func TestContactSearchSurfacesUnsupportedAsCapabilityCode(t *testing.T) {
 	}
 	if got["capability"] != "contacts.Searcher" {
 		t.Fatalf("capability = %v, want contacts.Searcher", got["capability"])
+	}
+}
+
+func TestBrainGTDFocusUsesSloptoolsStoreAndTrackLabels(t *testing.T) {
+	tmp := t.TempDir()
+	configPath := writeMCPBrainConfig(t, tmp)
+	writeMCPBrainFile(t, filepath.Join(tmp, "work", "brain", "commitments", "compiler.md"), `---
+kind: commitment
+sphere: work
+title: Fix parser
+status: next
+labels:
+  - track/software-compilers
+---
+# Fix parser
+`)
+	st, err := store.New(filepath.Join(t.TempDir(), "sloppy.db"))
+	if err != nil {
+		t.Fatalf("store.New: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	s := NewServerWithStore(t.TempDir(), st)
+
+	tracks, err := s.callTool("brain.gtd.tracks", map[string]interface{}{"config_path": configPath, "sphere": "work"})
+	if err != nil {
+		t.Fatalf("brain.gtd.tracks: %v", err)
+	}
+	if tracks["canonical"] != "labels" || tracks["count"].(int) != 1 {
+		t.Fatalf("tracks = %#v, want one canonical label track", tracks)
+	}
+
+	focus, err := s.callTool("brain.gtd.focus", map[string]interface{}{
+		"sphere":       "work",
+		"track":        "software-compilers",
+		"project_path": "brain/commitments/compiler.md",
+	})
+	if err != nil {
+		t.Fatalf("brain.gtd.focus: %v", err)
+	}
+	state := focus["focus"].(gtdfocus.State)
+	if state.Track != "software-compilers" || state.Project.Ref != "brain/commitments/compiler.md" {
+		t.Fatalf("focus state = %#v", state)
 	}
 }
 

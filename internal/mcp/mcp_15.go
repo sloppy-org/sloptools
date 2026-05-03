@@ -49,6 +49,10 @@ func (s *Server) dispatchBrain(method string, args map[string]interface{}) (map[
 		return s.brainGTDParseVault(args)
 	case "brain.gtd.list":
 		return s.brainGTDListVault(args)
+	case "brain.gtd.tracks":
+		return s.brainGTDTracks(args)
+	case "brain.gtd.focus":
+		return s.brainGTDFocus(args)
 	case "brain.projects.render":
 		return s.brainProjectsRender(args)
 	case "brain.projects.list":

@@ -189,6 +189,8 @@ func displayIngestSource(source string) string {
 }
 
 func writeCommitmentFrontMatter(note *brain.MarkdownNote, commitment braingtd.Commitment) error {
+	commitment.NormalizeTrackLabel()
+	note.DeleteFrontMatterField("track")
 	for key, value := range map[string]interface{}{
 		"kind":             commitment.Kind,
 		"title":            commitment.Title,
@@ -202,7 +204,6 @@ func writeCommitmentFrontMatter(note *brain.MarkdownNote, commitment braingtd.Co
 		"actor":            commitment.Actor,
 		"waiting_for":      commitment.WaitingFor,
 		"project":          commitment.Project,
-		"track":            commitment.Track,
 		"last_evidence_at": commitment.LastEvidenceAt,
 		"review_state":     commitment.ReviewState,
 		"people":           commitment.People,

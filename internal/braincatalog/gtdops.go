@@ -35,6 +35,7 @@ func BuildGTDCommitmentMarkdown(commitment braingtd.Commitment) (string, error) 
 	if strings.TrimSpace(commitment.Kind) == "" {
 		commitment.Kind = "commitment"
 	}
+	commitment.NormalizeTrackLabel()
 	note, diags := brain.ParseMarkdownNote(buildGTDCommitmentTemplate(commitment), brain.MarkdownParseOptions{})
 	if len(diags) != 0 {
 		return "", fmt.Errorf("gtd commitment template invalid: %s", formatMarkdownDiagnostics(diags))
@@ -349,6 +350,8 @@ func buildGTDCommitmentTemplate(commitment braingtd.Commitment) string {
 }
 
 func writeGTDCommitmentFrontMatter(note *brain.MarkdownNote, commitment braingtd.Commitment) error {
+	commitment.NormalizeTrackLabel()
+	note.DeleteFrontMatterField("track")
 	for key, value := range map[string]interface{}{
 		"kind":             commitment.Kind,
 		"title":            commitment.Title,
@@ -362,7 +365,6 @@ func writeGTDCommitmentFrontMatter(note *brain.MarkdownNote, commitment braingtd
 		"actor":            commitment.Actor,
 		"waiting_for":      commitment.WaitingFor,
 		"project":          commitment.Project,
-		"track":            commitment.Track,
 		"last_evidence_at": commitment.LastEvidenceAt,
 		"review_state":     commitment.ReviewState,
 		"people":           commitment.People,
