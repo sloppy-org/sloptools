@@ -10,5 +10,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 "$SCRIPT_DIR/setup-codex-mcp.sh"
 "$SCRIPT_DIR/setup-opencode-mcp.sh"
 "$SCRIPT_DIR/setup-qwen-mcp.sh"
+"$SCRIPT_DIR/setup-gemini-mcp.sh"
 
 echo "sloptools MCP (stdio) wired into all coding agents that are installed"
