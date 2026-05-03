@@ -13,3 +13,4 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 "$SCRIPT_DIR/setup-gemini-mcp.sh"
 
 echo "sloptools MCP (stdio) wired into all coding agents that are installed"
+echo "for long-lived local runtime use, install the separate user service via scripts/install-sloptools-user-unit.sh"

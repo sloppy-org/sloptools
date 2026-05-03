@@ -251,8 +251,12 @@ func (a *App) StartUnix(socketPath string) error {
 	}
 	cleaned := filepath.Clean(socketPath)
 	a.unixSocketPath = cleaned
-	if err := os.MkdirAll(filepath.Dir(cleaned), 0700); err != nil {
+	socketDir := filepath.Dir(cleaned)
+	if err := os.MkdirAll(socketDir, 0700); err != nil {
 		return fmt.Errorf("create socket parent dir: %w", err)
+	}
+	if err := os.Chmod(socketDir, 0700); err != nil {
+		return fmt.Errorf("chmod socket parent dir: %w", err)
 	}
 	// Remove any stale socket from a previous crash. Don't touch non-socket
 	// files at the same path — that's almost certainly a misconfiguration.

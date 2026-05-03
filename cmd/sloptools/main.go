@@ -9,9 +9,11 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/sloppy-org/sloptools/internal/mcp"
@@ -26,6 +28,8 @@ var (
 	version = defaultBinaryVersion
 	commit  = "dev"
 )
+
+var signalNotifyContext = signal.NotifyContext
 
 func main() {
 	os.Exit(run(os.Args[1:]))
@@ -198,7 +202,17 @@ func runServer(cfg *serverConfig) int {
 		}
 		fmt.Printf("sloptools MCP server ready at %s\n", mcpURL)
 	}
+	ctx, stopSignals := signalNotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSignals()
 	select {
+	case <-ctx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := mcpApp.Stop(shutdownCtx); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to stop mcp listener: %v\n", err)
+			return 1
+		}
+		return 0
 	case mcpErr := <-mcpErrCh:
 		if mcpErr != nil {
 			fmt.Fprintf(os.Stderr, "mcp listener failed: %v\n", mcpErr)

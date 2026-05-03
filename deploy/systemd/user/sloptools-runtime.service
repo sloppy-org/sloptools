@@ -1,0 +1,17 @@
+[Unit]
+Description=Sloptools Runtime Daemon
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=@@REPO_ROOT@@
+PassEnvironment=HOME XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS
+Environment=HOME=%h
+Environment=SHELL=/usr/bin/bash
+ExecStart=/usr/bin/bash -lc 'source ~/.bashrc >/dev/null 2>&1 || true; cd @@REPO_ROOT@@; exec /usr/bin/env go run ./cmd/sloptools server --project-dir %h --data-dir %h/.local/share/sloppy --mcp-unix-socket %t/sloppy/sloptools.sock'
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=15
+
+[Install]
+WantedBy=default.target

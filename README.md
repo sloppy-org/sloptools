@@ -38,6 +38,32 @@ sloptools mcp-server --project-dir "$HOME" --data-dir "$HOME/.local/share/sloppy
 The separate `server` subcommand can expose the same MCP surface over a local
 HTTP listener or a private Unix socket for embedded applications.
 
+## Runtime Daemon (private Unix socket)
+
+For long-lived local runtime use, prefer:
+
+```bash
+sloptools server --project-dir "$HOME" --data-dir "$HOME/.local/share/sloppy" --mcp-unix-socket "$XDG_RUNTIME_DIR/sloppy/sloptools.sock"
+```
+
+This is the private runtime/backend path for Slopshell and similar local
+integrations:
+
+- the parent socket directory is forced to mode `0700`
+- the socket itself is forced to mode `0600`
+- persistent backend-owned auth/session/cursor state stays in the sloptools
+  data dir (`$HOME/.local/share/sloppy` by default)
+- the process is meant to stay up and reuse that state across requests
+
+Keep the external coding-agent registration story separate:
+
+- agents register `sloppy` via `sloptools mcp-server` over stdio
+- local runtimes connect to `sloptools server --mcp-unix-socket ...`
+
+That hybrid split keeps per-agent session isolation for coding tools while
+still giving Slopshell and other long-lived local runtimes stable backend state
+and socket reuse.
+
 ## Wire Sloptools into Coding Agents
 
 One-shot installer (registers sloptools with whatever's on PATH — claude,
@@ -115,10 +141,24 @@ Use `scripts/setup-codex-mcp.sh`. It registers the same stdio command through
 ### slopshell runtime
 
 For private Slopshell runtime integration, run the MCP server on a private Unix
-socket with `sloptools server --mcp-unix-socket "$XDG_RUNTIME_DIR/sloppy/mcp.sock"`.
+socket with `sloptools server --mcp-unix-socket "$XDG_RUNTIME_DIR/sloppy/sloptools.sock"`.
 That socket is for local Slopshell runtime/backend traffic, not coding-agent
-registration. The socket is created with mode `0600`; external agents should
-still register the stdio server name `sloppy`.
+registration. The parent directory is created with mode `0700`, the socket is
+created with mode `0600`, and the daemon reuses the backend-owned state under
+`--data-dir`; external agents should still register the stdio server name
+`sloppy`.
+
+### Local user service install
+
+On Linux, install the long-lived runtime daemon as a user service with:
+
+```bash
+./scripts/install-sloptools-user-unit.sh
+```
+
+That installs and starts `sloptools-runtime.service`, which binds
+`%t/sloppy/sloptools.sock` and keeps the backend-owned state in
+`%h/.local/share/sloppy`.
 
 ## Documentation
 

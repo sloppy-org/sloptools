@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -123,6 +126,49 @@ func TestStopNoServerIsNoop(t *testing.T) {
 	}
 }
 
+func TestStartUnixTightensSocketPermissions(t *testing.T) {
+	projectDir := t.TempDir()
+	socketDir := filepath.Join(t.TempDir(), "runtime")
+	if err := os.MkdirAll(socketDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(socketDir): %v", err)
+	}
+	socketPath := filepath.Join(socketDir, "mcp.sock")
+	app := NewApp(projectDir, "")
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- app.StartUnix(socketPath)
+	}()
+	waitForUnixHealth(t, socketPath)
+	socketInfo, err := os.Lstat(socketPath)
+	if err != nil {
+		t.Fatalf("Lstat(socketPath): %v", err)
+	}
+	if socketInfo.Mode()&os.ModeSocket == 0 {
+		t.Fatalf("socket mode = %v, want unix socket bit set", socketInfo.Mode())
+	}
+	if perms := socketInfo.Mode().Perm(); perms != 0o600 {
+		t.Fatalf("socket perms = %o, want 600", perms)
+	}
+	dirInfo, err := os.Stat(socketDir)
+	if err != nil {
+		t.Fatalf("Stat(socketDir): %v", err)
+	}
+	if perms := dirInfo.Mode().Perm(); perms != 0o700 {
+		t.Fatalf("socket dir perms = %o, want 700", perms)
+	}
+	if err := app.Stop(context.Background()); err != nil {
+		t.Fatalf("Stop(): %v", err)
+	}
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("StartUnix returned error after Stop: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("StartUnix did not return after Stop")
+	}
+}
+
 func TestHandleMCPGetReturnsEventStreamHeaders(t *testing.T) {
 	app := NewApp(t.TempDir(), "")
 	ctx, cancel := context.WithCancel(context.Background())
@@ -150,4 +196,28 @@ func TestHandleMCPGetReturnsEventStreamHeaders(t *testing.T) {
 	if cc := rr.Header().Get("Cache-Control"); cc != "no-cache" {
 		t.Fatalf("Cache-Control = %q, want no-cache", cc)
 	}
+}
+
+func waitForUnixHealth(t *testing.T, socketPath string) {
+	t.Helper()
+	client := &http.Client{
+		Timeout: 250 * time.Millisecond,
+		Transport: &http.Transport{
+			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+				return net.Dial("unix", socketPath)
+			},
+		},
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		resp, err := client.Get("http://unix/health")
+		if err == nil {
+			_ = resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				return
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("unix socket %q did not become healthy", socketPath)
 }
