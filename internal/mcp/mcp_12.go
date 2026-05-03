@@ -207,13 +207,16 @@ func (s *Server) brainGTDWrite(args map[string]interface{}) (map[string]interfac
 		if err := os.WriteFile(resolved.Path, []byte(rendered), 0o644); err != nil {
 			return nil, err
 		}
-		return map[string]interface{}{
-			"source":      resolved,
-			"commitment":  updated,
-			"diagnostics": diags,
-			"count":       len(diags),
-			"valid":       len(diags) == 0,
-		}, nil
+		return withAffected(
+			map[string]interface{}{
+				"source":      resolved,
+				"commitment":  updated,
+				"diagnostics": diags,
+				"count":       len(diags),
+				"valid":       len(diags) == 0,
+			},
+			brainCommitmentAffectedRef(sphere, resolved.Rel),
+		), nil
 	}
 	rendered, err := braincatalog.BuildGTDCommitmentMarkdown(updated)
 	if err != nil {
@@ -228,13 +231,16 @@ func (s *Server) brainGTDWrite(args map[string]interface{}) (map[string]interfac
 	if err := os.WriteFile(resolved.Path, []byte(rendered), 0o644); err != nil {
 		return nil, err
 	}
-	return map[string]interface{}{
-		"source":      resolved,
-		"commitment":  updated,
-		"diagnostics": []brain.MarkdownDiagnostic{},
-		"count":       0,
-		"valid":       true,
-	}, nil
+	return withAffected(
+		map[string]interface{}{
+			"source":      resolved,
+			"commitment":  updated,
+			"diagnostics": []brain.MarkdownDiagnostic{},
+			"count":       0,
+			"valid":       true,
+		},
+		brainCommitmentAffectedRef(sphere, resolved.Rel),
+	), nil
 }
 
 func objectArg(args map[string]interface{}, key string) map[string]interface{} {

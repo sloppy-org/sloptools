@@ -158,6 +158,10 @@ func TestCalendarEventUpdatePropagatesChanges(t *testing.T) {
 	if strFromAny(event["summary"]) != "Updated Title" {
 		t.Fatalf("summary = %q, want Updated Title", strFromAny(event["summary"]))
 	}
+	affected := requireSingleAffectedRef(t, got)
+	if affected.Domain != "calendar" || affected.Kind != "event" || affected.ID != "evt-1" || affected.ContainerID != "work" || affected.AccountID == 0 {
+		t.Fatalf("affected = %#v", affected)
+	}
 }
 
 func TestCalendarEventUpdateCapabilityUnsupported(t *testing.T) {
@@ -212,6 +216,13 @@ func TestCalendarEventDeleteReturnsDeletedTrue(t *testing.T) {
 	}
 	if strFromAny(got["id"]) != "evt-1" {
 		t.Fatalf("id = %q, want evt-1", strFromAny(got["id"]))
+	}
+	if strFromAny(got["calendar_id"]) != "work" {
+		t.Fatalf("calendar_id = %q, want work", strFromAny(got["calendar_id"]))
+	}
+	affected := requireSingleAffectedRef(t, got)
+	if affected.Domain != "calendar" || affected.Kind != "event" || affected.ID != "evt-1" || affected.ContainerID != "work" || affected.AccountID == 0 {
+		t.Fatalf("affected = %#v", affected)
 	}
 }
 

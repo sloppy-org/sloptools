@@ -134,6 +134,10 @@ func TestMailToolsActAndFilter(t *testing.T) {
 	if provider.lastAction != "move_to_folder" {
 		t.Fatalf("lastAction = %q", provider.lastAction)
 	}
+	affected := requireSingleAffectedRef(t, acted)
+	if affected.Domain != "mail" || affected.Kind != "message" || affected.ID != "m1" || affected.AccountID != account.ID {
+		t.Fatalf("affected = %#v", affected)
+	}
 	filters, err := s.callTool("mail_server_filter_list", map[string]interface{}{"account_id": account.ID})
 	if err != nil {
 		t.Fatalf("mail_server_filter_list failed: %v", err)

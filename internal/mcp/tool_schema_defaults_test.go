@@ -9,6 +9,27 @@ import (
 	"github.com/sloppy-org/sloptools/internal/surface"
 )
 
+func requireAffectedRefs(t *testing.T, got map[string]interface{}) []affectedRef {
+	t.Helper()
+	affected, ok := got["affected"].([]affectedRef)
+	if !ok {
+		t.Fatalf("affected = %T, want []affectedRef", got["affected"])
+	}
+	if len(affected) == 0 {
+		t.Fatalf("affected is empty: %#v", got)
+	}
+	return affected
+}
+
+func requireSingleAffectedRef(t *testing.T, got map[string]interface{}) affectedRef {
+	t.Helper()
+	affected := requireAffectedRefs(t, got)
+	if len(affected) != 1 {
+		t.Fatalf("len(affected) = %d, want 1: %#v", len(affected), affected)
+	}
+	return affected[0]
+}
+
 func TestMailReadToolDefinitionsAllowSphereDefault(t *testing.T) {
 	defs := toolDefinitions()
 	names := map[string]map[string]interface{}{}

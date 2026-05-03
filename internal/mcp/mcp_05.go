@@ -76,7 +76,10 @@ func (s *Server) mailAction(args map[string]interface{}) (map[string]interface{}
 	for _, logEntry := range logs {
 		_ = st.UpdateMailActionLogResult(logEntry.ID, store.MailActionLogApplied, resolvedByMessageID[strings.TrimSpace(logEntry.MessageID)], "")
 	}
-	return mailActionResult(account, action, messageIDs, applied.Count, untilAt), nil
+	return withAffected(
+		mailActionResult(account, action, messageIDs, applied.Count, untilAt),
+		mailMessageAffectedRefs(account, messageIDs, applied.Resolutions)...,
+	), nil
 }
 
 func resolveMailActionMessageIDs(ctx context.Context, provider email.EmailProvider, args map[string]interface{}) ([]string, error) {
@@ -143,6 +146,49 @@ func mailActionResult(account store.ExternalAccount, action string, messageIDs [
 		result["until"] = untilAt.UTC().Format(time.RFC3339)
 	}
 	return result
+}
+
+func absInt(value int) int {
+	if value < 0 {
+		return -value
+	}
+	return value
+}
+
+func stringListArg(args map[string]interface{}, key string) []string {
+	value, ok := args[key]
+	if !ok {
+		return nil
+	}
+	switch typed := value.(type) {
+	case []string:
+		out := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if clean := strings.TrimSpace(item); clean != "" {
+				out = append(out, clean)
+			}
+		}
+		return out
+	case []interface{}:
+		out := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if clean := strings.TrimSpace(fmt.Sprint(item)); clean != "" && clean != "<nil>" {
+				out = append(out, clean)
+			}
+		}
+		return out
+	case string:
+		parts := strings.Split(typed, ",")
+		out := make([]string, 0, len(parts))
+		for _, part := range parts {
+			if clean := strings.TrimSpace(part); clean != "" {
+				out = append(out, clean)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
 }
 
 func (s *Server) mailMessageCopy(args map[string]interface{}) (map[string]interface{}, error) {

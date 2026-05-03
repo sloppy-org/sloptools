@@ -206,13 +206,23 @@ func (s *Server) brainNoteWrite(args map[string]interface{}) (map[string]interfa
 	if err := os.WriteFile(resolved.Path, []byte(rendered), 0o644); err != nil {
 		return nil, err
 	}
-	return map[string]interface{}{
-		"source":      resolved,
-		"fields":      fields,
-		"diagnostics": diags,
-		"count":       len(diags),
-		"valid":       len(diags) == 0,
-	}, nil
+	return withAffected(
+		map[string]interface{}{
+			"source":      resolved,
+			"fields":      fields,
+			"diagnostics": diags,
+			"count":       len(diags),
+			"valid":       len(diags) == 0,
+		},
+		affectedRef{
+			Domain:   "brain",
+			Kind:     "note",
+			Provider: "markdown",
+			ID:       resolved.Rel,
+			Path:     resolved.Rel,
+			Sphere:   sphere,
+		},
+	), nil
 }
 
 func (s *Server) brainGTDResurface(args map[string]interface{}) (map[string]interface{}, error) {

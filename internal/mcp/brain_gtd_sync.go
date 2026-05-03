@@ -38,8 +38,7 @@ type gtdSyncError struct {
 }
 
 type gtdSyncState struct {
-	Status   string
-	ClosedAt string
+	Status, ClosedAt string
 }
 
 func (s *Server) brainGTDSync(args map[string]interface{}) (map[string]interface{}, error) {
@@ -101,16 +100,19 @@ func (s *Server) brainGTDSync(args map[string]interface{}) (map[string]interface
 			}
 		}
 	}
-	return map[string]interface{}{
-		"sphere":     strArg(args, "sphere"),
-		"periodic":   periodic,
-		"dry_run":    dryRun,
-		"reconciled": reconciled,
-		"drifted":    drifts,
-		"skipped":    skipped,
-		"errors":     syncErrs,
-		"actions":    actions,
-	}, nil
+	return withAffected(
+		map[string]interface{}{
+			"sphere":     strArg(args, "sphere"),
+			"periodic":   periodic,
+			"dry_run":    dryRun,
+			"reconciled": reconciled,
+			"drifted":    drifts,
+			"skipped":    skipped,
+			"errors":     syncErrs,
+			"actions":    actions,
+		},
+		gtdSyncAffectedRefs(strArg(args, "sphere"), actions)...,
+	), nil
 }
 
 func (s *Server) brainGTDSetStatus(args map[string]interface{}) (map[string]interface{}, error) {
@@ -152,13 +154,16 @@ func (s *Server) brainGTDSetStatus(args map[string]interface{}) (map[string]inte
 	if syncErr != nil {
 		return nil, syncErr
 	}
-	return map[string]interface{}{
-		"sphere":        strArg(args, "sphere"),
-		"path":          note.Entry.Path,
-		"status":        status,
-		"local_overlay": commitment.LocalOverlay,
-		"sync":          syncResult,
-	}, nil
+	return withAffected(
+		map[string]interface{}{
+			"sphere":        strArg(args, "sphere"),
+			"path":          note.Entry.Path,
+			"status":        status,
+			"local_overlay": commitment.LocalOverlay,
+			"sync":          syncResult,
+		},
+		brainCommitmentAffectedRef(strArg(args, "sphere"), note.Entry.Path),
+	), nil
 }
 
 func (s *Server) loadSyncNotes(args map[string]interface{}) ([]dedupNote, error) {

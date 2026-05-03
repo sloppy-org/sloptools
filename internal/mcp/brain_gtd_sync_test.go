@@ -42,6 +42,10 @@ func TestBrainGTDSetStatusAutomaticallySyncsCommitment(t *testing.T) {
 	if commitment.LocalOverlay.Status != "closed" || commitment.LocalOverlay.ClosedAt != "2026-04-29T14:00:00Z" {
 		t.Fatalf("local overlay = %#v", commitment.LocalOverlay)
 	}
+	affected := requireSingleAffectedRef(t, got)
+	if affected.Domain != "brain" || affected.Kind != "gtd_commitment" || affected.Path != "brain/gtd/sync.md" || affected.Sphere != "work" {
+		t.Fatalf("affected = %#v", affected)
+	}
 }
 
 func TestBrainGTDSyncRequiresSourcesConfigWriteableOptIn(t *testing.T) {
@@ -88,6 +92,10 @@ func TestBrainGTDSyncPeriodicReadsGitHubAndGitLabBindings(t *testing.T) {
 	if got["reconciled"] != 1 {
 		t.Fatalf("reconciled = %#v, want 1: %#v", got["reconciled"], got)
 	}
+	affected := requireSingleAffectedRef(t, got)
+	if affected.Domain != "brain" || affected.Kind != "gtd_commitment" || affected.Path != "brain/gtd/github.md" || affected.Sphere != "work" {
+		t.Fatalf("affected = %#v", affected)
+	}
 	drifts := got["drifted"].([]gtdSyncDrift)
 	if len(drifts) != 1 || drifts[0].Binding != "gitlab:group/project#8" || drifts[0].Remote != "open" {
 		t.Fatalf("drifted = %#v", drifts)
@@ -118,6 +126,13 @@ func TestBrainGTDSyncPushesIssueBindingsAndManualNoop(t *testing.T) {
 	}
 	if got["reconciled"] != 2 {
 		t.Fatalf("reconciled = %#v, want 2: %#v", got["reconciled"], got)
+	}
+	affected := requireAffectedRefs(t, got)
+	if len(affected) != 2 {
+		t.Fatalf("len(affected) = %d, want 2: %#v", len(affected), affected)
+	}
+	if affected[0].Path != "brain/gtd/github.md" || affected[1].Path != "brain/gtd/gitlab.md" {
+		t.Fatalf("affected paths = %#v", affected)
 	}
 	actions := got["actions"].([]gtdSyncAction)
 	if !hasGTDSyncAction(actions, "manual:local-note", "manual_noop") {

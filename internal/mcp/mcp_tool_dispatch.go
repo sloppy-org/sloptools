@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/sloppy-org/sloptools/internal/email"
+	"github.com/sloppy-org/sloptools/internal/providerdata"
 	"github.com/sloppy-org/sloptools/internal/store"
 )
 
@@ -240,4 +242,247 @@ func accountForTool(st *store.Store, args map[string]interface{}, capability str
 
 func emailCapableProvider(provider string) bool {
 	return store.IsEmailProvider(provider)
+}
+
+func applyToolSchemaDefaults(name string, schema map[string]interface{}) {
+	switch name {
+	case "calendar_events":
+		props, _ := schema["properties"].(map[string]interface{})
+		if props == nil {
+			props = map[string]interface{}{}
+			schema["properties"] = props
+		}
+		props["limit"] = map[string]interface{}{"type": "integer", "description": "Maximum events to return. Use 5-10 for triage/counts; only request more when the user asks for breadth."}
+		props["days"] = map[string]interface{}{"type": "integer", "description": "Days forward from now. Use 7 for upcoming-week summaries."}
+	case "mail_label_list", "mail_message_list", "mail_message_get", "mail_attachment_get", "mail_commitment_list":
+		removeRequired(schema, "account_id")
+		props, _ := schema["properties"].(map[string]interface{})
+		if props == nil {
+			props = map[string]interface{}{}
+			schema["properties"] = props
+		}
+		props["account_id"] = map[string]interface{}{"type": "integer", "description": "Optional external account id. Defaults to the first enabled email account for the sphere."}
+		props["sphere"] = map[string]interface{}{"type": "string", "description": "Optional work/private account filter used when account_id is omitted.", "enum": []string{"work", "private"}}
+		if name == "mail_message_list" {
+			props["folder"] = map[string]interface{}{"type": "string", "description": "Folder or label scope. Use INBOX for recent inbox triage."}
+			props["limit"] = map[string]interface{}{"type": "integer", "description": "Maximum messages to return. Use 5-10 for triage/counts; only request more when the user asks for breadth."}
+			props["include_body"] = map[string]interface{}{"type": "boolean", "description": "Include full message bodies. Defaults to false; prefer mail_message_get for one chosen message."}
+		}
+		if name == "mail_commitment_list" {
+			props["limit"] = map[string]interface{}{"type": "integer", "description": "Maximum messages to inspect. Use 5-10 for triage/counts; only request more when the user asks for breadth."}
+			props["body_limit"] = map[string]interface{}{"type": "integer", "description": "Maximum number of matching messages whose full bodies may be fetched to confirm a commitment. Defaults to 5."}
+			props["project_config"] = map[string]interface{}{"type": "string", "description": "Optional path to per-user project matching rules."}
+			props["vault_config"] = map[string]interface{}{"type": "string", "description": "Optional vault config path used for person-note diagnostics."}
+			props["writeable"] = map[string]interface{}{"type": "boolean", "description": "When true, returned source bindings opt into upstream sync-back."}
+		}
+	case "mail_commitment_close":
+		props, _ := schema["properties"].(map[string]interface{})
+		if props == nil {
+			props = map[string]interface{}{}
+			schema["properties"] = props
+		}
+		props["writeable"] = map[string]interface{}{"type": "boolean", "description": "Must be true, copied from the source binding."}
+		props["action"] = map[string]interface{}{"type": "string", "description": "Mail action to apply. Defaults to archive."}
+	}
+}
+
+func applyToolDefinitionDefaults(name string, def map[string]interface{}) {
+	switch name {
+	case "calendar_events":
+		def["description"] = "List upcoming personal/work groupware calendar events. Compact by default: descriptions and attendee lists are omitted; use sphere plus limit 5-10 for triage/counts."
+	case "mail_message_list":
+		def["description"] = "List newest mail metadata without full bodies by default. Prefer sphere plus folder=INBOX and limit 5-10 for triage/counts; use mail_message_get for one chosen message body."
+	case "mail_commitment_list":
+		def["description"] = "Derive GTD commitments from mail messages without fetching every body. Prefer sphere plus limit 5-10 for triage/counts; use body_limit to bound confirmation fetches."
+	case "mail_commitment_close":
+		def["description"] = "Close a writeable mail-bound commitment by applying an upstream mail action. Requires writeable=true from the source binding."
+	}
+}
+
+func removeRequired(schema map[string]interface{}, field string) {
+	required, _ := schema["required"].([]string)
+	if len(required) == 0 {
+		return
+	}
+	filtered := required[:0]
+	for _, item := range required {
+		if item != field {
+			filtered = append(filtered, item)
+		}
+	}
+	if len(filtered) == 0 {
+		delete(schema, "required")
+		return
+	}
+	schema["required"] = filtered
+}
+
+type affectedRef struct {
+	Domain      string `json:"domain"`
+	Kind        string `json:"kind"`
+	Provider    string `json:"provider,omitempty"`
+	AccountID   int64  `json:"account_id,omitempty"`
+	ID          string `json:"id,omitempty"`
+	PreviousID  string `json:"previous_id,omitempty"`
+	ContainerID string `json:"container_id,omitempty"`
+	Path        string `json:"path,omitempty"`
+	Sphere      string `json:"sphere,omitempty"`
+}
+
+func withAffected(result map[string]interface{}, refs ...affectedRef) map[string]interface{} {
+	compact := compactAffectedRefs(refs...)
+	if len(compact) > 0 {
+		result["affected"] = compact
+	}
+	return result
+}
+
+func compactAffectedRefs(refs ...affectedRef) []affectedRef {
+	out := make([]affectedRef, 0, len(refs))
+	seen := map[string]struct{}{}
+	for _, ref := range refs {
+		ref.Domain = strings.TrimSpace(ref.Domain)
+		ref.Kind = strings.TrimSpace(ref.Kind)
+		ref.Provider = strings.TrimSpace(ref.Provider)
+		ref.ID = strings.TrimSpace(ref.ID)
+		ref.PreviousID = strings.TrimSpace(ref.PreviousID)
+		ref.ContainerID = strings.TrimSpace(ref.ContainerID)
+		ref.Path = strings.TrimSpace(ref.Path)
+		ref.Sphere = strings.TrimSpace(ref.Sphere)
+		if ref.Kind == "" || (ref.ID == "" && ref.Path == "") {
+			continue
+		}
+		key := strings.Join([]string{
+			ref.Domain,
+			ref.Kind,
+			ref.Provider,
+			ref.Sphere,
+			ref.Path,
+			ref.ContainerID,
+			ref.PreviousID,
+			ref.ID,
+		}, "\x00")
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, ref)
+	}
+	return out
+}
+
+func brainCommitmentAffectedRef(sphere, path string) affectedRef {
+	return affectedRef{
+		Domain:   "brain",
+		Kind:     "gtd_commitment",
+		Provider: "markdown",
+		ID:       path,
+		Path:     path,
+		Sphere:   sphere,
+	}
+}
+
+func brainCommitmentAffectedRefs(sphere string, paths []string) []affectedRef {
+	refs := make([]affectedRef, 0, len(paths))
+	for _, path := range paths {
+		refs = append(refs, brainCommitmentAffectedRef(sphere, path))
+	}
+	return compactAffectedRefs(refs...)
+}
+
+func mailMessageAffectedRefs(account store.ExternalAccount, messageIDs []string, resolutions []email.ActionResolution) []affectedRef {
+	refs := make([]affectedRef, 0, len(messageIDs)+len(resolutions))
+	provider := strings.TrimSpace(account.Provider)
+	skipIDs := map[string]struct{}{}
+	for _, resolution := range resolutions {
+		id := strings.TrimSpace(resolution.ResolvedMessageID)
+		if id == "" {
+			id = strings.TrimSpace(resolution.OriginalMessageID)
+		}
+		if id != "" {
+			skipIDs[id] = struct{}{}
+		}
+		if original := strings.TrimSpace(resolution.OriginalMessageID); original != "" {
+			skipIDs[original] = struct{}{}
+		}
+		refs = append(refs, affectedRef{
+			Domain:     "mail",
+			Kind:       "message",
+			Provider:   provider,
+			AccountID:  account.ID,
+			ID:         id,
+			PreviousID: resolution.OriginalMessageID,
+		})
+	}
+	for _, messageID := range messageIDs {
+		if _, ok := skipIDs[strings.TrimSpace(messageID)]; ok {
+			continue
+		}
+		refs = append(refs, affectedRef{
+			Domain:    "mail",
+			Kind:      "message",
+			Provider:  provider,
+			AccountID: account.ID,
+			ID:        messageID,
+		})
+	}
+	return compactAffectedRefs(refs...)
+}
+
+func taskAffectedRef(account store.ExternalAccount, providerName string, item providerdata.TaskItem) affectedRef {
+	id := strings.TrimSpace(item.ID)
+	if id == "" {
+		id = strings.TrimSpace(item.ProviderRef)
+	}
+	return affectedRef{
+		Domain:      "tasks",
+		Kind:        "task",
+		Provider:    strings.TrimSpace(providerName),
+		AccountID:   account.ID,
+		ID:          id,
+		ContainerID: strings.TrimSpace(item.ListID),
+	}
+}
+
+func taskAffectedRefByID(account store.ExternalAccount, providerName, listID, id string) affectedRef {
+	return affectedRef{
+		Domain:      "tasks",
+		Kind:        "task",
+		Provider:    strings.TrimSpace(providerName),
+		AccountID:   account.ID,
+		ID:          strings.TrimSpace(id),
+		ContainerID: strings.TrimSpace(listID),
+	}
+}
+
+func calendarEventAffectedRef(account store.ExternalAccount, providerName, sphere, calendarID, eventID string) affectedRef {
+	return affectedRef{
+		Domain:      "calendar",
+		Kind:        "event",
+		Provider:    strings.TrimSpace(providerName),
+		AccountID:   account.ID,
+		ID:          strings.TrimSpace(eventID),
+		ContainerID: strings.TrimSpace(calendarID),
+		Sphere:      strings.TrimSpace(sphere),
+	}
+}
+
+func calendarEventAffectedRefFromEvent(account store.ExternalAccount, providerName, sphere string, event providerdata.Event) affectedRef {
+	return calendarEventAffectedRef(account, providerName, sphere, event.CalendarID, event.ID)
+}
+
+func gtdSyncAffectedRefs(sphere string, actions []gtdSyncAction) []affectedRef {
+	paths := make([]string, 0, len(actions))
+	for _, action := range actions {
+		path := strings.TrimSpace(action.Path)
+		switch action.Action {
+		case "", "manual_noop", "upstream_already_closed":
+			continue
+		}
+		if path == "" || action.DryRun {
+			continue
+		}
+		paths = append(paths, path)
+	}
+	return brainCommitmentAffectedRefs(sphere, paths)
 }

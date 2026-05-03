@@ -118,12 +118,16 @@ func (s *Server) calendarEventUpdate(args map[string]interface{}) (map[string]in
 	if err != nil {
 		return nil, err
 	}
+	providerName := calendarProviderName(account, provider)
 	sphere := tabcalendar.ResolveCalendarSphere(st, store.ExternalProviderGoogleCalendar, target.ID, target.Name, strArg(args, "sphere"), allAccounts)
-	return map[string]interface{}{
-		"provider": calendarProviderName(account, provider),
-		"updated":  true,
-		"event":    eventPayload(updated, target.Name, sphere, calendarProviderName(account, provider)),
-	}, nil
+	return withAffected(
+		map[string]interface{}{
+			"provider": providerName,
+			"updated":  true,
+			"event":    eventPayload(updated, target.Name, sphere, providerName),
+		},
+		calendarEventAffectedRefFromEvent(account, providerName, sphere, updated),
+	), nil
 }
 
 func (s *Server) calendarEventDelete(args map[string]interface{}) (map[string]interface{}, error) {
@@ -144,6 +148,10 @@ func (s *Server) calendarEventDelete(args map[string]interface{}) (map[string]in
 	if err != nil {
 		return nil, err
 	}
+	allAccounts, err := tabcalendar.GoogleCalendarAccounts(st)
+	if err != nil {
+		return nil, err
+	}
 	mutator, ok := groupware.Supports[tabcalendar.EventMutator](provider)
 	if !ok {
 		return nil, fmt.Errorf("calendar account %q does not support event deletion", account.Label)
@@ -152,14 +160,29 @@ func (s *Server) calendarEventDelete(args map[string]interface{}) (map[string]in
 	if eventID == "" {
 		return nil, fmt.Errorf("event_id is required")
 	}
-	if err := mutator.DeleteEvent(ctx, "", eventID); err != nil {
+	calendars, err := provider.ListCalendars(ctx)
+	if err != nil {
 		return nil, err
 	}
-	return map[string]interface{}{
-		"provider": calendarProviderName(account, provider),
-		"deleted":  true,
-		"id":       eventID,
-	}, nil
+	target, err := tabcalendar.SelectCalendar(calendars, st, allAccounts, strArg(args, "calendar_id"), strArg(args, "sphere"))
+	if err != nil {
+		return nil, err
+	}
+	if err := mutator.DeleteEvent(ctx, target.ID, eventID); err != nil {
+		return nil, err
+	}
+	providerName := calendarProviderName(account, provider)
+	sphere := tabcalendar.ResolveCalendarSphere(st, store.ExternalProviderGoogleCalendar, target.ID, target.Name, strArg(args, "sphere"), allAccounts)
+	return withAffected(
+		map[string]interface{}{
+			"provider":    providerName,
+			"deleted":     true,
+			"id":          eventID,
+			"calendar_id": target.ID,
+			"sphere":      sphere,
+		},
+		calendarEventAffectedRef(account, providerName, sphere, target.ID, eventID),
+	), nil
 }
 
 func (s *Server) calendarEventRespond(args map[string]interface{}) (map[string]interface{}, error) {
@@ -384,13 +407,6 @@ func calendarEventsRange(args map[string]interface{}, now time.Time) (tabcalenda
 	return tabcalendar.TimeRange{Start: start, End: end}, days, nil
 }
 
-func absInt(value int) int {
-	if value < 0 {
-		return -value
-	}
-	return value
-}
-
 func (s *Server) calendarFreeBusy(args map[string]interface{}) (map[string]interface{}, error) {
 	st, err := s.requireStore()
 	if err != nil {
@@ -442,40 +458,4 @@ func (s *Server) calendarFreeBusy(args map[string]interface{}) (map[string]inter
 		})
 	}
 	return map[string]interface{}{"slots": slotMaps}, nil
-}
-
-func stringListArg(args map[string]interface{}, key string) []string {
-	value, ok := args[key]
-	if !ok {
-		return nil
-	}
-	switch typed := value.(type) {
-	case []string:
-		out := make([]string, 0, len(typed))
-		for _, item := range typed {
-			if clean := strings.TrimSpace(item); clean != "" {
-				out = append(out, clean)
-			}
-		}
-		return out
-	case []interface{}:
-		out := make([]string, 0, len(typed))
-		for _, item := range typed {
-			if clean := strings.TrimSpace(fmt.Sprint(item)); clean != "" && clean != "<nil>" {
-				out = append(out, clean)
-			}
-		}
-		return out
-	case string:
-		parts := strings.Split(typed, ",")
-		out := make([]string, 0, len(parts))
-		for _, part := range parts {
-			if clean := strings.TrimSpace(part); clean != "" {
-				out = append(out, clean)
-			}
-		}
-		return out
-	default:
-		return nil
-	}
 }

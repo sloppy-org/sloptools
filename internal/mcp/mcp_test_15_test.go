@@ -15,7 +15,6 @@ func TestBrainLinksResolveToolRejectsGuardrail(t *testing.T) {
 	configPath := writeMCPBrainConfig(t, tmp)
 	secretPath := filepath.Join("personal", "secret.md")
 	writeMCPBrainFile(t, filepath.Join(tmp, "work", secretPath), "secret\n")
-
 	s := NewServer(t.TempDir())
 	_, err := s.callTool("brain.links.resolve", map[string]interface{}{
 		"config_path": configPath,
@@ -212,6 +211,10 @@ Intro prose.
 	if got["valid"] != true {
 		t.Fatalf("valid = %v, want true: %#v", got["valid"], got)
 	}
+	affected := requireSingleAffectedRef(t, got)
+	if affected.Domain != "brain" || affected.Kind != "note" || affected.Path != notePath || affected.Sphere != "work" {
+		t.Fatalf("affected = %#v", affected)
+	}
 	updated, err := os.ReadFile(filepath.Join(tmp, "work", notePath))
 	if err != nil {
 		t.Fatalf("read updated note: %v", err)
@@ -274,6 +277,10 @@ Send the reply.
 	}
 	if got["valid"] != true {
 		t.Fatalf("valid = %v, want true: %#v", got["valid"], got)
+	}
+	affected := requireSingleAffectedRef(t, got)
+	if affected.Domain != "brain" || affected.Kind != "gtd_commitment" || affected.Path != notePath || affected.Sphere != "work" {
+		t.Fatalf("affected = %#v", affected)
 	}
 	updated, err := os.ReadFile(filepath.Join(tmp, "work", notePath))
 	if err != nil {

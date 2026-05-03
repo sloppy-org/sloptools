@@ -212,6 +212,10 @@ func TestCalendarEventCreateUsesPreferredSphereCalendar(t *testing.T) {
 	if stub.lastCalID != "family" {
 		t.Fatalf("CreateEvent calendar = %q, want family", stub.lastCalID)
 	}
+	affected := requireSingleAffectedRef(t, got)
+	if affected.Domain != "calendar" || affected.Kind != "event" || affected.ContainerID != "family" || affected.ID == "" || affected.Sphere != store.SpherePrivate {
+		t.Fatalf("affected = %#v", affected)
+	}
 }
 
 func TestCalendarListRoutesByAccountID(t *testing.T) {

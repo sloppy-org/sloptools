@@ -100,6 +100,10 @@ func TestTaskCreateReturnsPayload(t *testing.T) {
 	if !ok || len(labels) != 2 || labels[0] != "waiting" || labels[1] != "review" {
 		t.Fatalf("labels = %#v", task["labels"])
 	}
+	affected := requireSingleAffectedRef(t, got)
+	if affected.Domain != "tasks" || affected.Kind != "task" || affected.ID != "task-1" || affected.ContainerID != "list-1" || affected.AccountID != account.ID {
+		t.Fatalf("affected = %#v", affected)
+	}
 }
 
 func TestTaskUpdateFullReplace(t *testing.T) {
@@ -152,6 +156,10 @@ func TestTaskUpdateFullReplace(t *testing.T) {
 	if !ok || len(labels) != 2 || labels[0] != "waiting" || labels[1] != "next" {
 		t.Fatalf("labels = %#v", task["labels"])
 	}
+	affected := requireSingleAffectedRef(t, got)
+	if affected.Domain != "tasks" || affected.Kind != "task" || affected.ID != "t-1" || affected.ContainerID != "list-1" || affected.AccountID != account.ID {
+		t.Fatalf("affected = %#v", affected)
+	}
 }
 
 func TestTaskCompleteDefaultsCompletedTrue(t *testing.T) {
@@ -181,6 +189,10 @@ func TestTaskCompleteDefaultsCompletedTrue(t *testing.T) {
 	}
 	if provider.uncompleteCalls != 0 {
 		t.Fatalf("uncompleteCalls = %d, want 0", provider.uncompleteCalls)
+	}
+	affected := requireSingleAffectedRef(t, got)
+	if affected.Domain != "tasks" || affected.Kind != "task" || affected.ID != "t-1" || affected.ContainerID != "list-1" || affected.AccountID != account.ID {
+		t.Fatalf("affected = %#v", affected)
 	}
 }
 

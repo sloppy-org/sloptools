@@ -54,8 +54,12 @@ func (s *Server) calendarEventCreate(args map[string]interface{}) (map[string]in
 	if err != nil {
 		return nil, err
 	}
+	providerName := calendarProviderName(account, provider)
 	sphere := tabcalendar.ResolveCalendarSphere(st, store.ExternalProviderGoogleCalendar, target.ID, target.Name, strArg(args, "sphere"), allAccounts)
-	return map[string]interface{}{"provider": calendarProviderName(account, provider), "created": true, "event": eventPayload(created, target.Name, sphere, calendarProviderName(account, provider))}, nil
+	return withAffected(
+		map[string]interface{}{"provider": providerName, "created": true, "event": eventPayload(created, target.Name, sphere, providerName)},
+		calendarEventAffectedRefFromEvent(account, providerName, sphere, created),
+	), nil
 }
 
 func (s *Server) resolveCalendarAccounts(st *store.Store, args map[ // resolveCalendarAccounts applies account_id / sphere routing. Absent

@@ -325,7 +325,11 @@ func (s *Server) taskCreate(args map[string]interface{}) (map[string]interface{}
 		}
 		return nil, err
 	}
-	return map[string]interface{}{"account_id": account.ID, "provider": provider.ProviderName(), "created": true, "task": taskPayload(created, provider.ProviderName())}, nil
+	providerName := provider.ProviderName()
+	return withAffected(
+		map[string]interface{}{"account_id": account.ID, "provider": providerName, "created": true, "task": taskPayload(created, providerName)},
+		taskAffectedRef(account, providerName, created),
+	), nil
 }
 
 func (s *Server) taskUpdate(args map[string]interface{}) (map[string]interface{}, error) {
@@ -358,7 +362,11 @@ func (s *Server) taskUpdate(args map[string]interface{}) (map[string]interface{}
 		}
 		return nil, err
 	}
-	return map[string]interface{}{"account_id": account.ID, "provider": provider.ProviderName(), "updated": true, "task": taskPayload(updated, provider.ProviderName())}, nil
+	providerName := provider.ProviderName()
+	return withAffected(
+		map[string]interface{}{"account_id": account.ID, "provider": providerName, "updated": true, "task": taskPayload(updated, providerName)},
+		taskAffectedRef(account, providerName, updated),
+	), nil
 }
 
 func (s *Server) taskComplete(args map[string]interface{}) (map[string]interface{}, error) {
@@ -403,7 +411,11 @@ func (s *Server) taskComplete(args map[string]interface{}) (map[string]interface
 			return nil, err
 		}
 	}
-	return map[string]interface{}{"account_id": account.ID, "provider": provider.ProviderName(), "id": id, "list_id": listID, "completed": completed}, nil
+	providerName := provider.ProviderName()
+	return withAffected(
+		map[string]interface{}{"account_id": account.ID, "provider": providerName, "id": id, "list_id": listID, "completed": completed},
+		taskAffectedRefByID(account, providerName, listID, id),
+	), nil
 }
 
 func (s *Server) taskDelete(args map[string]interface{}) (map[string]interface{}, error) {
