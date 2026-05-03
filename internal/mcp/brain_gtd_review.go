@@ -30,6 +30,7 @@ type gtdReviewItem struct {
 	Labels       []string `json:"labels,omitempty"`
 	Actor        string   `json:"actor,omitempty"`
 	Project      string   `json:"project,omitempty"`
+	Track        string   `json:"track,omitempty"`
 	ParentID     string   `json:"parent_id,omitempty"`
 	ExistingPath string   `json:"existing_path,omitempty"`
 }
@@ -235,6 +236,7 @@ func gtdReviewItemFromCommitment(note dedupNote) gtdReviewItem {
 		Labels:   append([]string(nil), c.Labels...),
 		Actor:    firstNonEmpty(c.WaitingFor, c.Actor),
 		Project:  c.Project,
+		Track:    c.EffectiveTrack(),
 	}
 }
 
@@ -257,6 +259,7 @@ func gtdReviewItemFromTask(sphere, providerName string, list providerdata.TaskLi
 		Labels:    append([]string(nil), task.Labels...),
 		Actor:     firstNonEmpty(task.AssigneeName, task.AssigneeID),
 		Project:   firstNonEmpty(list.Name, task.ProjectID, sphere),
+		Track:     braingtd.TrackFromLabels(task.Labels),
 		ParentID:  strings.TrimSpace(task.ParentID),
 	}
 }
@@ -316,6 +319,9 @@ func gtdReviewItemMatches(item gtdReviewItem, args map[string]interface{}) bool 
 	if project := strings.TrimSpace(strArg(args, "project")); project != "" && !strings.EqualFold(item.Project, project) {
 		return false
 	}
+	if track := strings.TrimSpace(strArg(args, "track")); track != "" && !strings.EqualFold(item.Track, track) {
+		return false
+	}
 	return reviewTimeMatches(item.Due, args, "due_after", false) &&
 		reviewTimeMatches(item.Due, args, "due_before", true) &&
 		reviewTimeMatches(item.FollowUp, args, "follow_up_after", false) &&
@@ -359,6 +365,7 @@ func gtdReviewItemFromSourceItem(source providerdata.SourceItem) gtdReviewItem {
 		Labels:    append([]string(nil), source.Labels...),
 		Actor:     firstNonEmpty(strings.Join(source.Assignees, ", "), source.Author),
 		Project:   source.Container,
+		Track:     braingtd.TrackFromLabels(source.Labels),
 	}
 }
 

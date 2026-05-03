@@ -101,6 +101,7 @@ func compactCommitmentForLLM(entry CommitmentEntry) map[string]interface{} {
 		"title":    c.Title,
 		"people":   c.People,
 		"project":  c.Project,
+		"track":    c.EffectiveTrack(),
 		"due":      c.Due,
 		"followup": c.FollowUp,
 		"sources":  compactSourceBindings(c.SourceBindings),

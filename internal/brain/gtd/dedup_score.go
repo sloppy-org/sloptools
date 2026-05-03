@@ -73,7 +73,8 @@ func deterministicScore(a, b Commitment) (float64, string) {
 	}
 	score := 0.55 * jaccard(tokens(normalizedOutcome(a)), tokens(normalizedOutcome(b)))
 	score += 0.15 * overlapScore(a.People, b.People)
-	score += 0.12 * sameStringScore(a.Project, b.Project)
+	score += 0.08 * sameStringScore(a.Project, b.Project)
+	score += 0.04 * sameStringScore(a.EffectiveTrack(), b.EffectiveTrack())
 	score += 0.10 * dateProximityScore(a, b)
 	score += 0.08 * sourceContextScore(a.SourceBindings, b.SourceBindings)
 	return math.Round(score*100) / 100, deterministicReason(score)

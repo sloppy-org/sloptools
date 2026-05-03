@@ -108,3 +108,16 @@ func TestSelectGTDReviewBatchItemsAppliesQueueingAndOrdering(t *testing.T) {
 		t.Fatalf("review batch should exclude done and closed items:\n%s", joined)
 	}
 }
+
+func TestGTDQueryAndFilterMatchTrack(t *testing.T) {
+	item := GTDListItem{Title: "Fix parser", Track: "software-compilers", Labels: []string{"mode/deep"}}
+	if !gtdItemMatchesQuery(item, "software-compilers") {
+		t.Fatal("query should match explicit track")
+	}
+	if !gtdListMatches(item, GTDListFilter{Track: "software-compilers"}) {
+		t.Fatal("filter should match explicit track")
+	}
+	if gtdListMatches(item, GTDListFilter{Track: "research-fusion"}) {
+		t.Fatal("filter should reject different track")
+	}
+}

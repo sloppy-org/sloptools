@@ -19,6 +19,7 @@ type GTDListFilter struct {
 	Status  string `json:"status,omitempty"`
 	Person  string `json:"person,omitempty"`
 	Project string `json:"project,omitempty"`
+	Track   string `json:"track,omitempty"`
 	Source  string `json:"source,omitempty"`
 	Limit   int    `json:"limit,omitempty"`
 }
@@ -29,6 +30,7 @@ type GTDListItem struct {
 	Title      string             `json:"title"`
 	Status     string             `json:"status"`
 	Project    string             `json:"project,omitempty"`
+	Track      string             `json:"track,omitempty"`
 	Actor      string             `json:"actor,omitempty"`
 	WaitingFor string             `json:"waiting_for,omitempty"`
 	Due        string             `json:"due,omitempty"`
@@ -100,6 +102,7 @@ func gtdListItemFromRecord(record GTDRecord) GTDListItem {
 		Title:      title,
 		Status:     gtdListStatus(commitment),
 		Project:    strings.TrimSpace(commitment.Project),
+		Track:      commitment.EffectiveTrack(),
 		Actor:      strings.TrimSpace(commitment.Actor),
 		WaitingFor: strings.TrimSpace(commitment.WaitingFor),
 		Due:        strings.TrimSpace(commitment.Due),
@@ -128,6 +131,9 @@ func gtdListMatches(item GTDListItem, filter GTDListFilter) bool {
 		}
 	}
 	if strings.TrimSpace(filter.Project) != "" && !strings.EqualFold(item.Project, strings.TrimSpace(filter.Project)) {
+		return false
+	}
+	if strings.TrimSpace(filter.Track) != "" && !strings.EqualFold(item.Track, strings.TrimSpace(filter.Track)) {
 		return false
 	}
 	if strings.TrimSpace(filter.Source) != "" {

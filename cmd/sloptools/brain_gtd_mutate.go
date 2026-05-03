@@ -29,6 +29,7 @@ func cmdBrainGTDWrite(args []string) int {
 	actor := fs.String("actor", "", "commitment actor")
 	waitingFor := fs.String("waiting-for", "", "commitment waiting-for")
 	project := fs.String("project", "", "commitment project")
+	track := fs.String("track", "", "commitment track")
 	lastEvidenceAt := fs.String("last-evidence-at", "", "commitment last evidence timestamp")
 	reviewState := fs.String("review-state", "", "commitment review state")
 	people := fs.String("people", "", "comma-separated people")
@@ -106,6 +107,9 @@ func cmdBrainGTDWrite(args []string) int {
 	}
 	if strings.TrimSpace(*project) != "" {
 		updated.Project = strings.TrimSpace(*project)
+	}
+	if strings.TrimSpace(*track) != "" {
+		updated.Track = strings.TrimSpace(*track)
 	}
 	if strings.TrimSpace(*lastEvidenceAt) != "" {
 		updated.LastEvidenceAt = strings.TrimSpace(*lastEvidenceAt)

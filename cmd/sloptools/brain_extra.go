@@ -19,6 +19,7 @@ func cmdBrainGTDList(args []string) int {
 	status := fs.String("status", "", "status filter")
 	person := fs.String("person", "", "person filter")
 	project := fs.String("project", "", "project filter")
+	track := fs.String("track", "", "track filter")
 	source := fs.String("source", "", "source filter")
 	limit := fs.Int("limit", 0, "maximum results")
 	if err := fs.Parse(args); err != nil {
@@ -37,6 +38,7 @@ func cmdBrainGTDList(args []string) int {
 		Status:  *status,
 		Person:  *person,
 		Project: *project,
+		Track:   *track,
 		Source:  *source,
 		Limit:   *limit,
 	})
@@ -50,6 +52,7 @@ func cmdBrainGTDList(args []string) int {
 			"status":  *status,
 			"person":  *person,
 			"project": *project,
+			"track":   *track,
 			"source":  *source,
 			"limit":   *limit,
 		},

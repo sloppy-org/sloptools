@@ -88,6 +88,7 @@ func init() {
 			"status":      {Type: "string", Description: "Optional status filter."},
 			"person":      {Type: "string", Description: "Optional person filter."},
 			"project":     {Type: "string", Description: "Optional project filter."},
+			"track":       {Type: "string", Description: "Optional attention track filter."},
 			"source":      {Type: "string", Description: "Optional source filter."},
 			"limit":       {Type: "integer", Description: "Maximum results to return."},
 		}},
@@ -113,10 +114,11 @@ func init() {
 			"name":        {Type: "string", Description: "Dashboard subject name."},
 			"path":        {Type: "string", Description: "Optional output note path. Defaults to brain/gtd/dashboards/<slug>.md."},
 		}},
-		Tool{Name: "brain.gtd.review_batch", Description: "Generate a Markdown review batch from GTD items selected by deterministic review signals and optional query matching.", Required: []string{"sphere", "q"}, Properties: map[string]ToolProperty{
+		Tool{Name: "brain.gtd.review_batch", Description: "Generate a Markdown review batch from GTD items selected by deterministic review signals and optional query matching.", Required: []string{"sphere"}, Properties: map[string]ToolProperty{
 			"config_path": {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},
 			"sphere":      {Type: "string", Description: "Vault sphere to inspect.", Enum: []string{"work", "private"}},
 			"q":           {Type: "string", Description: "Review query."},
+			"track":       {Type: "string", Description: "Optional attention track filter; also supplies the query when q is omitted."},
 			"path":        {Type: "string", Description: "Optional output note path. Defaults to brain/gtd/reviews/<slug>.md."},
 		}},
 		Tool{Name: "brain.gtd.ingest", Description: "Ingest source notes into GTD commitment notes. For source=meetings, paths can be omitted to walk the configured meetings_root.", Required: []string{"sphere", "source"}, Properties: map[string]ToolProperty{
@@ -179,6 +181,7 @@ func init() {
 			"provider":         {Type: "string", Description: "Optional issue provider override for project_dirs.", Enum: []string{"auto", "github", "gitlab"}},
 			"queue":            {Type: "string", Description: "Optional GTD queue filter.", Enum: []string{"inbox", "next", "waiting", "deferred", "review", "someday", "done"}},
 			"project":          {Type: "string", Description: "Optional project/list/outcome filter."},
+			"track":            {Type: "string", Description: "Optional attention track filter."},
 			"due_before":       {Type: "string", Description: "Optional inclusive due upper bound, RFC3339 or YYYY-MM-DD."},
 			"due_after":        {Type: "string", Description: "Optional inclusive due lower bound, RFC3339 or YYYY-MM-DD."},
 			"follow_up_before": {Type: "string", Description: "Optional inclusive follow-up/start upper bound, RFC3339 or YYYY-MM-DD."},

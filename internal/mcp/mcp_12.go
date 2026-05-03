@@ -340,6 +340,7 @@ func writeCommitmentFrontMatter(note *brain.MarkdownNote, commitment braingtd.Co
 		"actor":            commitment.Actor,
 		"waiting_for":      commitment.WaitingFor,
 		"project":          commitment.Project,
+		"track":            commitment.Track,
 		"last_evidence_at": commitment.LastEvidenceAt,
 		"review_state":     commitment.ReviewState,
 		"people":           commitment.People,
@@ -389,6 +390,9 @@ func overlayCommitment(base braingtd.Commitment, updates map[string]interface{})
 	}
 	if v, ok := stringArgFromMap(updates, "project"); ok {
 		out.Project = v
+	}
+	if v, ok := stringArgFromMap(updates, "track"); ok {
+		out.Track = v
 	}
 	if v, ok := stringArgFromMap(updates, "last_evidence_at"); ok {
 		out.LastEvidenceAt = v

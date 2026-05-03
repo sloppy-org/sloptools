@@ -21,6 +21,7 @@ type Commitment struct {
 	Actor          string          `json:"actor,omitempty" yaml:"actor,omitempty"`
 	WaitingFor     string          `json:"waiting_for,omitempty" yaml:"waiting_for,omitempty"`
 	Project        string          `json:"project,omitempty" yaml:"project,omitempty"`
+	Track          string          `json:"track,omitempty" yaml:"track,omitempty"`
 	LastEvidenceAt string          `json:"last_evidence_at,omitempty" yaml:"last_evidence_at,omitempty"`
 	ReviewState    string          `json:"review_state,omitempty" yaml:"review_state,omitempty"`
 	People         []string        `json:"people,omitempty" yaml:"people,omitempty"`
@@ -108,6 +109,9 @@ func ParseCommitmentMarkdown(src string) (*Commitment, *brain.MarkdownNote, []br
 	}
 	if node, ok := note.FrontMatterField("project"); ok {
 		commitment.Project = frontMatterProject(node)
+	}
+	if node, ok := note.FrontMatterField("track"); ok {
+		commitment.Track = strings.TrimSpace(node.Value)
 	}
 	if node, ok := note.FrontMatterField("last_evidence_at"); ok {
 		commitment.LastEvidenceAt = strings.TrimSpace(node.Value)
@@ -199,6 +203,28 @@ func (c Commitment) DedupHints() []string {
 		out = append(out, title)
 	}
 	return out
+}
+
+func (c Commitment) EffectiveTrack() string {
+	if track := strings.TrimSpace(c.Track); track != "" {
+		return track
+	}
+	return TrackFromLabels(c.Labels)
+}
+
+func TrackFromLabels(labels []string) string {
+	for _, label := range labels {
+		clean := strings.TrimSpace(label)
+		if clean == "" {
+			continue
+		}
+		for _, prefix := range []string{"track/", "track:"} {
+			if rest := strings.TrimSpace(strings.TrimPrefix(clean, prefix)); rest != clean && rest != "" {
+				return rest
+			}
+		}
+	}
+	return ""
 }
 
 func (o LocalOverlay) Empty() bool {

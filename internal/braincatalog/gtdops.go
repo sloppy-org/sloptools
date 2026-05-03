@@ -233,6 +233,9 @@ func buildGTDMarkdown(title, sphere string, grouped map[string][]GTDListItem) st
 			if item.Project != "" {
 				b.WriteString(" project " + item.Project)
 			}
+			if item.Track != "" {
+				b.WriteString(" track " + item.Track)
+			}
 			if item.Actor != "" {
 				b.WriteString(" actor " + item.Actor)
 			}
@@ -250,7 +253,7 @@ func gtdItemMatchesQuery(item GTDListItem, query string) bool {
 	if q == "" {
 		return true
 	}
-	fields := []string{item.Title, item.Path, item.Status, item.Project, item.Actor, item.WaitingFor, item.Due, item.FollowUp}
+	fields := []string{item.Title, item.Path, item.Status, item.Project, item.Track, item.Actor, item.WaitingFor, item.Due, item.FollowUp}
 	for _, field := range fields {
 		if strings.Contains(strings.ToLower(field), q) {
 			return true
@@ -359,6 +362,7 @@ func writeGTDCommitmentFrontMatter(note *brain.MarkdownNote, commitment braingtd
 		"actor":            commitment.Actor,
 		"waiting_for":      commitment.WaitingFor,
 		"project":          commitment.Project,
+		"track":            commitment.Track,
 		"last_evidence_at": commitment.LastEvidenceAt,
 		"review_state":     commitment.ReviewState,
 		"people":           commitment.People,

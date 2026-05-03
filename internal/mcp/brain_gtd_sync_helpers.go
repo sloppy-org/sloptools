@@ -406,13 +406,18 @@ func (s *Server) brainGTDReviewBatch(args map[string]interface{}) (map[string]in
 	if query == "" {
 		query = strings.TrimSpace(strArg(args, "query"))
 	}
+	if track := strings.TrimSpace(strArg(args, "track")); query == "" && track != "" {
+		query = track
+	}
 	if sphere == "" {
 		return nil, errors.New("sphere is required")
 	}
 	if query == "" {
 		return nil, errors.New("q is required")
 	}
-	items, err := braincatalog.ListGTDVault(cfg, brain.Sphere(sphere), braincatalog.GTDListFilter{})
+	items, err := braincatalog.ListGTDVault(cfg, brain.Sphere(sphere), braincatalog.GTDListFilter{
+		Track: strArg(args, "track"),
+	})
 	if err != nil {
 		return nil, err
 	}

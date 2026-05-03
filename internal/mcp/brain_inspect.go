@@ -279,6 +279,7 @@ func (s *Server) brainGTDListVault(args map[string]interface{}) (map[string]inte
 		Status:  strArg(args, "status"),
 		Person:  strArg(args, "person"),
 		Project: strArg(args, "project"),
+		Track:   strArg(args, "track"),
 		Source:  strArg(args, "source"),
 		Limit:   intArg(args, "limit", 0),
 	})
@@ -291,6 +292,7 @@ func (s *Server) brainGTDListVault(args map[string]interface{}) (map[string]inte
 			"status":  strArg(args, "status"),
 			"person":  strArg(args, "person"),
 			"project": strArg(args, "project"),
+			"track":   strArg(args, "track"),
 			"source":  strArg(args, "source"),
 			"limit":   intArg(args, "limit", 0),
 		},

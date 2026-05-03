@@ -9,6 +9,7 @@ func TestParseCommitmentSourceBindingsAndOverlay(t *testing.T) {
 	src := `---
 title: Review W7-X plots
 status: next
+track: research-fusion
 follow_up: 2026-05-01
 due: 2026-05-10
 actor: me
@@ -36,6 +37,9 @@ Free prose.
 	if commitment.Title != "Review W7-X plots" || commitment.Status != "next" {
 		t.Fatalf("unexpected commitment: %#v", commitment)
 	}
+	if commitment.EffectiveTrack() != "research-fusion" {
+		t.Fatalf("track = %q, want research-fusion", commitment.EffectiveTrack())
+	}
 	if len(commitment.SourceBindings) != 1 {
 		t.Fatalf("source bindings = %#v", commitment.SourceBindings)
 	}
@@ -48,6 +52,13 @@ Free prose.
 	}
 	if commitment.LocalOverlay.Status != "closed" || commitment.LocalOverlay.ClosedVia != "sls" {
 		t.Fatalf("overlay = %#v", commitment.LocalOverlay)
+	}
+}
+
+func TestCommitmentEffectiveTrackFallsBackToLabels(t *testing.T) {
+	commitment := Commitment{Labels: []string{"mode/deep", "track/software-compilers"}}
+	if got := commitment.EffectiveTrack(); got != "software-compilers" {
+		t.Fatalf("EffectiveTrack() = %q, want software-compilers", got)
 	}
 }
 
