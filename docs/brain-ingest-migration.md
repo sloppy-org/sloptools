@@ -39,7 +39,7 @@ relevant Go counterpart child issue.
 | entity_candidates.py | #111 | internal/brain/entities | ported |
 | relation_candidates.py | #112 | internal/brain/entities | planned |
 | archive_candidates.py | #113 | internal/brain/folder | planned |
-| derive_monthly_index.py | #114 | internal/brain/people | planned |
+| derive_monthly_index.py | #114 | internal/brain/people | ported |
 | runtime_plan.py | #115 | internal/brain/runtime | planned |
 | final_report.py | #116 | internal/brain/report | planned |
 | stream_opencode_report.py | #117 | internal/brain/report | planned |
@@ -216,9 +216,16 @@ than ingested. Mixes deterministic prefilter with optional Codex review.
 
 ### derive_monthly_index.py — monthly journal index generator (tracked in #114)
 
-Emits `monthly/<YYYY-MM>.md` indexes from entity-note logs.
+Emits `brain/journal/<YYYY-MM>.md` indexes from `## Log` bullets in
+`brain/people`, `brain/projects`, and `brain/topics` notes.
 
-**Status: planned.** Small (≈60 LOC); a thin renderer, low risk.
+| Subcommand | Go MCP verb |
+|---|---|
+| (single command) | `brain.people.monthly_index` |
+
+**Status: ported.** Idempotent: re-runs do not rewrite unchanged pages.
+The Python writes both vaults in one invocation; the Go verb takes a
+required `sphere` so callers iterate explicitly.
 
 ### relation_candidates.py — typed-relation extraction (tracked in #112)
 
@@ -246,11 +253,11 @@ emits equivalent diagnostics natively.
 
 | Bucket | Scripts |
 |---|---|
-| ported (banner + soak ready) | gtd.py, folder_markdown.py, glossary.py, attention.py, entity_candidates.py, validate_outputs.py |
-| planned | folder_review_packet.py, folder_review_queue.py, folder_review_apply.py, folder_quality.py, folder_stability.py, folder_units.py, archive_candidates.py, derive_monthly_index.py, relation_candidates.py, runtime_plan.py, final_report.py, stream_opencode_report.py |
+| ported (banner + soak ready) | gtd.py, folder_markdown.py, glossary.py, attention.py, entity_candidates.py, validate_outputs.py, derive_monthly_index.py |
+| planned | folder_review_packet.py, folder_review_queue.py, folder_review_apply.py, folder_quality.py, folder_stability.py, folder_units.py, archive_candidates.py, relation_candidates.py, runtime_plan.py, final_report.py, stream_opencode_report.py |
 
-Six of eighteen scripts have Go counterparts merged and are ready for the
-deprecation banner step (E10.2 of #60). The remaining twelve are the
+Seven of eighteen scripts have Go counterparts merged and are ready for the
+deprecation banner step (E10.2 of #60). The remaining eleven are the
 brain-ingest review/queue/report pipeline whose Go port has not been
 scoped yet; they remain Python-authoritative for now.
 

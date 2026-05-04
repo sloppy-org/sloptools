@@ -98,6 +98,8 @@ func (s *Server) dispatchBrain(method string, args map[string]interface{}) (map[
 		return s.brainPeopleRender(args)
 	case "brain.people.brief":
 		return s.brainPeopleBrief(args)
+	case "brain.people.monthly_index":
+		return s.brainPeopleMonthlyIndex(args)
 	case "brain.meeting.kickoff":
 		return s.runMeetingKickoff(args)
 	case "brain.search", "brain_search":

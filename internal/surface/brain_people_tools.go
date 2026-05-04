@@ -23,5 +23,10 @@ func init() {
 			"email":          {Type: "string", Description: "Optional override email address used to look up the latest mail thread. Defaults to the person note's email."},
 			"account_id":     {Type: "integer", Description: "Optional mail account id. Defaults to the first enabled email account in the sphere."},
 		}},
+		Tool{Name: "brain.people.monthly_index", Description: "Derive monthly journal index pages from `## Log` bullets in brain/people, brain/projects, and brain/topics notes. Writes brain/journal/<YYYY-MM>.md files; idempotent.", Required: []string{"sphere"}, Properties: map[string]ToolProperty{
+			"config_path": {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},
+			"sphere":      {Type: "string", Description: "Vault sphere to derive indexes for.", Enum: []string{"work", "private"}},
+			"dry_run":     {Type: "boolean", Description: "If true, count writes but do not modify any files."},
+		}},
 	)
 }
