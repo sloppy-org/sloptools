@@ -98,7 +98,7 @@ func selectGTDReviewBatchItemsAt(items []GTDListItem, query string, now time.Tim
 	filtered := make([]GTDListItem, 0, len(items))
 	for _, item := range items {
 		queue, why := gtdReviewBatchQueue(item, now)
-		if queue == "done" || queue == "closed" {
+		if queue == "" || queue == "done" || queue == "closed" {
 			continue
 		}
 		if query != "" && !gtdItemMatchesQuery(item, query) {
@@ -120,6 +120,11 @@ func selectGTDReviewBatchItemsAt(items []GTDListItem, query string, now time.Tim
 	return filtered
 }
 
+// gtdReviewBatchQueue maps a commitment item to the bucket it should occupy
+// in the Friday weekly review batch. An empty queue means "skip this item":
+// delegated commitments whose follow_up date is still in the future (or
+// missing) are not yet ping-worthy per issue #91, so the review batch hides
+// them instead of cluttering the surface.
 func gtdReviewBatchQueue(item GTDListItem, now time.Time) (string, string) {
 	status := strings.ToLower(strings.TrimSpace(item.Status))
 	switch status {
@@ -138,7 +143,7 @@ func gtdReviewBatchQueue(item GTDListItem, now time.Time) (string, string) {
 		if due, ok := parseGTDReviewDate(item.FollowUp); ok && !due.After(now) {
 			return "delegated", "follow_up elapsed"
 		}
-		return "delegated", "status=delegated"
+		return "", "follow_up future"
 	case "someday":
 		return "someday", "status=someday"
 	case "inbox":

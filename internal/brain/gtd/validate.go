@@ -72,6 +72,9 @@ func validateStatus(commitment Commitment) []brain.MarkdownDiagnostic {
 		if commitment.DelegatedTo == "" {
 			diags = append(diags, diagf("delegated commitments require delegated_to"))
 		}
+		if commitment.FollowUp == "" {
+			diags = append(diags, diagf("delegated commitments require follow_up"))
+		}
 	case "deferred":
 		if commitment.FollowUp == "" {
 			diags = append(diags, diagf("deferred commitments require follow_up"))

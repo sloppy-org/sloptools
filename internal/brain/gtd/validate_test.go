@@ -42,6 +42,11 @@ func TestValidateCommitmentRequiresDelegatedTo(t *testing.T) {
 	assertDiagnosticContains(t, result.Diagnostics, "delegated commitments require delegated_to")
 }
 
+func TestValidateCommitmentRequiresDelegatedFollowUp(t *testing.T) {
+	result := ParseAndValidate(commitmentFixture("status: delegated\ndelegated_to: Ada Lovelace\n"))
+	assertDiagnosticContains(t, result.Diagnostics, "delegated commitments require follow_up")
+}
+
 func TestPromoteDelegatedStatusMigratesWaitingWithDelegatedTo(t *testing.T) {
 	c := &Commitment{Status: "waiting", DelegatedTo: "Ada Lovelace", WaitingFor: "Ada Lovelace"}
 	if !c.PromoteDelegatedStatus() {
