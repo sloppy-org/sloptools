@@ -8,6 +8,7 @@ import (
 const (
 	StatusInbox      = "inbox"
 	StatusNext       = "next"
+	StatusInProgress = "in_progress"
 	StatusWaiting    = "waiting"
 	StatusDeferred   = "deferred"
 	StatusSomeday    = "someday"
@@ -104,6 +105,8 @@ func Queue(status, followUp string, now time.Time) string {
 		return StatusReview
 	case StatusNext:
 		return StatusNext
+	case StatusInProgress, "in-progress", "inprogress":
+		return StatusInProgress
 	default:
 		return StatusInbox
 	}
@@ -123,20 +126,22 @@ func QueueRank(queue string) int {
 	switch queue {
 	case StatusInbox:
 		return 0
-	case StatusNext:
+	case StatusInProgress:
 		return 1
-	case StatusWaiting:
+	case StatusNext:
 		return 2
-	case StatusDeferred:
+	case StatusWaiting:
 		return 3
-	case StatusReview:
+	case StatusDeferred:
 		return 4
-	case StatusSomeday:
+	case StatusReview:
 		return 5
-	case StatusDone:
+	case StatusSomeday:
 		return 6
-	default:
+	case StatusDone:
 		return 7
+	default:
+		return 8
 	}
 }
 

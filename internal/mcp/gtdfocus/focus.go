@@ -9,6 +9,7 @@ import (
 
 	"github.com/sloppy-org/sloptools/internal/brain"
 	"github.com/sloppy-org/sloptools/internal/braincatalog"
+	"github.com/sloppy-org/sloptools/pkg/taskgtd"
 )
 
 const (
@@ -37,7 +38,7 @@ type State struct {
 	UpdatedAt string    `json:"updated_at,omitempty"`
 }
 
-func Tracks(cfg *brain.Config, sphere string) (map[string]interface{}, error) {
+func Tracks(cfg *brain.Config, sphere string, tracksCfg *TracksConfig) (map[string]interface{}, error) {
 	if strings.TrimSpace(sphere) == "" {
 		return nil, errors.New("sphere is required")
 	}
@@ -45,20 +46,89 @@ func Tracks(cfg *brain.Config, sphere string) (map[string]interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
+	now := time.Now().UTC()
 	counts := map[string]int{}
+	wip := map[string]int{}
 	for _, item := range items {
-		if track := strings.TrimSpace(item.Track); track != "" {
-			counts[track]++
+		track := strings.TrimSpace(item.Track)
+		if track == "" {
+			continue
+		}
+		counts[track]++
+		if WIPCounts(item.Status, item.FollowUp, now) {
+			wip[track]++
+		}
+	}
+	for _, configured := range tracksCfg.SphereTracks(sphere) {
+		if _, ok := counts[configured.Name]; !ok {
+			counts[configured.Name] = 0
 		}
 	}
 	tracks := make([]map[string]interface{}, 0, len(counts))
 	for track, count := range counts {
-		tracks = append(tracks, map[string]interface{}{"id": track, "label": track, "label_value": "track/" + track, "open_count": count})
+		entry := map[string]interface{}{
+			"id":             track,
+			"label":          track,
+			"label_value":    "track/" + track,
+			"open_count":     count,
+			"open_wip_count": wip[track],
+		}
+		if cfgTrack, ok := tracksCfg.Lookup(sphere, track); ok && cfgTrack.WIPLimit > 0 {
+			entry["wip_limit"] = cfgTrack.WIPLimit
+			entry["wip_status"] = WIPStatus(wip[track], cfgTrack.WIPLimit)
+		}
+		tracks = append(tracks, entry)
 	}
 	sort.Slice(tracks, func(i, j int) bool {
 		return strings.ToLower(tracks[i]["id"].(string)) < strings.ToLower(tracks[j]["id"].(string))
 	})
 	return map[string]interface{}{"sphere": sphere, "tracks": tracks, "count": len(tracks), "canonical": "labels"}, nil
+}
+
+// WIPCounts reports whether a GTD item with the given status and follow-up
+// counts toward work-in-progress. Items count when their effective queue is
+// either "next" or "in_progress"; waiting/deferred (still in the
+// future)/someday/done/review do not. Deferred items whose follow-up has
+// elapsed roll into next via taskgtd.Queue and therefore count.
+func WIPCounts(status, followUp string, now time.Time) bool {
+	queue := taskgtd.Queue(strings.ToLower(strings.TrimSpace(status)), followUp, now)
+	return queue == taskgtd.StatusNext || queue == taskgtd.StatusInProgress
+}
+
+// DashboardWIPRows builds the dashboard's WIP rows for the configured
+// tracks of sphere. Tracks without a positive wip_limit are skipped.
+// Items count toward a track when their effective queue is "next" or
+// "in_progress" (see WIPCounts).
+func DashboardWIPRows(items []braincatalog.GTDListItem, sphere string, tracksCfg *TracksConfig, now time.Time) []braincatalog.DashboardWIPRow {
+	configured := tracksCfg.SphereTracks(sphere)
+	if len(configured) == 0 {
+		return nil
+	}
+	counts := map[string]int{}
+	for _, item := range items {
+		if !WIPCounts(item.Status, item.FollowUp, now) {
+			continue
+		}
+		track := strings.ToLower(strings.TrimSpace(item.Track))
+		if track == "" {
+			continue
+		}
+		counts[track]++
+	}
+	rows := make([]braincatalog.DashboardWIPRow, 0, len(configured))
+	for _, track := range configured {
+		if track.WIPLimit <= 0 {
+			continue
+		}
+		count := counts[track.Name]
+		rows = append(rows, braincatalog.DashboardWIPRow{
+			Track:  track.Name,
+			Limit:  track.WIPLimit,
+			Count:  count,
+			Status: WIPStatus(count, track.WIPLimit),
+		})
+	}
+	return rows
 }
 
 func Focus(st Store, sphere string, args map[string]interface{}) (map[string]interface{}, error) {

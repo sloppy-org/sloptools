@@ -2,8 +2,9 @@ package surface
 
 func init() {
 	MCPTools = append(MCPTools,
-		Tool{Name: "brain.gtd.tracks", Description: "Return canonical GTD attention labels of the form track/<name> for one sphere.", Required: []string{"sphere"}, Properties: map[string]ToolProperty{
-			"sphere": {Type: "string", Description: "Vault sphere: work or private.", Enum: []string{"work", "private"}},
+		Tool{Name: "brain.gtd.tracks", Description: "Return canonical GTD attention labels of the form track/<name> for one sphere, including configured wip_limit and WIP status when gtd.toml provides limits.", Required: []string{"sphere"}, Properties: map[string]ToolProperty{
+			"sphere":     {Type: "string", Description: "Vault sphere: work or private.", Enum: []string{"work", "private"}},
+			"gtd_config": {Type: "string", Description: "Optional GTD config path with per-track wip_limit. Defaults to ~/.config/sloptools/gtd.toml."},
 		}},
 		Tool{Name: "brain.gtd.focus", Description: "Get or update the active GTD attention-label focus stored by sloptools.", Required: []string{"sphere"}, Properties: map[string]ToolProperty{
 			"sphere":         {Type: "string", Description: "Vault sphere: work or private.", Enum: []string{"work", "private"}},

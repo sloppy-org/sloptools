@@ -16,6 +16,7 @@ import (
 	"github.com/sloppy-org/sloptools/internal/brain"
 	braingtd "github.com/sloppy-org/sloptools/internal/brain/gtd"
 	"github.com/sloppy-org/sloptools/internal/braincatalog"
+	"github.com/sloppy-org/sloptools/internal/mcp/gtdfocus"
 	"github.com/sloppy-org/sloptools/internal/store"
 )
 
@@ -341,18 +342,8 @@ func (s *Server) brainGTDOrganize(args map[string]interface{}) (map[string]inter
 	if path == "" {
 		path = filepath.ToSlash(filepath.Join("brain", "gtd", "organize.md"))
 	}
-	resolved, err := brain.ResolveNotePath(cfg, brain.Sphere(sphere), path)
+	resolved, err := writeRenderedGTDNote(cfg, brain.Sphere(sphere), path, braincatalog.BuildGTDIndexMarkdown(items, sphere))
 	if err != nil {
-		return nil, err
-	}
-	if err := os.MkdirAll(filepath.Dir(resolved.Path), 0o755); err != nil {
-		return nil, err
-	}
-	rendered := braincatalog.BuildGTDIndexMarkdown(items, sphere)
-	if err := validateRenderedBrainNote(rendered); err != nil {
-		return nil, err
-	}
-	if err := os.WriteFile(resolved.Path, []byte(rendered), 0o644); err != nil {
 		return nil, err
 	}
 	return map[string]interface{}{"sphere": sphere, "path": resolved.Rel, "count": len(items), "updated": true}, nil
@@ -375,22 +366,17 @@ func (s *Server) brainGTDDashboard(args map[string]interface{}) (map[string]inte
 	if err != nil {
 		return nil, err
 	}
+	tracksCfg, err := s.loadGTDTracksConfig(args)
+	if err != nil {
+		return nil, err
+	}
 	path := strings.TrimSpace(strArg(args, "path"))
 	if path == "" {
 		path = filepath.ToSlash(filepath.Join("brain", "gtd", "dashboards", slugify(name)+".md"))
 	}
-	resolved, err := brain.ResolveNotePath(cfg, brain.Sphere(sphere), path)
+	rendered := braincatalog.BuildGTDDashboardMarkdown(items, sphere, name, gtdfocus.DashboardWIPRows(items, sphere, tracksCfg, time.Now().UTC()))
+	resolved, err := writeRenderedGTDNote(cfg, brain.Sphere(sphere), path, rendered)
 	if err != nil {
-		return nil, err
-	}
-	if err := os.MkdirAll(filepath.Dir(resolved.Path), 0o755); err != nil {
-		return nil, err
-	}
-	rendered := braincatalog.BuildGTDDashboardMarkdown(items, sphere, name)
-	if err := validateRenderedBrainNote(rendered); err != nil {
-		return nil, err
-	}
-	if err := os.WriteFile(resolved.Path, []byte(rendered), 0o644); err != nil {
 		return nil, err
 	}
 	return map[string]interface{}{"sphere": sphere, "name": name, "path": resolved.Rel, "count": len(items), "updated": true}, nil
@@ -425,21 +411,31 @@ func (s *Server) brainGTDReviewBatch(args map[string]interface{}) (map[string]in
 	if path == "" {
 		path = filepath.ToSlash(filepath.Join("brain", "gtd", "reviews", slugify(query)+".md"))
 	}
-	resolved, err := brain.ResolveNotePath(cfg, brain.Sphere(sphere), path)
+	resolved, err := writeRenderedGTDNote(cfg, brain.Sphere(sphere), path, braincatalog.BuildGTDReviewBatchMarkdown(items, sphere, query))
 	if err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(filepath.Dir(resolved.Path), 0o755); err != nil {
-		return nil, err
+	return map[string]interface{}{"sphere": sphere, "q": query, "path": resolved.Rel, "count": len(items), "updated": true}, nil
+}
+
+// writeRenderedGTDNote validates the rendered markdown and writes it to the
+// resolved sphere/path. Callers should already have produced the markdown
+// via the appropriate braincatalog renderer.
+func writeRenderedGTDNote(cfg *brain.Config, sphere brain.Sphere, path, rendered string) (brain.ResolvedPath, error) {
+	resolved, err := brain.ResolveNotePath(cfg, sphere, path)
+	if err != nil {
+		return resolved, err
 	}
-	rendered := braincatalog.BuildGTDReviewBatchMarkdown(items, sphere, query)
+	if err := os.MkdirAll(filepath.Dir(resolved.Path), 0o755); err != nil {
+		return resolved, err
+	}
 	if err := validateRenderedBrainNote(rendered); err != nil {
-		return nil, err
+		return resolved, err
 	}
 	if err := os.WriteFile(resolved.Path, []byte(rendered), 0o644); err != nil {
-		return nil, err
+		return resolved, err
 	}
-	return map[string]interface{}{"sphere": sphere, "q": query, "path": resolved.Rel, "count": len(items), "updated": true}, nil
+	return resolved, nil
 }
 
 func (s *Server) brainGTDIngest(args map[string]interface{}) (map[string]interface{}, error) {

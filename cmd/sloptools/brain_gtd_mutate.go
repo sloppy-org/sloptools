@@ -12,6 +12,7 @@ import (
 	"github.com/sloppy-org/sloptools/internal/brain"
 	braingtd "github.com/sloppy-org/sloptools/internal/brain/gtd"
 	"github.com/sloppy-org/sloptools/internal/braincatalog"
+	"github.com/sloppy-org/sloptools/internal/mcp/gtdfocus"
 )
 
 func cmdBrainGTDWrite(args []string) int {
@@ -298,6 +299,7 @@ func cmdBrainGTDResurface(args []string) int {
 func cmdBrainGTDDashboard(args []string) int {
 	fs := flag.NewFlagSet("brain gtd dashboard", flag.ContinueOnError)
 	configPath := fs.String("config", "", "vault config path")
+	gtdConfig := fs.String("gtd-config", "", "GTD tracks config path")
 	sphere := fs.String("sphere", "", "vault sphere")
 	name := fs.String("name", "", "dashboard subject")
 	path := fs.String("path", "", "output note path")
@@ -313,6 +315,11 @@ func cmdBrainGTDDashboard(args []string) int {
 		return 2
 	}
 	cfg, err := brain.LoadConfig(*configPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	tracksCfg, err := loadGTDTracksConfigForCLI(*gtdConfig)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
@@ -335,7 +342,7 @@ func cmdBrainGTDDashboard(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	rendered := braincatalog.BuildGTDDashboardMarkdown(items, *sphere, *name)
+	rendered := braincatalog.BuildGTDDashboardMarkdown(items, *sphere, *name, gtdfocus.DashboardWIPRows(items, *sphere, tracksCfg, time.Now().UTC()))
 	if err := validateRenderedBrainNote(rendered); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1

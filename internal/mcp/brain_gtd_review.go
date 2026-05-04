@@ -23,7 +23,11 @@ func (s *Server) brainGTDTracks(args map[string]interface{}) (map[string]interfa
 	if err != nil {
 		return nil, err
 	}
-	return gtdfocus.Tracks(cfg, strings.TrimSpace(strArg(args, "sphere")))
+	tracksCfg, err := s.loadGTDTracksConfig(args)
+	if err != nil {
+		return nil, err
+	}
+	return gtdfocus.Tracks(cfg, strings.TrimSpace(strArg(args, "sphere")), tracksCfg)
 }
 
 func (s *Server) brainGTDFocus(args map[string]interface{}) (map[string]interface{}, error) {
@@ -99,12 +103,18 @@ func (s *Server) brainGTDReviewList(args map[string]interface{}) (map[string]int
 	if limit > 0 && len(build.items) > limit {
 		build.items = build.items[:limit]
 	}
+	tracksCfg, err := s.loadGTDTracksConfig(args)
+	if err != nil {
+		return nil, err
+	}
+	overWIP := overWIPTracks(build.items, tracksCfg, strArg(args, "sphere"))
 	return map[string]interface{}{
 		"sphere":             strArg(args, "sphere"),
 		"items":              build.items,
 		"count":              len(build.items),
 		"duplicate_skipped":  build.duplicateCount,
 		"errors":             build.errors,
+		"over_wip":           overWIP,
 		"markdown_canonical": true,
 	}, nil
 }
