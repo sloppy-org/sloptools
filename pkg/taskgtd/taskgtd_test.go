@@ -26,6 +26,15 @@ func TestStatusAndQueue(t *testing.T) {
 	if got := Status(List{}, Task{StartAt: &future}, now); got != StatusDeferred {
 		t.Fatalf("future status = %q, want deferred", got)
 	}
+	if got := Status(List{}, Task{StartAt: &past}, now); got != StatusNext {
+		t.Fatalf("past start status = %q, want next", got)
+	}
+	if got := Status(List{Primary: true}, Task{StartAt: &past}, now); got != StatusInbox {
+		t.Fatalf("past start primary status = %q, want inbox", got)
+	}
+	if got := Status(List{}, Task{StartAt: &now}, now); got != StatusNext {
+		t.Fatalf("equal-now start status = %q, want next", got)
+	}
 	if got := Queue(StatusDeferred, TimeString(&future), now); got != StatusDeferred {
 		t.Fatalf("future queue = %q, want deferred", got)
 	}
