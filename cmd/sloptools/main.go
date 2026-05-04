@@ -63,6 +63,8 @@ func run(args []string) int {
 		return cmdSource(args[1:])
 	case "meetings":
 		return cmdMeetings(args[1:])
+	case "brief":
+		return cmdBrief(args[1:])
 	case "version":
 		return cmdVersion()
 	default:
@@ -74,13 +76,14 @@ func run(args []string) int {
 
 func printHelp() {
 	fmt.Println("sloptools <command> [flags]")
-	fmt.Println("commands: bootstrap server mcp-server brain mail external-account tools source meetings version")
+	fmt.Println("commands: bootstrap server mcp-server brain mail external-account tools source meetings brief version")
 	fmt.Println("brain subcommands: search backlinks gtd folder entities glossary attention links vault")
 	fmt.Println("mail subcommands: send reply")
 	fmt.Println("external-account subcommands: list add update remove")
 	fmt.Println("tools subcommands: list call")
 	fmt.Println("source subcommands: list comment close")
 	fmt.Println("meetings subcommands: watch ingest-once")
+	fmt.Println("brief subcommands: watch tick-once")
 }
 
 type serverConfig struct {
