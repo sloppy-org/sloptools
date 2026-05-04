@@ -45,6 +45,7 @@ func BuildGTDCommitmentMarkdown(commitment braingtd.Commitment) (string, error) 
 	if strings.TrimSpace(commitment.Kind) == "" {
 		commitment.Kind = "commitment"
 	}
+	commitment.PromoteDelegatedStatus()
 	commitment.NormalizeTrackLabel()
 	note, diags := brain.ParseMarkdownNote(buildGTDCommitmentTemplate(commitment), brain.MarkdownParseOptions{})
 	if len(diags) != 0 {
@@ -133,6 +134,11 @@ func gtdReviewBatchQueue(item GTDListItem, now time.Time) (string, string) {
 		return "deferred", "follow_up future"
 	case "waiting":
 		return "waiting", "status=waiting"
+	case "delegated":
+		if due, ok := parseGTDReviewDate(item.FollowUp); ok && !due.After(now) {
+			return "delegated", "follow_up elapsed"
+		}
+		return "delegated", "status=delegated"
 	case "someday":
 		return "someday", "status=someday"
 	case "inbox":
@@ -187,15 +193,16 @@ func groupGTDItems(items []GTDListItem, query string) map[string][]GTDListItem {
 		return strings.ToLower(filtered[i].Title) < strings.ToLower(filtered[j].Title)
 	})
 	grouped := map[string][]GTDListItem{
-		"next":     {},
-		"inbox":    {},
-		"waiting":  {},
-		"review":   {},
-		"deferred": {},
-		"someday":  {},
-		"done":     {},
-		"closed":   {},
-		"other":    {},
+		"next":      {},
+		"inbox":     {},
+		"waiting":   {},
+		"delegated": {},
+		"review":    {},
+		"deferred":  {},
+		"someday":   {},
+		"done":      {},
+		"closed":    {},
+		"other":     {},
 	}
 	for _, item := range filtered {
 		key := normalizeGTDStatus(item.Status)
@@ -232,6 +239,7 @@ func buildGTDMarkdown(title, sphere string, grouped map[string][]GTDListItem, wi
 		{"next", "Next"},
 		{"inbox", "Inbox"},
 		{"waiting", "Waiting"},
+		{"delegated", "Delegated"},
 		{"review", "Review"},
 		{"deferred", "Deferred"},
 		{"someday", "Someday"},
@@ -288,7 +296,7 @@ func gtdItemMatchesQuery(item GTDListItem, query string) bool {
 	if q == "" {
 		return true
 	}
-	fields := []string{item.Title, item.Path, item.Status, item.Project, item.Track, item.Actor, item.WaitingFor, item.Due, item.FollowUp}
+	fields := []string{item.Title, item.Path, item.Status, item.Project, item.Track, item.Actor, item.WaitingFor, item.DelegatedTo, item.Due, item.FollowUp}
 	for _, field := range fields {
 		if strings.Contains(strings.ToLower(field), q) {
 			return true
@@ -309,7 +317,7 @@ func gtdItemMatchesQuery(item GTDListItem, query string) bool {
 
 func normalizeGTDStatus(status string) string {
 	switch strings.ToLower(strings.TrimSpace(status)) {
-	case "inbox", "in_progress", "next", "waiting", "review", "deferred", "someday", "done", "closed":
+	case "inbox", "in_progress", "next", "waiting", "delegated", "review", "deferred", "someday", "done", "closed":
 		return strings.ToLower(strings.TrimSpace(status))
 	default:
 		return "other"
@@ -326,18 +334,20 @@ func gtdStatusRank(status string) int {
 		return 2
 	case "waiting":
 		return 3
-	case "review":
+	case "delegated":
 		return 4
-	case "deferred":
+	case "review":
 		return 5
-	case "someday":
+	case "deferred":
 		return 6
-	case "done":
+	case "someday":
 		return 7
-	case "closed":
+	case "done":
 		return 8
-	default:
+	case "closed":
 		return 9
+	default:
+		return 10
 	}
 }
 
@@ -400,6 +410,7 @@ func writeGTDCommitmentFrontMatter(note *brain.MarkdownNote, commitment braingtd
 		"due":              commitment.Due,
 		"actor":            commitment.Actor,
 		"waiting_for":      commitment.WaitingFor,
+		"delegated_to":     commitment.DelegatedTo,
 		"project":          commitment.Project,
 		"last_evidence_at": commitment.LastEvidenceAt,
 		"review_state":     commitment.ReviewState,

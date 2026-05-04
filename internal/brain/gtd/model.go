@@ -9,18 +9,19 @@ import (
 )
 
 type Commitment struct {
-	Title      string `json:"title,omitempty" yaml:"title,omitempty"`
-	Kind       string `json:"kind,omitempty" yaml:"kind,omitempty"`
-	Sphere     string `json:"sphere,omitempty" yaml:"sphere,omitempty"`
-	Status     string `json:"status,omitempty" yaml:"status,omitempty"`
-	Outcome    string `json:"outcome,omitempty" yaml:"outcome,omitempty"`
-	NextAction string `json:"next_action,omitempty" yaml:"next_action,omitempty"`
-	Context    string `json:"context,omitempty" yaml:"context,omitempty"`
-	FollowUp   string `json:"follow_up,omitempty" yaml:"follow_up,omitempty"`
-	Due        string `json:"due,omitempty" yaml:"due,omitempty"`
-	Actor      string `json:"actor,omitempty" yaml:"actor,omitempty"`
-	WaitingFor string `json:"waiting_for,omitempty" yaml:"waiting_for,omitempty"`
-	Project    string `json:"project,omitempty" yaml:"project,omitempty"`
+	Title       string `json:"title,omitempty" yaml:"title,omitempty"`
+	Kind        string `json:"kind,omitempty" yaml:"kind,omitempty"`
+	Sphere      string `json:"sphere,omitempty" yaml:"sphere,omitempty"`
+	Status      string `json:"status,omitempty" yaml:"status,omitempty"`
+	Outcome     string `json:"outcome,omitempty" yaml:"outcome,omitempty"`
+	NextAction  string `json:"next_action,omitempty" yaml:"next_action,omitempty"`
+	Context     string `json:"context,omitempty" yaml:"context,omitempty"`
+	FollowUp    string `json:"follow_up,omitempty" yaml:"follow_up,omitempty"`
+	Due         string `json:"due,omitempty" yaml:"due,omitempty"`
+	Actor       string `json:"actor,omitempty" yaml:"actor,omitempty"`
+	WaitingFor  string `json:"waiting_for,omitempty" yaml:"waiting_for,omitempty"`
+	DelegatedTo string `json:"delegated_to,omitempty" yaml:"delegated_to,omitempty"`
+	Project     string `json:"project,omitempty" yaml:"project,omitempty"`
 	// Track is a derived compatibility field. Canonical storage is the
 	// labels entry track/<name>; legacy track front matter is read only so
 	// old notes can be normalized without losing information.
@@ -109,6 +110,9 @@ func ParseCommitmentMarkdown(src string) (*Commitment, *brain.MarkdownNote, []br
 	}
 	if node, ok := note.FrontMatterField("waiting_for"); ok {
 		commitment.WaitingFor = strings.TrimSpace(node.Value)
+	}
+	if node, ok := note.FrontMatterField("delegated_to"); ok {
+		commitment.DelegatedTo = strings.TrimSpace(node.Value)
 	}
 	if node, ok := note.FrontMatterField("project"); ok {
 		commitment.Project = frontMatterProject(node)
@@ -237,6 +241,25 @@ func TrackFromLabels(labels []string) string {
 		}
 	}
 	return ""
+}
+
+// PromoteDelegatedStatus migrates legacy commitments that combined a `waiting`
+// status with a `delegated_to` person into the first-class `delegated` status
+// per the Manager's-Path convention. Returns true when the commitment was
+// updated. Safe to call repeatedly; only acts on `waiting` + non-empty
+// `delegated_to`.
+func (c *Commitment) PromoteDelegatedStatus() bool {
+	if c == nil {
+		return false
+	}
+	if strings.TrimSpace(c.DelegatedTo) == "" {
+		return false
+	}
+	if !strings.EqualFold(strings.TrimSpace(c.Status), "waiting") {
+		return false
+	}
+	c.Status = "delegated"
+	return true
 }
 
 func (c *Commitment) NormalizeTrackLabel() {

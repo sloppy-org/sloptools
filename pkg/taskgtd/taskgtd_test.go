@@ -38,6 +38,18 @@ func TestStatusAndQueue(t *testing.T) {
 	if got := Status(List{}, Task{Labels: []string{"waiting-for"}}, now); got != StatusWaiting {
 		t.Fatalf("waiting label status = %q, want waiting", got)
 	}
+	if got := Status(List{}, Task{Labels: []string{"delegated"}}, now); got != StatusDelegated {
+		t.Fatalf("delegated label status = %q, want delegated", got)
+	}
+	if got := Queue(StatusDelegated, "", now); got != StatusDelegated {
+		t.Fatalf("delegated queue = %q, want delegated", got)
+	}
+	if got := Queue("delegated_to", "", now); got != StatusDelegated {
+		t.Fatalf("delegated_to alias queue = %q, want delegated", got)
+	}
+	if got := QueueRank(StatusDelegated); got <= QueueRank(StatusWaiting) || got >= QueueRank(StatusDeferred) {
+		t.Fatalf("delegated rank %d should sort between waiting %d and deferred %d", got, QueueRank(StatusWaiting), QueueRank(StatusDeferred))
+	}
 	if got := Queue(StatusInProgress, "", now); got != StatusInProgress {
 		t.Fatalf("in_progress queue = %q, want in_progress", got)
 	}

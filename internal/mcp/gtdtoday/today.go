@@ -275,16 +275,18 @@ func queueRank(queue string) int {
 		return 1
 	case "waiting":
 		return 2
-	case "review":
+	case "delegated":
 		return 3
-	case "deferred":
+	case "review":
 		return 4
-	case "someday":
+	case "deferred":
 		return 5
-	case "done", "closed":
+	case "someday":
 		return 6
-	default:
+	case "done", "closed":
 		return 7
+	default:
+		return 8
 	}
 }
 

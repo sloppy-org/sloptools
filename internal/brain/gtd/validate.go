@@ -15,7 +15,7 @@ type ValidationResult struct {
 
 var (
 	datePattern      = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}$`)
-	validStatuses    = set("inbox", "next", "in_progress", "waiting", "deferred", "someday", "maybe_stale", "closed", "done", "dropped")
+	validStatuses    = set("inbox", "next", "in_progress", "waiting", "delegated", "deferred", "someday", "maybe_stale", "closed", "done", "dropped")
 	validSpheres     = set("work", "private")
 	validReviewState = set("", "ok", "needs_human", "blocked_credentials", "needs_evidence")
 	requiredSections = []string{"Summary", "Next Action", "Evidence", "Linked Items", "Review Notes"}
@@ -67,6 +67,10 @@ func validateStatus(commitment Commitment) []brain.MarkdownDiagnostic {
 	case "waiting":
 		if commitment.WaitingFor == "" {
 			diags = append(diags, diagf("waiting commitments require waiting_for"))
+		}
+	case "delegated":
+		if commitment.DelegatedTo == "" {
+			diags = append(diags, diagf("delegated commitments require delegated_to"))
 		}
 	case "deferred":
 		if commitment.FollowUp == "" {

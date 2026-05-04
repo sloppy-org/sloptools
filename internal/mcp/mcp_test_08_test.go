@@ -287,3 +287,69 @@ func TestContactDispatchUnknownToolRouteFailsGracefully(t *testing.T) {
 		t.Fatalf("error = %v, want mention of contact_unknown", err)
 	}
 }
+
+// TestBrainGTDReviewListSurfacesDelegatedBucket verifies that markdown
+// commitments with the first-class `delegated` status surface in the
+// `delegated` queue (separate from `waiting`) and that the new
+// `queue_counts` map exposes the bucket count for downstream review tools.
+// Surfaced from issue #91 (Manager's-Path delegation).
+func TestBrainGTDReviewListSurfacesDelegatedBucket(t *testing.T) {
+	tmp := t.TempDir()
+	configPath := writeMCPBrainConfig(t, tmp)
+	writeMCPBrainFile(t, filepath.Join(tmp, "work", "brain", "gtd", "delegate.md"), `---
+kind: commitment
+sphere: work
+title: Hand off CI rollout
+status: delegated
+context: meeting
+outcome: Hand off CI rollout
+delegated_to: Ada Lovelace
+follow_up: 2026-05-15
+source_bindings:
+  - provider: meetings
+    ref: 2026-05-01-standup
+---
+# Hand off CI rollout
+
+## Summary
+Owned by Ada from this Friday.
+
+## Next Action
+- [ ] Ada drives rollout.
+
+## Evidence
+- meetings:2026-05-01-standup
+
+## Linked Items
+- None.
+
+## Review Notes
+- None.
+`)
+	s := NewServer(t.TempDir())
+	got, err := s.callTool("brain.gtd.review_list", map[string]interface{}{"config_path": configPath, "sphere": "work"})
+	if err != nil {
+		t.Fatalf("brain.gtd.review_list: %v", err)
+	}
+	counts, _ := got["queue_counts"].(map[string]int)
+	if counts["delegated"] != 1 {
+		t.Fatalf("delegated bucket = %d, want 1: %#v", counts["delegated"], counts)
+	}
+	if counts["waiting"] != 0 {
+		t.Fatalf("waiting bucket = %d, want 0; delegated must not double-count: %#v", counts["waiting"], counts)
+	}
+	items, _ := got["items"].([]gtdReviewItem)
+	if len(items) != 1 {
+		t.Fatalf("items = %#v, want exactly the delegated commitment", items)
+	}
+	delegated := items[0]
+	if delegated.Queue != "delegated" || delegated.Status != "delegated" {
+		t.Fatalf("delegated item queue/status = %q/%q", delegated.Queue, delegated.Status)
+	}
+	if delegated.DelegatedTo != "Ada Lovelace" || delegated.Actor != "Ada Lovelace" {
+		t.Fatalf("delegated item person fields = delegated_to=%q actor=%q", delegated.DelegatedTo, delegated.Actor)
+	}
+	if delegated.FollowUp != "2026-05-15" {
+		t.Fatalf("delegated follow_up = %q, want 2026-05-15", delegated.FollowUp)
+	}
+}

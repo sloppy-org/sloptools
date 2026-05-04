@@ -190,6 +190,7 @@ func (s *Server) brainGTDWrite(args map[string]interface{}) (map[string]interfac
 	if err != nil {
 		return nil, err
 	}
+	updated.PromoteDelegatedStatus()
 	if readErr == nil {
 		if err := writeCommitmentFrontMatter(note, updated); err != nil {
 			return nil, err
@@ -347,6 +348,7 @@ func writeCommitmentFrontMatter(note *brain.MarkdownNote, commitment braingtd.Co
 		"due":              commitment.Due,
 		"actor":            commitment.Actor,
 		"waiting_for":      commitment.WaitingFor,
+		"delegated_to":     commitment.DelegatedTo,
 		"project":          commitment.Project,
 		"last_evidence_at": commitment.LastEvidenceAt,
 		"review_state":     commitment.ReviewState,
@@ -394,6 +396,9 @@ func overlayCommitment(base braingtd.Commitment, updates map[string]interface{})
 	}
 	if v, ok := stringArgFromMap(updates, "waiting_for"); ok {
 		out.WaitingFor = v
+	}
+	if v, ok := stringArgFromMap(updates, "delegated_to"); ok {
+		out.DelegatedTo = v
 	}
 	if v, ok := stringArgFromMap(updates, "project"); ok {
 		out.Project = v
