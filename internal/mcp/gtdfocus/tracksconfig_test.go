@@ -118,7 +118,7 @@ wip_limit = 2
 		{Title: "D", Status: "waiting", Track: "research"},
 		{Title: "E", Status: "deferred", Track: "research", FollowUp: "2099-01-01"},
 		{Title: "F", Status: "deferred", Track: "research", FollowUp: "2026-01-01"},
-		{Title: "G", Status: "next", Track: "teaching"},      // teaching has no limit, ignored
+		{Title: "G", Status: "next", Track: "teaching"}, // teaching has no limit, ignored
 		{Title: "H", Status: "in_progress", Track: "teaching"},
 	}
 	rows := DashboardWIPRows(items, "work", cfg, now)
