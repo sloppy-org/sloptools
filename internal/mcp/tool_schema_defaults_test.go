@@ -1,11 +1,18 @@
 package mcp
 
 import (
+	"context"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/sloppy-org/sloptools/internal/email"
+	"github.com/sloppy-org/sloptools/internal/mcp/peoplebrief"
+	"github.com/sloppy-org/sloptools/internal/providerdata"
+	"github.com/sloppy-org/sloptools/internal/store"
 	"github.com/sloppy-org/sloptools/internal/surface"
 )
 
@@ -176,6 +183,81 @@ func TestTaskMutationSurfaceExposesSourceMetadata(t *testing.T) {
 				t.Fatalf("%s missing property %s", name, prop)
 			}
 		}
+	}
+}
+
+func TestBrainPeopleBriefDispatchSurfacesAllFourDataSources(t *testing.T) {
+	tmp := t.TempDir()
+	configPath := writeMCPBrainConfig(t, tmp)
+	writePersonNote(t, tmp, "Ada Example", `---
+kind: human
+sphere: work
+role: collaborator
+supervision_role: postdoc co-advisor
+focus: active
+cadence: monthly
+last_seen: 2026-04-15
+affiliation: Example Lab
+email: ada@example.com
+---
+
+# Ada Example
+
+## Recent context
+
+- 2026-04-22: Reviewed plasma outline.
+- 2026-03-10: Aligned on funding wording.
+- 2026-02-01: Initial scoping call.
+`)
+	writePeopleCommitment(t, tmp, "wait.md", "waiting", "Waiting on Ada", "Ada Example", []string{"Ada Example"}, "", "")
+	writeMCPBrainFile(t, filepath.Join(tmp, "work", "brain", "meetings", "2026-04-29-standup.md"), `---
+kind: meeting
+title: Standup
+date: 2026-04-29
+---
+
+# Standup
+
+- [[people/Ada Example]]
+`)
+
+	s, st, _ := newDomainServerForTest(t)
+	s.brainConfigPath = configPath
+	account, err := st.CreateExternalAccount(store.SphereWork, store.ExternalProviderExchangeEWS, "Work Mail", map[string]any{})
+	if err != nil {
+		t.Fatalf("CreateExternalAccount: %v", err)
+	}
+	when := time.Date(2026, time.April, 28, 14, 30, 0, 0, time.UTC)
+	provider := &fakeMailProvider{
+		listIDs:  []string{"m1"},
+		messages: map[string]*providerdata.EmailMessage{"m1": {ID: "m1", Subject: "Latest", Sender: "Ada <ada@example.com>", Date: when, Folder: "INBOX"}},
+	}
+	s.newEmailProvider = func(context.Context, store.ExternalAccount) (email.EmailProvider, error) { return provider, nil }
+
+	got, err := s.callTool("brain.people.brief", map[string]interface{}{
+		"config_path": configPath, "sphere": "work", "name": "Ada Example", "account_id": account.ID,
+	})
+	if err != nil {
+		t.Fatalf("brain.people.brief: %v", err)
+	}
+	if got["person"] != "Ada Example" || got["person_path"] != "brain/people/Ada Example.md" {
+		t.Fatalf("person = %#v / %#v", got["person"], got["person_path"])
+	}
+	if fm, _ := got["frontmatter"].(map[string]interface{}); fm["supervision_role"] != "postdoc co-advisor" {
+		t.Fatalf("frontmatter = %#v", fm)
+	}
+	if bullets, _ := got["status_bullets"].([]peoplebrief.StatusBullet); len(bullets) != 3 || bullets[0].Date != "2026-04-22" {
+		t.Fatalf("status_bullets = %#v", bullets)
+	}
+	loops, _ := got["open_loops"].(map[string][]peoplebrief.OpenLoop)
+	if len(loops["waiting"]) != 1 || loops["waiting"][0].Path != "brain/gtd/wait.md" {
+		t.Fatalf("open_loops[waiting] = %#v", loops["waiting"])
+	}
+	if meeting, _ := got["latest_meeting"].(*peoplebrief.Meeting); meeting == nil || meeting.Path != "brain/meetings/2026-04-29-standup.md" {
+		t.Fatalf("latest_meeting = %#v", got["latest_meeting"])
+	}
+	if mail, _ := got["latest_mail"].(*peoplebrief.Mail); mail == nil || mail.MessageID != "m1" || mail.AccountID != account.ID {
+		t.Fatalf("latest_mail = %#v", got["latest_mail"])
 	}
 }
 

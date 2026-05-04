@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -8,11 +9,10 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/sloppy-org/sloptools/internal/brain"
 	braingtd "github.com/sloppy-org/sloptools/internal/brain/gtd"
-	"golang.org/x/text/unicode/norm"
+	"github.com/sloppy-org/sloptools/internal/mcp/peoplebrief"
 )
 
 const currentOpenLoopsHeading = "Current open loops"
@@ -47,6 +47,76 @@ func (s *Server) brainPeopleDashboard(args map[string]interface{}) (map[string]i
 		"i_owe_them":      dashboard["i_owe_them"],
 		"recently_closed": dashboard["recently_closed"],
 	}, nil
+}
+
+func (s *Server) brainPeopleBrief(args map[string]interface{}) (map[string]interface{}, error) {
+	cfg, err := brain.LoadConfig(s.brainConfigArg(args))
+	if err != nil {
+		return nil, err
+	}
+	sphere := strings.TrimSpace(strArg(args, "sphere"))
+	if sphere == "" {
+		return nil, errors.New("sphere is required")
+	}
+	vault, ok := cfg.Vault(brain.Sphere(sphere))
+	if !ok {
+		return nil, fmt.Errorf("unknown vault %q", sphere)
+	}
+	person, err := resolvePersonNote(vault, strArg(args, "name"))
+	if err != nil {
+		return nil, err
+	}
+	src, err := os.ReadFile(person.Path)
+	if err != nil {
+		return nil, err
+	}
+	note, _ := brain.ParseMarkdownNote(string(src), brain.MarkdownParseOptions{})
+	notes, err := readDedupNotes(vault)
+	if err != nil {
+		return nil, err
+	}
+	commitments := make([]peoplebrief.Commitment, 0, len(notes))
+	for _, n := range notes {
+		commitments = append(commitments, peoplebrief.CommitmentFromCommitment(n.Entry.Path, n.Entry.Commitment, commitmentClosed(n.Entry.Commitment)))
+	}
+	meeting, err := peoplebrief.LatestMeetingNote(vault.Root, vault.BrainRoot(), person.Name)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]interface{}{
+		"sphere":         sphere,
+		"person":         person.Name,
+		"person_path":    person.Rel,
+		"frontmatter":    peoplebrief.Frontmatter(note),
+		"status_bullets": peoplebrief.StatusBullets(note, strArg(args, "status_section"), intArg(args, "status_limit", peoplebrief.DefaultStatusLimit)),
+		"open_loops":     peoplebrief.ClassifyOpenLoops(commitments, person.Name),
+	}
+	if meeting != nil {
+		out["latest_meeting"] = meeting
+	}
+	personEmail := strArg(args, "email")
+	if personEmail == "" {
+		personEmail = peoplebrief.PersonEmail(note, string(src))
+	}
+	if personEmail == "" {
+		out["diagnostics"] = []string{"no email address available for person"}
+		return out, nil
+	}
+	account, provider, err := s.mailProviderForTool(args)
+	if err != nil {
+		out["diagnostics"] = []string{"mail lookup unavailable: " + err.Error()}
+		return out, nil
+	}
+	defer provider.Close()
+	mail, err := peoplebrief.LatestPersonMail(context.Background(), provider, account.ID, personEmail)
+	if err != nil {
+		out["diagnostics"] = []string{"mail lookup failed: " + err.Error()}
+		return out, nil
+	}
+	if mail != nil {
+		out["latest_mail"] = mail
+	}
+	return out, nil
 }
 
 func (s *Server) brainPeopleRender(args map[string]interface{}) (map[string]interface{}, error) {
@@ -103,8 +173,8 @@ func aggregatePersonLoops(notes []dedupNote, person string, recentLimit int, now
 	for _, note := range notes {
 		commitment := note.Entry.Commitment
 		status := effectiveCommitmentStatus(commitment)
-		waitingForPerson := personFieldMatches(commitment.WaitingFor, person)
-		peopleIncludePerson := peopleFieldMatches(commitment.People, person)
+		waitingForPerson := peoplebrief.PersonFieldMatches(commitment.WaitingFor, person)
+		peopleIncludePerson := peoplebrief.PeopleFieldMatches(commitment.People, person)
 		touchesPerson := waitingForPerson || peopleIncludePerson
 		switch {
 		case (status == "waiting" || status == "deferred") && waitingForPerson:
@@ -245,7 +315,7 @@ func isNeedsPersonNote(err error) bool {
 }
 
 func matchingPersonNotes(entries []os.DirEntry, query string) []string {
-	normalizedQuery := normalizePersonName(query)
+	normalizedQuery := peoplebrief.NormalizePersonName(query)
 	var exact []string
 	var token []string
 	for _, entry := range entries {
@@ -253,12 +323,12 @@ func matchingPersonNotes(entries []os.DirEntry, query string) []string {
 			continue
 		}
 		name := strings.TrimSuffix(entry.Name(), ".md")
-		normalizedName := normalizePersonName(name)
+		normalizedName := peoplebrief.NormalizePersonName(name)
 		if normalizedName == normalizedQuery {
 			exact = append(exact, name)
 			continue
 		}
-		if singleToken(normalizedQuery) && nameContainsToken(normalizedName, normalizedQuery) {
+		if peoplebrief.SingleToken(normalizedQuery) && peoplebrief.NameContainsToken(normalizedName, normalizedQuery) {
 			token = append(token, name)
 		}
 	}
@@ -268,72 +338,6 @@ func matchingPersonNotes(entries []os.DirEntry, query string) []string {
 	}
 	sort.Strings(token)
 	return token
-}
-
-func normalizePersonName(name string) string {
-	folded := asciiFold(stripParenthetical(name))
-	return strings.ToLower(strings.Join(strings.Fields(folded), " "))
-}
-
-func asciiFold(value string) string {
-	var b strings.Builder
-	for _, r := range norm.NFD.String(value) {
-		if unicode.Is(unicode.Mn, r) {
-			continue
-		}
-		if r < 128 {
-			b.WriteRune(r)
-		}
-	}
-	return b.String()
-}
-
-func stripParenthetical(value string) string {
-	var b strings.Builder
-	depth := 0
-	for _, r := range value {
-		switch r {
-		case '(':
-			depth++
-		case ')':
-			if depth > 0 {
-				depth--
-			}
-		default:
-			if depth == 0 {
-				b.WriteRune(r)
-			}
-		}
-	}
-	return b.String()
-}
-
-func singleToken(value string) bool {
-	return value != "" && !strings.Contains(value, " ")
-}
-
-func nameContainsToken(name, token string) bool {
-	for _, field := range strings.Fields(name) {
-		if field == token {
-			return true
-		}
-	}
-	return false
-}
-
-func personFieldMatches(value, person string) bool {
-	clean := normalizePersonName(value)
-	canonical := normalizePersonName(person)
-	return clean != "" && (clean == canonical || (singleToken(clean) && nameContainsToken(canonical, clean)))
-}
-
-func peopleFieldMatches(values []string, person string) bool {
-	for _, value := range values {
-		if personFieldMatches(value, person) {
-			return true
-		}
-	}
-	return false
 }
 
 func effectiveCommitmentStatus(commitment braingtd.Commitment) string {

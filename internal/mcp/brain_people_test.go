@@ -33,6 +33,7 @@ func TestBrainSurfaceExportsLockedMutatingTools(t *testing.T) {
 		"brain.gtd.dashboard",
 		"brain.gtd.review_batch",
 		"brain.gtd.ingest",
+		"brain.people.brief",
 	}
 	names := make(map[string]bool, len(surface.MCPTools))
 	for _, tool := range surface.MCPTools {
