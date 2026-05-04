@@ -25,81 +25,8 @@ func TestNewClientRejectsMissingCredentials(t *testing.T) {
 func TestMessagesRequestsCorrectURLAndDecodesPayload(t *testing.T) {
 	cutoff := time.Date(2026, 5, 4, 9, 0, 0, 0, time.UTC)
 	after := cutoff.Add(-24 * time.Hour)
-	insideTopic := time.Date(2026, 5, 3, 18, 0, 0, 0, time.UTC)
-	beforeWindow := time.Date(2026, 5, 2, 18, 0, 0, 0, time.UTC)
-	afterWindow := time.Date(2026, 5, 4, 12, 0, 0, 0, time.UTC)
-	differentTopic := time.Date(2026, 5, 4, 7, 0, 0, 0, time.UTC)
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/messages" {
-			t.Fatalf("path = %q", r.URL.Path)
-		}
-		user, key, ok := r.BasicAuth()
-		if !ok || user != "bot@example.org" || key != "secret" {
-			t.Fatalf("auth = %v %q %q", ok, user, key)
-		}
-		query := r.URL.Query()
-		if query.Get("anchor") != "newest" {
-			t.Fatalf("anchor = %q", query.Get("anchor"))
-		}
-		if query.Get("num_before") != "100" {
-			t.Fatalf("num_before = %q", query.Get("num_before"))
-		}
-		var narrow []narrowTerm
-		if err := json.Unmarshal([]byte(query.Get("narrow")), &narrow); err != nil {
-			t.Fatalf("decode narrow: %v", err)
-		}
-		got := map[string]string{}
-		for _, term := range narrow {
-			got[term.Operator] = term.Operand
-		}
-		if got["stream"] != "plasma-orga" || got["topic"] != "2026-05-04 sync" {
-			t.Fatalf("narrow = %#v", got)
-		}
-		body := map[string]interface{}{
-			"result": "success",
-			"messages": []map[string]interface{}{
-				{
-					"id":                1,
-					"sender_full_name":  "Ada Example",
-					"sender_email":      "ada@example.org",
-					"display_recipient": "plasma-orga",
-					"subject":           "2026-05-04 sync",
-					"timestamp":         insideTopic.Unix(),
-					"content":           "I want to sync with @**Bo Coder** on grant numbers.",
-				},
-				{
-					"id":                2,
-					"sender_full_name":  "Off Topic",
-					"sender_email":      "off@example.org",
-					"display_recipient": "plasma-orga",
-					"subject":           "2026-05-04 decisions",
-					"timestamp":         differentTopic.Unix(),
-					"content":           "wrong topic",
-				},
-				{
-					"id":                3,
-					"sender_full_name":  "Too Old",
-					"sender_email":      "old@example.org",
-					"display_recipient": "plasma-orga",
-					"subject":           "2026-05-04 sync",
-					"timestamp":         beforeWindow.Unix(),
-					"content":           "too early",
-				},
-				{
-					"id":                4,
-					"sender_full_name":  "Too New",
-					"sender_email":      "new@example.org",
-					"display_recipient": "plasma-orga",
-					"subject":           "2026-05-04 sync",
-					"timestamp":         afterWindow.Unix(),
-					"content":           "after cutoff",
-				},
-			},
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(body)
-	}))
+	server := httptest.NewServer(zulipMessagesFixtureHandler(t, cutoff))
 	defer server.Close()
 
 	client, err := NewClient(Config{BaseURL: server.URL, Email: "bot@example.org", APIKey: "secret"})
@@ -123,6 +50,73 @@ func TestMessagesRequestsCorrectURLAndDecodesPayload(t *testing.T) {
 	}
 	if !strings.Contains(got[0].Content, "Bo Coder") {
 		t.Fatalf("content lost mention text: %#v", got[0].Content)
+	}
+}
+
+func zulipMessagesFixtureHandler(t *testing.T, cutoff time.Time) http.HandlerFunc {
+	t.Helper()
+	return func(w http.ResponseWriter, r *http.Request) {
+		assertMessagesRequest(t, r)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(messagesFixture(cutoff))
+	}
+}
+
+func assertMessagesRequest(t *testing.T, r *http.Request) {
+	t.Helper()
+	if r.URL.Path != "/api/v1/messages" {
+		t.Fatalf("path = %q", r.URL.Path)
+	}
+	user, key, ok := r.BasicAuth()
+	if !ok || user != "bot@example.org" || key != "secret" {
+		t.Fatalf("auth = %v %q %q", ok, user, key)
+	}
+	query := r.URL.Query()
+	if query.Get("anchor") != "newest" {
+		t.Fatalf("anchor = %q", query.Get("anchor"))
+	}
+	if query.Get("num_before") != "100" {
+		t.Fatalf("num_before = %q", query.Get("num_before"))
+	}
+	assertNarrow(t, query.Get("narrow"))
+}
+
+func assertNarrow(t *testing.T, encoded string) {
+	t.Helper()
+	var narrow []narrowTerm
+	if err := json.Unmarshal([]byte(encoded), &narrow); err != nil {
+		t.Fatalf("decode narrow: %v", err)
+	}
+	got := map[string]string{}
+	for _, term := range narrow {
+		got[term.Operator] = term.Operand
+	}
+	if got["stream"] != "plasma-orga" || got["topic"] != "2026-05-04 sync" {
+		t.Fatalf("narrow = %#v", got)
+	}
+}
+
+func messagesFixture(cutoff time.Time) map[string]interface{} {
+	return map[string]interface{}{
+		"result": "success",
+		"messages": []map[string]interface{}{
+			messageFixture(1, "Ada Example", "ada@example.org", "2026-05-04 sync", cutoff.Add(-15*time.Hour), "I want to sync with @**Bo Coder** on grant numbers."),
+			messageFixture(2, "Off Topic", "off@example.org", "2026-05-04 decisions", cutoff.Add(-2*time.Hour), "wrong topic"),
+			messageFixture(3, "Too Old", "old@example.org", "2026-05-04 sync", cutoff.Add(-39*time.Hour), "too early"),
+			messageFixture(4, "Too New", "new@example.org", "2026-05-04 sync", cutoff.Add(3*time.Hour), "after cutoff"),
+		},
+	}
+}
+
+func messageFixture(id int64, sender, email, topic string, ts time.Time, content string) map[string]interface{} {
+	return map[string]interface{}{
+		"id":                id,
+		"sender_full_name":  sender,
+		"sender_email":      email,
+		"display_recipient": "plasma-orga",
+		"subject":           topic,
+		"timestamp":         ts.Unix(),
+		"content":           content,
 	}
 }
 

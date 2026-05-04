@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/sloppy-org/sloptools/internal/brain"
+	"github.com/sloppy-org/sloptools/internal/brain/gtd/today"
 	"github.com/sloppy-org/sloptools/internal/email"
-	"github.com/sloppy-org/sloptools/internal/mcp/gtdtoday"
 	"github.com/sloppy-org/sloptools/internal/providerdata"
 	"github.com/sloppy-org/sloptools/internal/store"
 	"github.com/sloppy-org/sloptools/internal/tasks"

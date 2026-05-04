@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sloppy-org/sloptools/internal/brain/peoplebrief"
 	"github.com/sloppy-org/sloptools/internal/email"
-	"github.com/sloppy-org/sloptools/internal/mcp/peoplebrief"
 	"github.com/sloppy-org/sloptools/internal/providerdata"
 	"github.com/sloppy-org/sloptools/internal/store"
 	"github.com/sloppy-org/sloptools/internal/surface"

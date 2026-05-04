@@ -12,7 +12,7 @@ import (
 
 	"github.com/sloppy-org/sloptools/internal/brain"
 	braingtd "github.com/sloppy-org/sloptools/internal/brain/gtd"
-	"github.com/sloppy-org/sloptools/internal/mcp/peoplebrief"
+	"github.com/sloppy-org/sloptools/internal/brain/peoplebrief"
 )
 
 const currentOpenLoopsHeading = "Current open loops"

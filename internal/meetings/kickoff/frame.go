@@ -1,4 +1,4 @@
-package meetingkickoff
+package kickoff
 
 import (
 	"strings"

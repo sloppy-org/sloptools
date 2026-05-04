@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sloppy-org/sloptools/internal/brain/gtd/focus"
 	"github.com/sloppy-org/sloptools/internal/contacts"
-	"github.com/sloppy-org/sloptools/internal/mcp/gtdfocus"
 	"github.com/sloppy-org/sloptools/internal/providerdata"
 	"github.com/sloppy-org/sloptools/internal/store"
 )

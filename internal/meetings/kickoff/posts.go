@@ -1,8 +1,8 @@
-// Package meetingkickoff assembles the read-only `brain.meeting.kickoff`
+// Package kickoff assembles the read-only `brain.meeting.kickoff`
 // payload: a draft frame plus a clustered breakout grouping built from
 // pre-meeting Zulip posts. The data layer stays out of internal/mcp so
 // the algorithm can be unit-tested without spinning up the MCP server.
-package meetingkickoff
+package kickoff
 
 import (
 	"regexp"

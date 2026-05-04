@@ -15,8 +15,8 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/sloppy-org/sloptools/internal/brain"
 	braingtd "github.com/sloppy-org/sloptools/internal/brain/gtd"
+	"github.com/sloppy-org/sloptools/internal/brain/gtd/focus"
 	"github.com/sloppy-org/sloptools/internal/braincatalog"
-	"github.com/sloppy-org/sloptools/internal/mcp/gtdfocus"
 	"github.com/sloppy-org/sloptools/internal/store"
 )
 

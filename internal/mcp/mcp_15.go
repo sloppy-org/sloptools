@@ -12,8 +12,8 @@ import (
 
 	"github.com/sloppy-org/sloptools/internal/brain"
 	braingtd "github.com/sloppy-org/sloptools/internal/brain/gtd"
-	"github.com/sloppy-org/sloptools/internal/mcp/gtdtoday"
-	"github.com/sloppy-org/sloptools/internal/mcp/meetingkickoff"
+	"github.com/sloppy-org/sloptools/internal/brain/gtd/today"
+	"github.com/sloppy-org/sloptools/internal/meetings/kickoff"
 )
 
 func (s *Server) dispatchBrain(method string, args map[string]interface{}) (map[string]interface{}, error) {
@@ -118,7 +118,7 @@ func (s *Server) runMeetingKickoff(args map[string]interface{}) (map[string]inte
 	if err != nil {
 		return nil, err
 	}
-	return meetingkickoff.Run(args, cfg, sourcesPath, explicit, s.newZulipMessagesProvider)
+	return kickoff.Run(args, cfg, sourcesPath, explicit, s.newZulipMessagesProvider)
 }
 
 func (s *Server) brainSearch(args map[string]interface{}) (map[string]interface{}, error) {
