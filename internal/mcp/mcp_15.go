@@ -95,6 +95,8 @@ func (s *Server) dispatchBrain(method string, args map[string]interface{}) (map[
 		return s.brainPeopleDashboard(args)
 	case "brain.people.render":
 		return s.brainPeopleRender(args)
+	case "brain.people.brief":
+		return s.brainPeopleBrief(args)
 	case "brain.search", "brain_search":
 		return s.brainSearch(args)
 	case "brain.backlinks", "brain_backlinks":
