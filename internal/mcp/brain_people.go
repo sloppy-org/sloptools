@@ -12,6 +12,7 @@ import (
 
 	"github.com/sloppy-org/sloptools/internal/brain"
 	braingtd "github.com/sloppy-org/sloptools/internal/brain/gtd"
+	"github.com/sloppy-org/sloptools/internal/brain/people"
 	"github.com/sloppy-org/sloptools/internal/brain/peoplebrief"
 )
 
@@ -142,6 +143,32 @@ func (s *Server) brainPeopleRender(args map[string]interface{}) (map[string]inte
 		return nil, err
 	}
 	return map[string]interface{}{"sphere": strArg(args, "sphere"), "person": person.Name, "person_path": person.Rel, "changed": true}, nil
+}
+
+func (s *Server) brainPeopleMonthlyIndex(args map[string]interface{}) (map[string]interface{}, error) {
+	cfg, err := brain.LoadConfig(s.brainConfigArg(args))
+	if err != nil {
+		return nil, err
+	}
+	sphere := strings.TrimSpace(strArg(args, "sphere"))
+	if sphere == "" {
+		return nil, errors.New("sphere is required")
+	}
+	vault, ok := cfg.Vault(brain.Sphere(sphere))
+	if !ok {
+		return nil, fmt.Errorf("unknown vault %q", sphere)
+	}
+	res, err := people.WriteMonthlyIndexes(vault.BrainRoot(), boolArg(args, "dry_run"))
+	if err != nil {
+		return nil, err
+	}
+	return map[string]interface{}{
+		"sphere":  vault.Sphere,
+		"vault":   vault,
+		"months":  res.Months,
+		"writes":  res.Writes,
+		"dry_run": res.DryRun,
+	}, nil
 }
 
 func (s *Server) buildPersonDashboard(args map[string]interface{}) (map[string][]personOpenLoop, resolvedPersonNote, error) {

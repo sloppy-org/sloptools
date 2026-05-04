@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -422,6 +423,21 @@ match.people = ["Ada Example"]
 	}
 }
 
+func TestBrainPeopleMonthlyIndexDispatch(t *testing.T) {
+	tmp := t.TempDir()
+	configPath := writeMCPBrainConfig(t, tmp)
+	writeMCPBrainFile(t, filepath.Join(tmp, "work", "brain", "people", "Ada.md"), "# Ada\n## Log\n- 2026-04-12 — coffee\n")
+	args := map[string]interface{}{"config_path": configPath, "sphere": "work"}
+	s := NewServer(t.TempDir())
+	got, err := s.callTool("brain.people.monthly_index", args)
+	want := "# 2026-04\n\n- [[Ada]] — coffee\n"
+	if err != nil || got["months"] != 1 || got["writes"] != 1 || readPeopleFile(t, filepath.Join(tmp, "work", "brain", "journal", "2026-04.md")) != want {
+		t.Fatalf("write: err=%v result=%#v", err, got)
+	}
+	if again, _ := s.callTool("brain.people.monthly_index", args); again["writes"] != 0 {
+		t.Fatalf("idempotency: %#v", again)
+	}
+}
 func assertPeopleLoopCount(t *testing.T, got map[string]interface{}, key string, want int) {
 	t.Helper()
 	items, ok := got[key].([]personOpenLoop)
@@ -442,21 +458,17 @@ func writePersonNote(t *testing.T, root, name, content string) string {
 
 func writePeopleCommitment(t *testing.T, root, name, status, title, waitingFor string, people []string, closedAt, evidenceAt string) {
 	t.Helper()
-	body := "---\nkind: commitment\nsphere: work\nstatus: " + status + "\ntitle: " + title + "\noutcome: " + title + "\ncontext: test\n"
+	body := fmt.Sprintf("---\nkind: commitment\nsphere: work\nstatus: %s\ntitle: %s\noutcome: %s\ncontext: test\n", status, title, title)
 	if status == "next" {
 		body += "next_action: " + title + "\n"
-	}
-	if status == "deferred" {
+	} else if status == "deferred" {
 		body += "follow_up: 2026-05-01\n"
 	}
 	if waitingFor != "" {
 		body += "waiting_for: " + waitingFor + "\n"
 	}
 	if len(people) > 0 {
-		body += "people:\n"
-		for _, person := range people {
-			body += "  - " + person + "\n"
-		}
+		body += "people:\n  - " + strings.Join(people, "\n  - ") + "\n"
 	}
 	if evidenceAt != "" {
 		body += "last_evidence_at: " + evidenceAt + "\n"
