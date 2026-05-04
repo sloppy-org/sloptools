@@ -14,12 +14,14 @@ type fakeTasksProvider struct {
 	name            string
 	taskLists       []providerdata.TaskList
 	tasksByList     map[string][]providerdata.TaskItem
+	allTasks        []providerdata.TaskItem
 	getTaskByID     map[string]providerdata.TaskItem
 	hasMutator      bool
 	hasCompleter    bool
 	hasListManager  bool
 	closeCalls      int
 	listCalls       int
+	listAllCalls    int
 	createCalls     int
 	updateCalls     int
 	deleteCalls     int
@@ -51,6 +53,16 @@ func (f *fakeTasksProvider) GetTask(_ context.Context, listID, id string) (provi
 		return item, nil
 	}
 	return providerdata.TaskItem{}, fmt.Errorf("task %q not found", id)
+}
+
+func (f *fakeTasksProvider) ListAllTasks(_ context.Context) ([]providerdata.TaskItem, error) {
+	f.listAllCalls++
+	if f.allTasks == nil {
+		return nil, tasks.ErrUnsupported
+	}
+	out := make([]providerdata.TaskItem, len(f.allTasks))
+	copy(out, f.allTasks)
+	return out, nil
 }
 
 func (f *fakeTasksProvider) CreateTask(_ context.Context, listID string, t providerdata.TaskItem) (providerdata.TaskItem, error) {

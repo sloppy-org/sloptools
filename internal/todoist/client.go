@@ -12,7 +12,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 )
 
 var (
@@ -218,27 +220,37 @@ func (c *Client) doJSON(ctx context.Context, method, endpoint string, query url.
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	req, err := c.newRequest(ctx, method, endpoint, query, body)
-	if err != nil {
-		return err
-	}
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
+	cleanMethod := strings.ToUpper(strings.TrimSpace(method))
+	for attempt := 0; ; attempt++ {
+		req, err := c.newRequest(ctx, cleanMethod, endpoint, query, body)
+		if err != nil {
+			return err
+		}
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			if shouldRetryTodoistRequest(cleanMethod, attempt, 0) && todoistRetrySleep(ctx, nil, attempt) == nil {
+				continue
+			}
+			return err
+		}
 
-	if resp.StatusCode != expect {
-		payload, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return &APIError{StatusCode: resp.StatusCode, Body: strings.TrimSpace(string(payload))}
-	}
-	if out == nil {
+		if resp.StatusCode != expect {
+			payload, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+			_ = resp.Body.Close()
+			if shouldRetryTodoistRequest(cleanMethod, attempt, resp.StatusCode) && todoistRetrySleep(ctx, resp, attempt) == nil {
+				continue
+			}
+			return &APIError{StatusCode: resp.StatusCode, Body: strings.TrimSpace(string(payload))}
+		}
+		defer resp.Body.Close()
+		if out == nil {
+			return nil
+		}
+		if err := json.NewDecoder(io.LimitReader(resp.Body, 1024*1024)).Decode(out); err != nil {
+			return err
+		}
 		return nil
 	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1024*1024)).Decode(out); err != nil {
-		return err
-	}
-	return nil
 }
 
 func (c *Client) newRequest(ctx context.Context, method, endpoint string, query url.Values, body any) (*http.Request, error) {
@@ -311,6 +323,51 @@ func listTaskQuery(opts ListTasksOptions) (url.Values, error) {
 		}
 	}
 	return query, nil
+}
+
+func shouldRetryTodoistRequest(method string, attempt, status int) bool {
+	if method != http.MethodGet {
+		return false
+	}
+	if attempt >= 2 {
+		return false
+	}
+	switch status {
+	case 0, http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return true
+	default:
+		return false
+	}
+}
+
+func todoistRetrySleep(ctx context.Context, resp *http.Response, attempt int) error {
+	delay := todoistRetryDelay(resp, attempt)
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+func todoistRetryDelay(resp *http.Response, attempt int) time.Duration {
+	if resp != nil {
+		if retryAfter := strings.TrimSpace(resp.Header.Get("Retry-After")); retryAfter != "" {
+			if seconds, err := strconv.Atoi(retryAfter); err == nil && seconds > 0 {
+				return time.Duration(seconds) * time.Second
+			}
+		}
+	}
+	switch attempt {
+	case 0:
+		return 200 * time.Millisecond
+	case 1:
+		return 500 * time.Millisecond
+	default:
+		return time.Second
+	}
 }
 
 func createTaskBody(req CreateTaskRequest) (map[string]any, error) {

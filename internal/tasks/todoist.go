@@ -18,6 +18,7 @@ type TodoistProvider struct {
 }
 
 var _ Provider = (*TodoistProvider)(nil)
+var _ BulkLister = (*TodoistProvider)(nil)
 
 func NewTodoistProvider(client *todoist.Client) *TodoistProvider {
 	return &TodoistProvider{client: client}
@@ -66,6 +67,21 @@ func (p *TodoistProvider) ListTasks(ctx context.Context, listID string) ([]provi
 	out := make([]providerdata.TaskItem, 0, len(items))
 	for _, item := range items {
 		out = append(out, taskItemFromTodoist(item, listID, nil))
+	}
+	return out, nil
+}
+
+func (p *TodoistProvider) ListAllTasks(ctx context.Context) ([]providerdata.TaskItem, error) {
+	if p == nil || p.client == nil {
+		return nil, fmt.Errorf("todoist client is not configured")
+	}
+	items, err := p.client.ListTasks(ctx, todoist.ListTasksOptions{})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]providerdata.TaskItem, 0, len(items))
+	for _, item := range items {
+		out = append(out, taskItemFromTodoist(item, "", nil))
 	}
 	return out, nil
 }

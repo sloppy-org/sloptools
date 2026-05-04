@@ -29,6 +29,14 @@ type Provider interface {
 	Close() error
 }
 
+// BulkLister exposes a provider-specific efficient path for fetching all
+// visible tasks without iterating container-by-container. Callers should fall
+// back to Provider.ListTasks when the provider does not implement it or returns
+// ErrUnsupported.
+type BulkLister interface {
+	ListAllTasks(ctx context.Context) ([]providerdata.TaskItem, error)
+}
+
 // Mutator adds create/update/delete on individual tasks. Backends that
 // only support a read-only view should omit this capability.
 type Mutator interface {

@@ -311,6 +311,109 @@ func TestBrainGTDReviewListExposesTaskHierarchyAndFilters(t *testing.T) {
 	}
 }
 
+func TestBrainGTDReviewListUsesBulkTaskListingWhenAvailable(t *testing.T) {
+	s, st, _ := newDomainServerForTest(t)
+	account, err := st.CreateExternalAccount(store.SphereWork, store.ExternalProviderTodoist, "Todoist", map[string]any{})
+	if err != nil {
+		t.Fatalf("CreateExternalAccount: %v", err)
+	}
+	provider := &fakeTasksProvider{
+		name:      store.ExternalProviderTodoist,
+		taskLists: []providerdata.TaskList{{ID: "inbox", Name: "Inbox"}, {ID: "research", Name: "Research"}},
+		tasksByList: map[string][]providerdata.TaskItem{
+			"inbox":    {{ID: "should-not-run", ListID: "inbox", ProviderRef: "should-not-run", Title: "per-list fetch should stay unused"}},
+			"research": {{ID: "should-not-run-2", ListID: "research", ProviderRef: "should-not-run-2", Title: "per-list fetch should stay unused"}},
+		},
+		allTasks: []providerdata.TaskItem{
+			{ID: "task-1", ListID: "inbox", ProviderRef: "task-1", Title: "Inbox item"},
+			{ID: "task-2", ListID: "research", ProviderRef: "task-2", Title: "Research item"},
+		},
+	}
+	s.newTasksProvider = func(_ context.Context, got store.ExternalAccount) (tasks.Provider, error) {
+		if got.ID != account.ID {
+			t.Fatalf("account ID = %d, want %d", got.ID, account.ID)
+		}
+		return provider, nil
+	}
+
+	got, err := s.callTool("brain.gtd.review_list", map[string]interface{}{
+		"sphere":     "work",
+		"sources":    []interface{}{"tasks"},
+		"account_id": account.ID,
+	})
+	if err != nil {
+		t.Fatalf("brain.gtd.review_list: %v", err)
+	}
+	items := got["items"].([]gtdReviewItem)
+	if len(items) != 2 {
+		t.Fatalf("items = %#v, want 2", items)
+	}
+	if provider.listAllCalls != 1 {
+		t.Fatalf("listAllCalls = %d, want 1", provider.listAllCalls)
+	}
+	if provider.listCalls != 1 {
+		t.Fatalf("listCalls = %d, want 1 ListTaskLists call only", provider.listCalls)
+	}
+	if itemByID(items, "todoist:inbox/task-1") == nil || itemByID(items, "todoist:research/task-2") == nil {
+		t.Fatalf("bulk-listed items missing from %#v", items)
+	}
+}
+
+func TestBrainGTDReviewListAggregatesMultipleTaskBackendsInSphere(t *testing.T) {
+	s, st, _ := newDomainServerForTest(t)
+	exchange, err := st.CreateExternalAccount(store.SphereWork, store.ExternalProviderExchangeEWS, "Exchange", map[string]any{})
+	if err != nil {
+		t.Fatalf("CreateExternalAccount(exchange): %v", err)
+	}
+	todoistAccount, err := st.CreateExternalAccount(store.SphereWork, store.ExternalProviderTodoist, "Todoist", map[string]any{})
+	if err != nil {
+		t.Fatalf("CreateExternalAccount(todoist): %v", err)
+	}
+	exchangeProvider := &fakeTasksProvider{
+		name:      store.ExternalProviderExchangeEWS,
+		taskLists: []providerdata.TaskList{{ID: "exchange-list", Name: "Exchange"}},
+		tasksByList: map[string][]providerdata.TaskItem{
+			"exchange-list": {{ID: "ews-1", ListID: "exchange-list", ProviderRef: "ews-1", Title: "Reply to travel office"}},
+		},
+	}
+	todoistProvider := &fakeTasksProvider{
+		name:      store.ExternalProviderTodoist,
+		taskLists: []providerdata.TaskList{{ID: "todo-project", Name: "Todoist"}},
+		tasksByList: map[string][]providerdata.TaskItem{
+			"todo-project": {{ID: "task-1", ListID: "todo-project", ProviderRef: "task-1", Title: "Draft beta budget"}},
+		},
+	}
+	s.newTasksProvider = func(_ context.Context, got store.ExternalAccount) (tasks.Provider, error) {
+		switch got.ID {
+		case exchange.ID:
+			return exchangeProvider, nil
+		case todoistAccount.ID:
+			return todoistProvider, nil
+		default:
+			t.Fatalf("unexpected account ID %d", got.ID)
+			return nil, nil
+		}
+	}
+
+	got, err := s.callTool("brain.gtd.review_list", map[string]interface{}{
+		"sphere":  "work",
+		"sources": []interface{}{"tasks"},
+	})
+	if err != nil {
+		t.Fatalf("brain.gtd.review_list: %v", err)
+	}
+	items := got["items"].([]gtdReviewItem)
+	if len(items) != 2 {
+		t.Fatalf("items = %#v, want one item per tasks-capable backend", items)
+	}
+	if itemByID(items, "exchange_ews:exchange-list/ews-1") == nil {
+		t.Fatalf("missing exchange item in %#v", items)
+	}
+	if itemByID(items, "todoist:todo-project/task-1") == nil {
+		t.Fatalf("missing todoist item in %#v", items)
+	}
+}
+
 func TestGTDReviewItemFromSourceItemMapsIssueState(t *testing.T) {
 	item := gtdReviewItemFromSourceItem(providerdata.SourceItem{
 		Provider:  "github",

@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -13,6 +14,7 @@ import (
 	"github.com/sloppy-org/sloptools/internal/mcp/gtdfocus"
 	"github.com/sloppy-org/sloptools/internal/providerdata"
 	"github.com/sloppy-org/sloptools/internal/sourceitems"
+	"github.com/sloppy-org/sloptools/internal/store"
 	"github.com/sloppy-org/sloptools/internal/tasks"
 	"github.com/sloppy-org/sloptools/pkg/taskgtd"
 )
@@ -130,32 +132,134 @@ func (s *Server) addMarkdownGTDItems(args map[string]interface{}, build *gtdRevi
 }
 
 func (s *Server) addTaskGTDItems(args map[string]interface{}, build *gtdReviewBuild) {
-	account, provider, err := s.tasksProviderForTool(args)
+	accounts, err := s.taskAccountsForReview(args)
 	if err != nil {
 		build.errors = append(build.errors, err.Error())
 		return
 	}
-	defer provider.Close()
-	lists, err := taskListsForReview(context.Background(), provider, stringListArg(args, "list_ids"))
-	if err != nil {
-		build.errors = append(build.errors, err.Error())
-		return
-	}
-	for _, list := range lists {
-		items, err := provider.ListTasks(context.Background(), list.ID)
+	ctx := context.Background()
+	listIDs := stringListArg(args, "list_ids")
+	for _, account := range accounts {
+		provider, err := s.tasksProviderForAccount(ctx, account)
 		if err != nil {
-			build.errors = append(build.errors, err.Error())
+			build.errors = append(build.errors, fmt.Sprintf("%s %q: %v", account.Provider, account.AccountName, err))
 			continue
 		}
-		parentIDs := taskgtd.ParentTaskIDs(taskGTDTasks(items))
-		for _, item := range items {
-			reviewItem := gtdReviewItemFromTask(account.Sphere, provider.ProviderName(), list, item)
-			if parentIDs[strings.TrimSpace(item.ID)] {
-				reviewItem.Kind = "project"
+		func() {
+			defer provider.Close()
+			lists, err := taskListsForReview(ctx, provider, listIDs)
+			if err != nil {
+				build.errors = append(build.errors, fmt.Sprintf("%s %q: %v", account.Provider, account.AccountName, err))
+				return
 			}
-			build.addOrSkipExisting(reviewItem)
-		}
+			if len(listIDs) == 0 {
+				if bulk, ok := provider.(tasks.BulkLister); ok {
+					items, err := bulk.ListAllTasks(ctx)
+					if err == nil {
+						addBulkTaskReviewItems(build, account.Sphere, provider.ProviderName(), lists, items)
+						return
+					}
+					if !errors.Is(err, tasks.ErrUnsupported) {
+						build.errors = append(build.errors, fmt.Sprintf("%s %q: %v", account.Provider, account.AccountName, err))
+						return
+					}
+				}
+			}
+			for _, list := range lists {
+				items, err := provider.ListTasks(ctx, list.ID)
+				if err != nil {
+					build.errors = append(build.errors, fmt.Sprintf("%s %q list %q: %v", account.Provider, account.AccountName, list.Name, err))
+					continue
+				}
+				parentIDs := taskgtd.ParentTaskIDs(taskGTDTasks(items))
+				for _, item := range items {
+					reviewItem := gtdReviewItemFromTask(account.Sphere, provider.ProviderName(), list, item)
+					if parentIDs[strings.TrimSpace(item.ID)] {
+						reviewItem.Kind = "project"
+					}
+					build.addOrSkipExisting(reviewItem)
+				}
+			}
+		}()
 	}
+}
+
+func addBulkTaskReviewItems(build *gtdReviewBuild, sphere, providerName string, lists []providerdata.TaskList, items []providerdata.TaskItem) {
+	byID := make(map[string]providerdata.TaskList, len(lists))
+	for _, list := range lists {
+		byID[strings.TrimSpace(list.ID)] = list
+	}
+	parentIDs := taskgtd.ParentTaskIDs(taskGTDTasks(items))
+	for _, item := range items {
+		list := taskListForReviewItem(byID, item)
+		reviewItem := gtdReviewItemFromTask(sphere, providerName, list, item)
+		if parentIDs[strings.TrimSpace(item.ID)] {
+			reviewItem.Kind = "project"
+		}
+		build.addOrSkipExisting(reviewItem)
+	}
+}
+
+func taskListForReviewItem(byID map[string]providerdata.TaskList, item providerdata.TaskItem) providerdata.TaskList {
+	for _, candidate := range []string{strings.TrimSpace(item.ListID), strings.TrimSpace(item.ProjectID)} {
+		if candidate == "" {
+			continue
+		}
+		if list, ok := byID[candidate]; ok {
+			return list
+		}
+		return providerdata.TaskList{ID: candidate, Name: candidate}
+	}
+	return providerdata.TaskList{}
+}
+
+func (s *Server) taskAccountsForReview(args map[string]interface{}) ([]store.ExternalAccount, error) {
+	st, err := s.requireStore()
+	if err != nil {
+		return nil, err
+	}
+	accountIDPtr, _, err := optionalInt64Arg(args, "account_id")
+	if err != nil {
+		return nil, err
+	}
+	if accountIDPtr != nil {
+		account, err := accountForTool(st, args, "tasks-capable", isTasksCapableProvider)
+		if err != nil {
+			return nil, err
+		}
+		return []store.ExternalAccount{account}, nil
+	}
+	accounts, err := st.ListExternalAccounts(strings.TrimSpace(strArg(args, "sphere")))
+	if err != nil {
+		return nil, err
+	}
+	matches := make([]store.ExternalAccount, 0, len(accounts))
+	for _, account := range accounts {
+		if !account.Enabled || !isTasksCapableProvider(account.Provider) {
+			continue
+		}
+		matches = append(matches, account)
+	}
+	if len(matches) == 0 {
+		sphere := strings.TrimSpace(strArg(args, "sphere"))
+		if sphere != "" {
+			return nil, fmt.Errorf("no enabled tasks-capable account for sphere %q", sphere)
+		}
+		return nil, fmt.Errorf("no enabled tasks-capable account is configured")
+	}
+	if len(stringListArg(args, "list_ids")) > 0 && len(matches) > 1 {
+		return nil, errors.New("account_id is required when list_ids are supplied and multiple tasks-capable accounts are configured")
+	}
+	sort.Slice(matches, func(i, j int) bool {
+		if matches[i].Sphere != matches[j].Sphere {
+			return matches[i].Sphere < matches[j].Sphere
+		}
+		if matches[i].Provider != matches[j].Provider {
+			return matches[i].Provider < matches[j].Provider
+		}
+		return matches[i].ID < matches[j].ID
+	})
+	return matches, nil
 }
 
 func taskListsForReview(ctx context.Context, provider tasks.Provider, ids []string) ([]providerdata.TaskList, error) {

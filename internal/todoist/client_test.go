@@ -336,6 +336,47 @@ func TestUpdateTaskMovesProjectAndReturnsRefreshedTask(t *testing.T) {
 	}
 }
 
+func TestListTasksRetriesTransient503(t *testing.T) {
+	var calls int
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/rest/v2/tasks" {
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.String())
+		}
+		calls++
+		if calls < 3 {
+			http.Error(w, "try later", http.StatusServiceUnavailable)
+			return
+		}
+		_ = json.NewEncoder(w).Encode([]Task{{ID: "task-1", Content: "Recovered"}})
+	})
+
+	tasks, err := client.ListTasks(context.Background(), ListTasksOptions{ProjectID: "proj-1"})
+	if err != nil {
+		t.Fatalf("ListTasks() error: %v", err)
+	}
+	if calls != 3 {
+		t.Fatalf("calls = %d, want 3", calls)
+	}
+	if len(tasks) != 1 || tasks[0].ID != "task-1" {
+		t.Fatalf("tasks = %#v", tasks)
+	}
+}
+
+func TestCreateTaskDoesNotRetry503(t *testing.T) {
+	var calls int
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		http.Error(w, "try later", http.StatusServiceUnavailable)
+	})
+
+	if _, err := client.CreateTask(context.Background(), CreateTaskRequest{Content: "task"}); err == nil {
+		t.Fatal("CreateTask() error = nil, want APIError")
+	}
+	if calls != 1 {
+		t.Fatalf("calls = %d, want 1", calls)
+	}
+}
+
 func TestValidationAndAPIErrors(t *testing.T) {
 	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
