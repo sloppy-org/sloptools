@@ -182,6 +182,141 @@ func TestBrainGTDReviewListDedupsIssueShadows(t *testing.T) {
 	}
 }
 
+func TestBrainGTDTracksIncludesWIPFieldsFromConfig(t *testing.T) {
+	tmp := t.TempDir()
+	configPath := writeMCPBrainConfig(t, tmp)
+	gtdConfig := filepath.Join(tmp, "gtd.toml")
+	if err := os.WriteFile(gtdConfig, []byte(`[[track]]
+sphere = "work"
+name = "research"
+wip_limit = 2
+`), 0o644); err != nil {
+		t.Fatalf("write gtd.toml: %v", err)
+	}
+	for i, title := range []string{"A", "B", "C"} {
+		writeTrackedCommitment(t, tmp, fmt.Sprintf("brain/gtd/research-%d.md", i), title, "next", "research")
+	}
+	s := NewServer(t.TempDir())
+	got, err := s.callTool("brain.gtd.tracks", map[string]interface{}{
+		"config_path": configPath,
+		"gtd_config":  gtdConfig,
+		"sphere":      "work",
+	})
+	if err != nil {
+		t.Fatalf("brain.gtd.tracks: %v", err)
+	}
+	tracks, _ := got["tracks"].([]map[string]interface{})
+	if len(tracks) != 1 {
+		t.Fatalf("tracks = %#v, want one entry", tracks)
+	}
+	row := tracks[0]
+	if row["id"] != "research" {
+		t.Fatalf("track id = %v", row["id"])
+	}
+	if row["wip_limit"] != 2 {
+		t.Fatalf("wip_limit = %v, want 2", row["wip_limit"])
+	}
+	if row["wip_status"] != "over" {
+		t.Fatalf("wip_status = %v, want over", row["wip_status"])
+	}
+	if row["open_wip_count"] != 3 {
+		t.Fatalf("open_wip_count = %v, want 3", row["open_wip_count"])
+	}
+}
+
+func TestBrainGTDReviewListReturnsOverWIPWhenNextExceedsLimit(t *testing.T) {
+	tmp := t.TempDir()
+	configPath := writeMCPBrainConfig(t, tmp)
+	gtdConfig := filepath.Join(tmp, "gtd.toml")
+	if err := os.WriteFile(gtdConfig, []byte(`[[track]]
+sphere = "work"
+name = "research"
+wip_limit = 2
+
+[[track]]
+sphere = "work"
+name = "teaching"
+wip_limit = 5
+`), 0o644); err != nil {
+		t.Fatalf("write gtd.toml: %v", err)
+	}
+	for i, title := range []string{"Alpha", "Beta", "Gamma"} {
+		writeTrackedCommitment(t, tmp, fmt.Sprintf("brain/gtd/research-%d.md", i), title, "next", "research")
+	}
+	writeTrackedCommitment(t, tmp, "brain/gtd/research-waiting.md", "Wait", "waiting", "research")
+	writeTrackedCommitment(t, tmp, "brain/gtd/teaching-1.md", "Teach", "next", "teaching")
+	s := NewServer(t.TempDir())
+	got, err := s.callTool("brain.gtd.review_list", map[string]interface{}{
+		"config_path": configPath,
+		"gtd_config":  gtdConfig,
+		"sphere":      "work",
+		"sources":     []interface{}{"markdown"},
+	})
+	if err != nil {
+		t.Fatalf("review_list: %v", err)
+	}
+	overWIP, _ := got["over_wip"].([]string)
+	if len(overWIP) != 1 || overWIP[0] != "research" {
+		t.Fatalf("over_wip = %v, want [research]", overWIP)
+	}
+}
+
+func TestBrainGTDReviewListOverWIPEmptyWhenNoConfig(t *testing.T) {
+	tmp := t.TempDir()
+	configPath := writeMCPBrainConfig(t, tmp)
+	writeTrackedCommitment(t, tmp, "brain/gtd/x.md", "X", "next", "research")
+	s := NewServer(t.TempDir())
+	got, err := s.callTool("brain.gtd.review_list", map[string]interface{}{
+		"config_path": configPath,
+		"gtd_config":  filepath.Join(tmp, "missing.toml"),
+		"sphere":      "work",
+		"sources":     []interface{}{"markdown"},
+	})
+	if err != nil {
+		t.Fatalf("review_list: %v", err)
+	}
+	overWIP, ok := got["over_wip"].([]string)
+	if !ok {
+		t.Fatalf("over_wip missing or wrong type: %v", got["over_wip"])
+	}
+	if len(overWIP) != 0 {
+		t.Fatalf("over_wip should be empty without config, got %v", overWIP)
+	}
+}
+
+func writeTrackedCommitment(t *testing.T, root, rel, title, status, track string) {
+	t.Helper()
+	body := fmt.Sprintf(`---
+kind: commitment
+sphere: work
+title: %q
+status: %s
+context: review
+next_action: Move forward
+outcome: %q
+labels:
+  - track/%s
+---
+# %s
+
+## Summary
+Move forward.
+
+## Next Action
+- [ ] Move forward
+
+## Evidence
+- none
+
+## Linked Items
+- None.
+
+## Review Notes
+- None.
+`, title, status, title, track, title)
+	writeMCPBrainFile(t, filepath.Join(root, "work", filepath.FromSlash(rel)), body)
+}
+
 func TestBrainGTDReviewListExcludesShadowMailMarkdown(t *testing.T) {
 	tmp := t.TempDir()
 	configPath := writeMCPBrainConfig(t, tmp)

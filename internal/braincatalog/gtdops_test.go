@@ -109,6 +109,45 @@ func TestSelectGTDReviewBatchItemsAppliesQueueingAndOrdering(t *testing.T) {
 	}
 }
 
+func TestBuildGTDDashboardMarkdownRendersWIPSection(t *testing.T) {
+	items := []GTDListItem{
+		{Title: "Ada one", Status: "next", Track: "research", Path: "n1.md"},
+	}
+	rows := []DashboardWIPRow{
+		{Track: "research", Limit: 5, Count: 6, Status: "over"},
+		{Track: "teaching", Limit: 3, Count: 2, Status: "under"},
+	}
+	rendered := BuildGTDDashboardMarkdown(items, "work", "Ada", rows)
+	if !strings.Contains(rendered, "## WIP\n") {
+		t.Fatalf("rendered missing WIP heading:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "| Track | Count | Limit | Status |") {
+		t.Fatalf("rendered missing WIP table header:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "| research | 6 | 5 | over |") {
+		t.Fatalf("rendered missing research over row:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "| teaching | 2 | 3 | under |") {
+		t.Fatalf("rendered missing teaching under row:\n%s", rendered)
+	}
+}
+
+func TestBuildGTDDashboardMarkdownOmitsWIPSectionWhenEmpty(t *testing.T) {
+	items := []GTDListItem{{Title: "Ada one", Status: "next", Track: "research", Path: "n1.md"}}
+	rendered := BuildGTDDashboardMarkdown(items, "work", "Ada", nil)
+	if strings.Contains(rendered, "## WIP") {
+		t.Fatalf("rendered should not include WIP section when no rows:\n%s", rendered)
+	}
+}
+
+func TestBuildGTDDashboardMarkdownDropsZeroLimitRows(t *testing.T) {
+	rows := []DashboardWIPRow{{Track: "research", Limit: 0, Count: 6, Status: "over"}}
+	rendered := BuildGTDDashboardMarkdown(nil, "work", "Ada", rows)
+	if strings.Contains(rendered, "## WIP") {
+		t.Fatalf("rows with zero limit should not produce a WIP section:\n%s", rendered)
+	}
+}
+
 func TestGTDQueryAndFilterMatchTrack(t *testing.T) {
 	item := GTDListItem{Title: "Fix parser", Track: "software-compilers", Labels: []string{"mode/deep"}}
 	if !gtdItemMatchesQuery(item, "software-compilers") {

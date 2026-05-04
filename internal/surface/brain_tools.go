@@ -108,8 +108,9 @@ func init() {
 			"sphere":      {Type: "string", Description: "Vault sphere to inspect.", Enum: []string{"work", "private"}},
 			"path":        {Type: "string", Description: "Optional commitment path to resurface. When omitted, the whole vault is scanned."},
 		}},
-		Tool{Name: "brain.gtd.dashboard", Description: "Generate a GTD dashboard note for one named person or subject.", Required: []string{"sphere", "name"}, Properties: map[string]ToolProperty{
+		Tool{Name: "brain.gtd.dashboard", Description: "Generate a GTD dashboard note for one named person or subject. Renders a WIP table for any tracks with wip_limit configured in gtd.toml.", Required: []string{"sphere", "name"}, Properties: map[string]ToolProperty{
 			"config_path": {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},
+			"gtd_config":  {Type: "string", Description: "Optional GTD config path with per-track wip_limit. Defaults to ~/.config/sloptools/gtd.toml."},
 			"sphere":      {Type: "string", Description: "Vault sphere to inspect.", Enum: []string{"work", "private"}},
 			"name":        {Type: "string", Description: "Dashboard subject name."},
 			"path":        {Type: "string", Description: "Optional output note path. Defaults to brain/gtd/dashboards/<slug>.md."},
@@ -182,8 +183,9 @@ func init() {
 			"config_path": {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},
 			"sphere":      {Type: "string", Description: "Vault sphere to inspect.", Enum: []string{"work", "private"}},
 		}},
-		Tool{Name: "brain.gtd.review_list", Description: "Return a normalized GTD review list across Markdown commitments, task providers, and issue sources without materializing duplicate Markdown notes.", Required: []string{"sphere"}, Properties: map[string]ToolProperty{
+		Tool{Name: "brain.gtd.review_list", Description: "Return a normalized GTD review list across Markdown commitments, task providers, and issue sources without materializing duplicate Markdown notes. The response includes an over_wip slice of tracks whose open next count exceeds the wip_limit configured in gtd.toml.", Required: []string{"sphere"}, Properties: map[string]ToolProperty{
 			"config_path":      {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},
+			"gtd_config":       {Type: "string", Description: "Optional GTD config path with per-track wip_limit. Defaults to ~/.config/sloptools/gtd.toml."},
 			"sphere":           {Type: "string", Description: "Vault/account sphere to inspect.", Enum: []string{"work", "private"}},
 			"sources":          {Type: "array", Description: "Optional source classes. Defaults to markdown,mail,github,gitlab. tasks/todoist/google_tasks/evernote remain accepted but emit a deprecation warning when explicit."},
 			"account_id":       {Type: "integer", Description: "Optional tasks-capable account id for task-backed items."},

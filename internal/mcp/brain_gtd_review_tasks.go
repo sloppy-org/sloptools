@@ -9,11 +9,57 @@ import (
 	"time"
 
 	braingtd "github.com/sloppy-org/sloptools/internal/brain/gtd"
+	"github.com/sloppy-org/sloptools/internal/mcp/gtdfocus"
 	"github.com/sloppy-org/sloptools/internal/providerdata"
 	"github.com/sloppy-org/sloptools/internal/store"
 	"github.com/sloppy-org/sloptools/internal/tasks"
 	"github.com/sloppy-org/sloptools/pkg/taskgtd"
 )
+
+// loadGTDTracksConfig resolves the gtd.toml path from the gtd_config arg
+// or the default $HOME/.config/sloptools/gtd.toml location and returns the
+// parsed config. A missing default file is not an error; tools degrade to
+// the unconfigured signal.
+func (s *Server) loadGTDTracksConfig(args map[string]interface{}) (*gtdfocus.TracksConfig, error) {
+	resolved, _, err := sloptoolsConfigPath(strArg(args, "gtd_config"), "gtd.toml")
+	if err != nil {
+		return nil, err
+	}
+	return gtdfocus.LoadTracksConfig(resolved)
+}
+
+// overWIPTracks returns the alphabetical list of track names whose open
+// next count exceeds the configured wip_limit for sphere. Empty when no
+// configured track is over its limit. The signal is informational; no
+// caller filters items based on it.
+func overWIPTracks(items []gtdReviewItem, tracksCfg *gtdfocus.TracksConfig, sphere string) []string {
+	configured := tracksCfg.SphereTracks(sphere)
+	if len(configured) == 0 {
+		return []string{}
+	}
+	counts := map[string]int{}
+	for _, item := range items {
+		if item.Queue != taskgtd.StatusNext {
+			continue
+		}
+		track := strings.TrimSpace(item.Track)
+		if track == "" {
+			continue
+		}
+		counts[strings.ToLower(track)]++
+	}
+	out := make([]string, 0, len(configured))
+	for _, track := range configured {
+		if track.WIPLimit <= 0 {
+			continue
+		}
+		if counts[track.Name] > track.WIPLimit {
+			out = append(out, track.Name)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
 
 func (s *Server) addTaskGTDItems(args map[string]interface{}, build *gtdReviewBuild) {
 	accounts, err := s.taskAccountsForReview(args)

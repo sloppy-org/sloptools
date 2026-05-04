@@ -18,17 +18,27 @@ type MeetingTask struct {
 
 func BuildGTDIndexMarkdown(items []GTDListItem, sphere string) string {
 	grouped := groupGTDItems(items, "")
-	return buildGTDMarkdown("GTD Organize", sphere, grouped)
+	return buildGTDMarkdown("GTD Organize", sphere, grouped, nil)
 }
 
-func BuildGTDDashboardMarkdown(items []GTDListItem, sphere, name string) string {
+// DashboardWIPRow is one row in the dashboard's WIP section. Limit is the
+// configured wip_limit; Count is the number of "next"-queue items in the
+// rendered dashboard scope; Status is under/at/over.
+type DashboardWIPRow struct {
+	Track  string
+	Limit  int
+	Count  int
+	Status string
+}
+
+func BuildGTDDashboardMarkdown(items []GTDListItem, sphere, name string, wip []DashboardWIPRow) string {
 	grouped := groupGTDItems(items, name)
-	return buildGTDMarkdown("GTD Dashboard: "+strings.TrimSpace(name), sphere, grouped)
+	return buildGTDMarkdown("GTD Dashboard: "+strings.TrimSpace(name), sphere, grouped, wip)
 }
 
 func BuildGTDReviewBatchMarkdown(items []GTDListItem, sphere, query string) string {
 	grouped := groupGTDItems(selectGTDReviewBatchItems(items, query), "")
-	return buildGTDMarkdown("GTD Review Batch: "+strings.TrimSpace(query), sphere, grouped)
+	return buildGTDMarkdown("GTD Review Batch: "+strings.TrimSpace(query), sphere, grouped, nil)
 }
 
 func BuildGTDCommitmentMarkdown(commitment braingtd.Commitment) (string, error) {
@@ -195,7 +205,7 @@ func groupGTDItems(items []GTDListItem, query string) map[string][]GTDListItem {
 	return grouped
 }
 
-func buildGTDMarkdown(title, sphere string, grouped map[string][]GTDListItem) string {
+func buildGTDMarkdown(title, sphere string, grouped map[string][]GTDListItem, wip []DashboardWIPRow) string {
 	var b strings.Builder
 	b.WriteString("---\n")
 	b.WriteString("kind: note\n")
@@ -205,6 +215,14 @@ func buildGTDMarkdown(title, sphere string, grouped map[string][]GTDListItem) st
 	b.WriteString("title: " + yamlQuote(title) + "\n")
 	b.WriteString("---\n")
 	b.WriteString("# " + title + "\n")
+	if rows := sortedWIPRows(wip); len(rows) > 0 {
+		b.WriteString("\n## WIP\n")
+		b.WriteString("| Track | Count | Limit | Status |\n")
+		b.WriteString("|---|---|---|---|\n")
+		for _, row := range rows {
+			b.WriteString(fmt.Sprintf("| %s | %d | %d | %s |\n", row.Track, row.Count, row.Limit, row.Status))
+		}
+	}
 	for _, section := range []struct {
 		key   string
 		title string
@@ -247,6 +265,20 @@ func buildGTDMarkdown(title, sphere string, grouped map[string][]GTDListItem) st
 		}
 	}
 	return b.String()
+}
+
+func sortedWIPRows(rows []DashboardWIPRow) []DashboardWIPRow {
+	out := make([]DashboardWIPRow, 0, len(rows))
+	for _, row := range rows {
+		if strings.TrimSpace(row.Track) == "" || row.Limit <= 0 {
+			continue
+		}
+		out = append(out, row)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return strings.ToLower(out[i].Track) < strings.ToLower(out[j].Track)
+	})
+	return out
 }
 
 func gtdItemMatchesQuery(item GTDListItem, query string) bool {

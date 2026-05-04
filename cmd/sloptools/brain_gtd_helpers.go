@@ -13,6 +13,7 @@ import (
 	"github.com/sloppy-org/sloptools/internal/brain"
 	braingtd "github.com/sloppy-org/sloptools/internal/brain/gtd"
 	"github.com/sloppy-org/sloptools/internal/braincatalog"
+	"github.com/sloppy-org/sloptools/internal/mcp/gtdfocus"
 )
 
 func cmdBrainGTDIngest(args []string) int {
@@ -240,6 +241,18 @@ func resurfaceCommitment(commitment *braingtd.Commitment, now time.Time) bool {
 	}
 	commitment.LocalOverlay.Status = "next"
 	return true
+}
+
+func loadGTDTracksConfigForCLI(path string) (*gtdfocus.TracksConfig, error) {
+	resolved := strings.TrimSpace(path)
+	if resolved == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, err
+		}
+		resolved = filepath.Join(home, ".config", "sloptools", "gtd.toml")
+	}
+	return gtdfocus.LoadTracksConfig(resolved)
 }
 
 func slugify(value string) string {
