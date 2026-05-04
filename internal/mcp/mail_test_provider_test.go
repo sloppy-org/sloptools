@@ -24,8 +24,28 @@ type fakeMailProvider struct {
 	lastLabel          string
 	lastUntil          time.Time
 	lastFormat         string
+	lastFlag           email.Flag
+	lastCategories     []string
 	getMessagesFormats []string
 	supportsDefer      bool
+}
+
+func (p *fakeMailProvider) SetFlag(_ context.Context, ids []string, flag email.Flag) (int, error) {
+	p.record("set_flag", ids)
+	p.lastFlag = flag
+	return len(ids), nil
+}
+
+func (p *fakeMailProvider) ClearFlag(_ context.Context, ids []string) (int, error) {
+	p.record("clear_flag", ids)
+	p.lastFlag = email.Flag{}
+	return len(ids), nil
+}
+
+func (p *fakeMailProvider) SetCategories(_ context.Context, ids []string, categories []string) (int, error) {
+	p.record("set_categories", ids)
+	p.lastCategories = append([]string(nil), categories...)
+	return len(ids), nil
 }
 
 func (p *fakeMailProvider) ListLabels(_ context.Context) ([]providerdata.Label, error) {

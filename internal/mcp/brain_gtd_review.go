@@ -347,18 +347,15 @@ func gtdReviewItemFromCommitment(note dedupNote) gtdReviewItem {
 	c := note.Entry.Commitment
 	status := effectiveGTDStatus(c)
 	return gtdReviewItem{
-		ID:       "markdown:" + note.Entry.Path,
-		Source:   "markdown",
-		Title:    firstNonEmpty(c.Outcome, c.Title, c.NextAction, filepath.Base(note.Entry.Path)),
-		Status:   status,
-		Queue:    taskgtd.Queue(status, c.FollowUp, time.Now().UTC()),
-		Path:     note.Entry.Path,
-		Due:      c.Due,
-		FollowUp: c.FollowUp,
-		Labels:   append([]string(nil), c.Labels...),
-		Actor:    firstNonEmpty(c.WaitingFor, c.Actor),
-		Project:  c.Project,
-		Track:    c.EffectiveTrack(),
+		ID: "markdown:" + note.Entry.Path, Source: "markdown",
+		Title:  firstNonEmpty(c.Outcome, c.Title, c.NextAction, filepath.Base(note.Entry.Path)),
+		Status: status, Queue: taskgtd.Queue(status, c.FollowUp, time.Now().UTC()),
+		Path:    note.Entry.Path,
+		Due:     c.Due,
+		Labels:  append([]string(nil), c.Labels...),
+		Actor:   firstNonEmpty(c.WaitingFor, c.Actor),
+		Project: c.Project,
+		Track:   c.EffectiveTrack(), FollowUp: c.FollowUp,
 	}
 }
 
@@ -368,31 +365,23 @@ func gtdReviewItemFromTask(sphere, providerName string, list providerdata.TaskLi
 	binding := braingtd.SourceBinding{Provider: providerName, Ref: taskgtd.BindingRef(list.ID, modelTask)}
 	status := taskgtd.Status(modelList, modelTask, time.Now().UTC())
 	return gtdReviewItem{
-		ID:        binding.StableID(),
-		Source:    providerName,
-		SourceRef: binding.Ref,
-		Title:     task.Title,
-		Status:    status,
-		Queue:     taskgtd.Queue(status, taskgtd.TimeString(task.StartAt), time.Now().UTC()),
-		Kind:      "task",
-		URL:       task.ProviderURL,
-		Due:       taskgtd.TimeString(task.Due),
-		FollowUp:  taskgtd.TimeString(task.StartAt),
-		Labels:    append([]string(nil), task.Labels...),
-		Actor:     firstNonEmpty(task.AssigneeName, task.AssigneeID),
-		Project:   firstNonEmpty(list.Name, task.ProjectID, sphere),
-		Track:     braingtd.TrackFromLabels(task.Labels),
-		ParentID:  strings.TrimSpace(task.ParentID),
+		ID: binding.StableID(), Source: providerName, SourceRef: binding.Ref,
+		Title: task.Title, Status: status,
+		Queue:    taskgtd.Queue(status, taskgtd.TimeString(task.StartAt), time.Now().UTC()),
+		Kind:     "task",
+		URL:      task.ProviderURL,
+		Due:      taskgtd.TimeString(task.Due),
+		FollowUp: taskgtd.TimeString(task.StartAt),
+		Labels:   append([]string(nil), task.Labels...),
+		Actor:    firstNonEmpty(task.AssigneeName, task.AssigneeID),
+		Project:  firstNonEmpty(list.Name, task.ProjectID, sphere),
+		Track:    braingtd.TrackFromLabels(task.Labels),
+		ParentID: strings.TrimSpace(task.ParentID),
 	}
 }
 
 func taskGTDList(list providerdata.TaskList) taskgtd.List {
-	return taskgtd.List{
-		ID:             list.ID,
-		Name:           list.Name,
-		Primary:        list.Primary,
-		IsInboxProject: list.IsInboxProject,
-	}
+	return taskgtd.List{ID: list.ID, Name: list.Name, Primary: list.Primary, IsInboxProject: list.IsInboxProject}
 }
 
 func taskGTDTasks(tasks []providerdata.TaskItem) []taskgtd.Task {
@@ -405,19 +394,11 @@ func taskGTDTasks(tasks []providerdata.TaskItem) []taskgtd.Task {
 
 func taskGTDTask(task providerdata.TaskItem) taskgtd.Task {
 	return taskgtd.Task{
-		ID:           task.ID,
-		ListID:       task.ListID,
-		Title:        task.Title,
-		ProjectID:    task.ProjectID,
-		ParentID:     task.ParentID,
-		ProviderRef:  task.ProviderRef,
-		Labels:       append([]string(nil), task.Labels...),
-		StartAt:      task.StartAt,
-		Due:          task.Due,
-		Completed:    task.Completed,
-		AssigneeID:   task.AssigneeID,
-		AssigneeName: task.AssigneeName,
-		ProviderURL:  task.ProviderURL,
+		ID: task.ID, ListID: task.ListID, Title: task.Title, ProjectID: task.ProjectID,
+		ParentID: task.ParentID, ProviderRef: task.ProviderRef,
+		Labels:    append([]string(nil), task.Labels...),
+		StartAt:   task.StartAt, Due: task.Due, Completed: task.Completed,
+		AssigneeID: task.AssigneeID, AssigneeName: task.AssigneeName, ProviderURL: task.ProviderURL,
 	}
 }
 

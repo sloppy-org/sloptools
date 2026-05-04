@@ -182,7 +182,11 @@ func (s *Server) mailFlagSet(args map[string]interface{}) (map[string]interface{
 		}
 		return nil, err
 	}
-	return map[string]interface{}{"account": account, "succeeded": count, "message_ids": ids, "status": status}, nil
+	bindingRefs := s.mailBindingAffectedRefs(context.Background(), account, provider, ids)
+	return withAffected(
+		map[string]interface{}{"account": account, "succeeded": count, "message_ids": ids, "status": status},
+		append(mailMessageAffectedRefs(account, ids, nil), bindingRefs...)...,
+	), nil
 }
 
 func (s *Server) mailFlagClear(args map[string]interface{}) (map[string]interface{}, error) {
@@ -203,7 +207,11 @@ func (s *Server) mailFlagClear(args map[string]interface{}) (map[string]interfac
 	if err != nil {
 		return nil, err
 	}
-	return map[string]interface{}{"account": account, "succeeded": count, "message_ids": ids}, nil
+	bindingRefs := s.mailBindingAffectedRefs(context.Background(), account, provider, ids)
+	return withAffected(
+		map[string]interface{}{"account": account, "succeeded": count, "message_ids": ids},
+		append(mailMessageAffectedRefs(account, ids, nil), bindingRefs...)...,
+	), nil
 }
 
 func (s *Server) mailCategoriesSet(args map[string]interface{}) (map[string]interface{}, error) {
@@ -228,7 +236,11 @@ func (s *Server) mailCategoriesSet(args map[string]interface{}) (map[string]inte
 	if err != nil {
 		return nil, err
 	}
-	return map[string]interface{}{"account": account, "succeeded": count, "message_ids": ids, "categories": categories}, nil
+	bindingRefs := s.mailBindingAffectedRefs(context.Background(), account, provider, ids)
+	return withAffected(
+		map[string]interface{}{"account": account, "succeeded": count, "message_ids": ids, "categories": categories},
+		append(mailMessageAffectedRefs(account, ids, nil), bindingRefs...)...,
+	), nil
 }
 
 func normalizeFlagStatus(raw string) (string, error) {

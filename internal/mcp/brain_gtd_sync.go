@@ -38,7 +38,7 @@ type gtdSyncError struct {
 }
 
 type gtdSyncState struct {
-	Status, ClosedAt string
+	Status, ClosedAt, FollowUp string
 }
 
 func (s *Server) brainGTDSync(args map[string]interface{}) (map[string]interface{}, error) {
@@ -227,8 +227,9 @@ func (s *Server) periodicSyncBinding(note dedupNote, binding braingtd.SourceBind
 		return false, gtdSyncAction{}, gtdSyncDrift{}, err
 	}
 	localClosed := commitmentClosed(note.Entry.Commitment)
+	remoteClosed := closedStatus(state.Status)
 	switch {
-	case state.Status == "closed" && !localClosed:
+	case remoteClosed && !localClosed:
 		action := syncAction(note, binding, "close_local_overlay", dryRun)
 		if !dryRun {
 			commitment := note.Entry.Commitment
@@ -243,8 +244,8 @@ func (s *Server) periodicSyncBinding(note dedupNote, binding braingtd.SourceBind
 			}
 		}
 		return true, action, gtdSyncDrift{}, nil
-	case state.Status == "open" && localClosed:
-		return false, gtdSyncAction{}, gtdSyncDrift{Path: note.Entry.Path, Binding: binding.StableID(), Local: "closed", Remote: "open"}, nil
+	case !remoteClosed && state.Status != "" && localClosed:
+		return false, gtdSyncAction{}, gtdSyncDrift{Path: note.Entry.Path, Binding: binding.StableID(), Local: "closed", Remote: state.Status}, nil
 	default:
 		return false, gtdSyncAction{}, gtdSyncDrift{}, nil
 	}
@@ -377,7 +378,7 @@ func (s *Server) closeMailBinding(note dedupNote, binding braingtd.SourceBinding
 }
 
 func (s *Server) readMailBindingState(note dedupNote, binding braingtd.SourceBinding) (gtdSyncState, error) {
-	_, provider, err := s.mailProviderForSync(note, binding, nil)
+	account, provider, err := s.mailProviderForSync(note, binding, nil)
 	if err != nil {
 		return gtdSyncState{}, err
 	}
@@ -389,10 +390,8 @@ func (s *Server) readMailBindingState(note dedupNote, binding braingtd.SourceBin
 	if message == nil {
 		return gtdSyncState{}, fmt.Errorf("mail message %q not found", binding.Ref)
 	}
-	if message.IsRead && !mailLabelsContain(message.Labels, "inbox") {
-		return gtdSyncState{Status: "closed"}, nil
-	}
-	return gtdSyncState{Status: "open"}, nil
+	derived := mailMessageToGTDStatus(message, mailAccountWaitingFolder(account))
+	return gtdSyncState{Status: derived.Status, FollowUp: derived.FollowUp}, nil
 }
 
 func (s *Server) closeTodoistBinding(note dedupNote, binding braingtd.SourceBinding, args map[string]interface{}) error {

@@ -76,10 +76,39 @@ func (s *Server) mailAction(args map[string]interface{}) (map[string]interface{}
 	for _, logEntry := range logs {
 		_ = st.UpdateMailActionLogResult(logEntry.ID, store.MailActionLogApplied, resolvedByMessageID[strings.TrimSpace(logEntry.MessageID)], "")
 	}
+	bindingRefs := s.mailBindingAffectedRefs(context.Background(), account, provider, mailWalkPostMutationIDs(messageIDs, applied.Resolutions))
 	return withAffected(
 		mailActionResult(account, action, messageIDs, applied.Count, untilAt),
-		mailMessageAffectedRefs(account, messageIDs, applied.Resolutions)...,
+		append(mailMessageAffectedRefs(account, messageIDs, applied.Resolutions), bindingRefs...)...,
 	), nil
+}
+
+// mailWalkPostMutationIDs returns the message IDs that survived a mail
+// mutation (resolved IDs win over originals). Empty when every message was
+// removed (e.g. delete) so the walker still runs against the originals.
+func mailWalkPostMutationIDs(originals []string, resolutions []email.ActionResolution) []string {
+	resolved := map[string]string{}
+	for _, resolution := range resolutions {
+		original := strings.TrimSpace(resolution.OriginalMessageID)
+		new := strings.TrimSpace(resolution.ResolvedMessageID)
+		if original == "" {
+			continue
+		}
+		resolved[original] = new
+	}
+	out := make([]string, 0, len(originals))
+	for _, id := range originals {
+		clean := strings.TrimSpace(id)
+		if clean == "" {
+			continue
+		}
+		if mapped, ok := resolved[clean]; ok && mapped != "" {
+			out = append(out, mapped)
+			continue
+		}
+		out = append(out, clean)
+	}
+	return out
 }
 
 func resolveMailActionMessageIDs(ctx context.Context, provider email.EmailProvider, args map[string]interface{}) ([]string, error) {

@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -452,35 +453,8 @@ func parseDedupCommitment(t *testing.T, s *Server, configPath, path string) *bra
 
 func writeDedupCommitment(t *testing.T, root, sphere, rel, outcome, provider, ref string) {
 	t.Helper()
-	body := `---
-kind: commitment
-sphere: ` + sphere + `
-title: ` + outcome + `
-status: next
-context: review
-next_action: Review the item
-outcome: ` + outcome + `
-source_bindings:
-  - provider: ` + provider + `
-    ref: "` + ref + `"
----
-# ` + outcome + `
-
-## Summary
-Review the item.
-
-## Next Action
-- [ ] Review the item
-
-## Evidence
-- ` + provider + `:` + ref + `
-
-## Linked Items
-- None.
-
-## Review Notes
-- None.
-`
+	header := fmt.Sprintf("---\nkind: commitment\nsphere: %s\ntitle: %s\nstatus: next\ncontext: review\nnext_action: Review the item\noutcome: %s\nsource_bindings:\n  - provider: %s\n    ref: %q\n---\n", sphere, outcome, outcome, provider, ref)
+	body := header + fmt.Sprintf("# %s\n\n## Summary\nReview the item.\n\n## Next Action\n- [ ] Review the item\n\n## Evidence\n- %s:%s\n\n## Linked Items\n- None.\n\n## Review Notes\n- None.\n", outcome, provider, ref)
 	writeMCPBrainFile(t, filepath.Join(root, sphere, filepath.FromSlash(rel)), body)
 }
 

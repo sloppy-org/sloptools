@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -34,21 +33,15 @@ type Client struct {
 type Option func(*Client)
 
 func WithBaseURL(raw string) Option {
-	return func(c *Client) {
-		c.baseURL = strings.TrimRight(strings.TrimSpace(raw), "/")
-	}
+	return func(c *Client) { c.baseURL = strings.TrimRight(strings.TrimSpace(raw), "/") }
 }
 
 func WithMoveBaseURL(raw string) Option {
-	return func(c *Client) {
-		c.moveBaseURL = strings.TrimRight(strings.TrimSpace(raw), "/")
-	}
+	return func(c *Client) { c.moveBaseURL = strings.TrimRight(strings.TrimSpace(raw), "/") }
 }
 
 func WithHTTPClient(client *http.Client) Option {
-	return func(c *Client) {
-		c.httpClient = client
-	}
+	return func(c *Client) { c.httpClient = client }
 }
 
 func WithRequestIDGenerator(fn func() string) Option {
@@ -64,13 +57,7 @@ func NewClient(token string, opts ...Option) (*Client, error) {
 	if cleanToken == "" {
 		return nil, ErrTokenNotConfigured
 	}
-	client := &Client{
-		baseURL:     defaultBaseURL,
-		moveBaseURL: defaultMoveBaseURL,
-		token:       cleanToken,
-		httpClient:  http.DefaultClient,
-		requestID:   newRequestID,
-	}
+	client := &Client{baseURL: defaultBaseURL, moveBaseURL: defaultMoveBaseURL, token: cleanToken, httpClient: http.DefaultClient, requestID: newRequestID}
 	for _, opt := range opts {
 		if opt != nil {
 			opt(client)
@@ -142,19 +129,17 @@ func (c *Client) GetTask(ctx context.Context, id string) (TaskDetail, error) {
 }
 
 func (c *Client) CompleteTask(ctx context.Context, id string) error {
-	taskID := strings.TrimSpace(id)
-	if taskID == "" {
-		return ErrTaskIDRequired
-	}
-	return c.postNoContent(ctx, c.baseURL+"/tasks/"+url.PathEscape(taskID)+"/close")
+	return c.taskAction(ctx, id, "close")
 }
-
 func (c *Client) ReopenTask(ctx context.Context, id string) error {
+	return c.taskAction(ctx, id, "reopen")
+}
+func (c *Client) taskAction(ctx context.Context, id, action string) error {
 	taskID := strings.TrimSpace(id)
 	if taskID == "" {
 		return ErrTaskIDRequired
 	}
-	return c.postNoContent(ctx, c.baseURL+"/tasks/"+url.PathEscape(taskID)+"/reopen")
+	return c.postNoContent(ctx, c.baseURL+"/tasks/"+url.PathEscape(taskID)+"/"+action)
 }
 
 func (c *Client) CreateTask(ctx context.Context, req CreateTaskRequest) (Task, error) {
@@ -281,7 +266,7 @@ func (c *Client) newRequest(ctx context.Context, method, endpoint string, query 
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	if cleanMethod != http.MethodGet && cleanMethod != http.MethodDelete && c.requestID != nil {
+	if c.requestID != nil && cleanMethod != http.MethodGet && cleanMethod != http.MethodDelete {
 		req.Header.Set("X-Request-Id", c.requestID())
 	}
 	return req, nil
@@ -292,14 +277,15 @@ func listTaskQuery(opts ListTasksOptions) (url.Values, error) {
 		return nil, errors.New("filter and due filter cannot be combined")
 	}
 	query := url.Values{}
-	if v := strings.TrimSpace(opts.ProjectID); v != "" {
-		query.Set("project_id", v)
-	}
-	if v := strings.TrimSpace(opts.SectionID); v != "" {
-		query.Set("section_id", v)
-	}
-	if v := strings.TrimSpace(opts.Label); v != "" {
-		query.Set("label", v)
+	for key, value := range map[string]string{
+		"project_id": opts.ProjectID,
+		"section_id": opts.SectionID,
+		"label":      opts.Label,
+		"lang":       opts.Lang,
+	} {
+		if v := strings.TrimSpace(value); v != "" {
+			query.Set(key, v)
+		}
 	}
 	filter := strings.TrimSpace(opts.Filter)
 	if filter == "" {
@@ -308,36 +294,27 @@ func listTaskQuery(opts ListTasksOptions) (url.Values, error) {
 	if filter != "" {
 		query.Set("filter", filter)
 	}
-	if v := strings.TrimSpace(opts.Lang); v != "" {
-		query.Set("lang", v)
+	ids := make([]string, 0, len(opts.IDs))
+	for _, id := range opts.IDs {
+		if clean := strings.TrimSpace(id); clean != "" {
+			ids = append(ids, clean)
+		}
 	}
-	if len(opts.IDs) > 0 {
-		ids := make([]string, 0, len(opts.IDs))
-		for _, id := range opts.IDs {
-			if clean := strings.TrimSpace(id); clean != "" {
-				ids = append(ids, clean)
-			}
-		}
-		if len(ids) > 0 {
-			query.Set("ids", strings.Join(ids, ","))
-		}
+	if len(ids) > 0 {
+		query.Set("ids", strings.Join(ids, ","))
 	}
 	return query, nil
 }
 
 func shouldRetryTodoistRequest(method string, attempt, status int) bool {
-	if method != http.MethodGet {
-		return false
-	}
-	if attempt >= 2 {
+	if method != http.MethodGet || attempt >= 2 {
 		return false
 	}
 	switch status {
 	case 0, http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
 		return true
-	default:
-		return false
 	}
+	return false
 }
 
 func todoistRetrySleep(ctx context.Context, resp *http.Response, attempt int) error {
@@ -354,10 +331,8 @@ func todoistRetrySleep(ctx context.Context, resp *http.Response, attempt int) er
 
 func todoistRetryDelay(resp *http.Response, attempt int) time.Duration {
 	if resp != nil {
-		if retryAfter := strings.TrimSpace(resp.Header.Get("Retry-After")); retryAfter != "" {
-			if seconds, err := strconv.Atoi(retryAfter); err == nil && seconds > 0 {
-				return time.Duration(seconds) * time.Second
-			}
+		if seconds, err := strconv.Atoi(strings.TrimSpace(resp.Header.Get("Retry-After"))); err == nil && seconds > 0 {
+			return time.Duration(seconds) * time.Second
 		}
 	}
 	switch attempt {
@@ -365,9 +340,8 @@ func todoistRetryDelay(resp *http.Response, attempt int) time.Duration {
 		return 200 * time.Millisecond
 	case 1:
 		return 500 * time.Millisecond
-	default:
-		return time.Second
 	}
+	return time.Second
 }
 
 func createTaskBody(req CreateTaskRequest) (map[string]any, error) {
@@ -379,19 +353,17 @@ func createTaskBody(req CreateTaskRequest) (map[string]any, error) {
 		return nil, err
 	}
 	body := map[string]any{"content": content}
-	addOptionalString(body, "description", req.Description)
-	addOptionalString(body, "project_id", req.ProjectID)
-	addOptionalString(body, "section_id", req.SectionID)
-	addOptionalString(body, "parent_id", req.ParentID)
+	for key, value := range map[string]string{
+		"description": req.Description, "project_id": req.ProjectID, "section_id": req.SectionID,
+		"parent_id": req.ParentID, "due_string": req.DueString, "due_date": req.DueDate,
+		"due_datetime": req.DueDateTime, "due_lang": req.DueLang, "assignee_id": req.AssigneeID,
+		"deadline_date": req.DeadlineDate,
+	} {
+		addOptionalString(body, key, value)
+	}
 	addOptionalStrings(body, "labels", req.Labels)
 	addOptionalInt(body, "order", req.Order)
 	addOptionalInt(body, "priority", req.Priority)
-	addOptionalString(body, "due_string", req.DueString)
-	addOptionalString(body, "due_date", req.DueDate)
-	addOptionalString(body, "due_datetime", req.DueDateTime)
-	addOptionalString(body, "due_lang", req.DueLang)
-	addOptionalString(body, "assignee_id", req.AssigneeID)
-	addOptionalString(body, "deadline_date", req.DeadlineDate)
 	if err := addOptionalDuration(body, req.Duration); err != nil {
 		return nil, err
 	}
@@ -403,14 +375,13 @@ func updateTaskBody(req UpdateTaskRequest) (map[string]any, error) {
 		return nil, err
 	}
 	body := map[string]any{}
-	addPointerString(body, "content", req.Content)
-	addPointerString(body, "description", req.Description)
-	addPointerString(body, "due_string", req.DueString)
-	addPointerString(body, "due_date", req.DueDate)
-	addPointerString(body, "due_datetime", req.DueDateTime)
-	addPointerString(body, "due_lang", req.DueLang)
-	addPointerString(body, "assignee_id", req.AssigneeID)
-	addPointerString(body, "deadline_date", req.DeadlineDate)
+	for key, value := range map[string]*string{
+		"content": req.Content, "description": req.Description, "due_string": req.DueString,
+		"due_date": req.DueDate, "due_datetime": req.DueDateTime, "due_lang": req.DueLang,
+		"assignee_id": req.AssigneeID, "deadline_date": req.DeadlineDate,
+	} {
+		addPointerString(body, key, value)
+	}
 	if req.Priority != nil && *req.Priority > 0 {
 		body["priority"] = *req.Priority
 	}
@@ -438,15 +409,12 @@ func addOptionalString(body map[string]any, key, value string) {
 }
 
 func addPointerString(body map[string]any, key string, value *string) {
-	if value != nil && strings.TrimSpace(*value) != "" {
-		body[key] = strings.TrimSpace(*value)
+	if value != nil {
+		addOptionalString(body, key, *value)
 	}
 }
 
 func addOptionalStrings(body map[string]any, key string, values []string) {
-	if len(values) == 0 {
-		return
-	}
 	out := make([]string, 0, len(values))
 	for _, value := range values {
 		if clean := strings.TrimSpace(value); clean != "" {
@@ -481,51 +449,38 @@ func addOptionalDuration(body map[string]any, duration *Duration) error {
 }
 
 func validateDueValues(dueString, dueDate, dueDateTime string) error {
-	values := 0
-	for _, value := range []string{dueString, dueDate, dueDateTime} {
-		if strings.TrimSpace(value) != "" {
-			values++
-		}
-	}
-	if values > 1 {
+	if countNonEmptyPointers(&dueString, &dueDate, &dueDateTime) > 1 {
 		return errors.New("only one due field may be set")
 	}
 	return nil
 }
 
 func validateDuePointers(dueString, dueDate, dueDateTime *string) error {
-	values := 0
-	for _, value := range []*string{dueString, dueDate, dueDateTime} {
-		if value != nil && strings.TrimSpace(*value) != "" {
-			values++
-		}
-	}
-	if values > 1 {
+	if countNonEmptyPointers(dueString, dueDate, dueDateTime) > 1 {
 		return errors.New("only one due field may be set")
 	}
 	return nil
 }
 
 func hasMoveRequest(projectID, sectionID, parentID *string) bool {
-	for _, value := range []*string{projectID, sectionID, parentID} {
-		if value != nil && strings.TrimSpace(*value) != "" {
-			return true
-		}
-	}
-	return false
+	return countNonEmptyPointers(projectID, sectionID, parentID) > 0
 }
 
 func validateMoveRequest(projectID, sectionID, parentID *string) error {
-	values := 0
-	for _, value := range []*string{projectID, sectionID, parentID} {
-		if value != nil && strings.TrimSpace(*value) != "" {
-			values++
-		}
-	}
-	if values > 1 {
+	if countNonEmptyPointers(projectID, sectionID, parentID) > 1 {
 		return errors.New("only one of project_id, section_id, or parent_id may be set")
 	}
 	return nil
+}
+
+func countNonEmptyPointers(values ...*string) int {
+	count := 0
+	for _, value := range values {
+		if value != nil && strings.TrimSpace(*value) != "" {
+			count++
+		}
+	}
+	return count
 }
 
 func newRequestID() string {
@@ -533,9 +488,5 @@ func newRequestID() string {
 	if _, err := rand.Read(buf); err != nil {
 		return "sloptools-todoist-request"
 	}
-	return hex.EncodeToString(buf[:4]) + "-" +
-		hex.EncodeToString(buf[4:6]) + "-" +
-		hex.EncodeToString(buf[6:8]) + "-" +
-		hex.EncodeToString(buf[8:10]) + "-" +
-		hex.EncodeToString(buf[10:])
+	return fmt.Sprintf("%x-%x-%x-%x-%x", buf[:4], buf[4:6], buf[6:8], buf[8:10], buf[10:])
 }

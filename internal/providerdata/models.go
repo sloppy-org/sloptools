@@ -12,8 +12,10 @@ type EmailMessage struct {
 	Date              time.Time
 	Snippet           string
 	Labels            []string
+	Folder            string
 	IsRead            bool
 	IsFlagged         bool
+	FollowUpAt        *time.Time
 	BodyText          *string
 	BodyHTML          *string
 	Attachments       []Attachment
