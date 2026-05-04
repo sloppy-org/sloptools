@@ -16,7 +16,7 @@ import (
 
 func cmdBrainIngest(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "brain ingest requires relation-candidates, runtime-plan, final-report, or stream-opencode-report")
+		fmt.Fprintln(os.Stderr, "brain ingest requires a subcommand")
 		return 2
 	}
 	switch args[0] {
@@ -164,16 +164,17 @@ func cmdBrainIngestFolderUnits(args []string) int {
 func cmdBrainIngestArchiveCandidates(args []string) int {
 	fs := flag.NewFlagSet("brain ingest archive-candidates", flag.ContinueOnError)
 	root := fs.String("root", ".", "brain-ingest root")
+	vault := fs.String("vault", "both", "vault filter: nextcloud, dropbox, or both")
 	limit := fs.Int("limit", 160, "maximum rows")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	rows, err := brain.ArchiveCandidates(*root, *limit)
+	rows, err := brain.ArchiveCandidates(*root, *vault, *limit)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	return printBrainJSON(map[string]interface{}{"candidates": len(rows), "items": rows})
+	return printBrainJSON(map[string]interface{}{"vault": *vault, "candidates": len(rows), "items": rows})
 }
 
 func cmdBrainIngestRelations(args []string) int {

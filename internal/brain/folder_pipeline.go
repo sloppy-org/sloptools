@@ -215,13 +215,16 @@ func ValidateWorkUnits(root string) ([]WorkUnitIssue, error) {
 	return issues, nil
 }
 
-func ArchiveCandidates(root string, limit int) ([]ArchiveCandidate, error) {
-	rows, err := readTSV(filepath.Join(root, "data", "folder", "profiles.tsv"))
+func ArchiveCandidates(root, vaultFilter string, limit int) ([]ArchiveCandidate, error) {
+	rows, err := readTSV(archiveProfilePath(root))
 	if err != nil {
 		return nil, err
 	}
 	var out []ArchiveCandidate
 	for _, row := range rows {
+		if vaultFilter != "" && vaultFilter != "both" && row["vault"] != vaultFilter {
+			continue
+		}
 		score, rationale := archiveScore(row["path"], row["extensions"], atoiDefault(row["processable_files"], 0), atoiDefault(row["processable_dirs"], 0))
 		if score < 45 {
 			continue
@@ -247,6 +250,20 @@ func ArchiveCandidates(root string, limit int) ([]ArchiveCandidate, error) {
 		out = out[:limit]
 	}
 	return out, nil
+}
+
+func archiveProfilePath(root string) string {
+	candidates := []string{
+		filepath.Join(root, "data", "folder", "profiles.tsv"),
+		filepath.Join(root, "data", "folder", "tree_profile_fast.tsv"),
+		filepath.Join(root, "data", "folder", "tree_profile.tsv"),
+	}
+	for _, path := range candidates {
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+	return candidates[0]
 }
 
 func folderFindings(note *MarkdownNote, folder FolderNote, diags []MarkdownDiagnostic) []FolderFinding {

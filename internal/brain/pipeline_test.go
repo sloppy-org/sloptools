@@ -124,12 +124,24 @@ func TestValidateWorkUnitsFindsOverlap(t *testing.T) {
 
 func TestArchiveCandidatesFlagsVendoredTree(t *testing.T) {
 	root := t.TempDir()
-	writeTestFile(t, filepath.Join(root, "data", "folder", "profiles.tsv"), "vault\tpath\textensions\tprocessable_files\tprocessable_dirs\nnextcloud\tproj/vendor/zlib\t.dll:7\t120\t14\n")
-	rows, err := ArchiveCandidates(root, 10)
+	writeTestFile(t, filepath.Join(root, "data", "folder", "tree_profile_fast.tsv"), "vault\tsphere\tpath\tdepth\tdirect_dirs\tdirect_files\tdescendant_dirs\tdescendant_files\tprocessable_dirs\tprocessable_files\textensions\nnextcloud\twork\tproj/vendor/zlib\t3\t0\t120\t0\t0\t14\t120\t.dll:7\n")
+	rows, err := ArchiveCandidates(root, "both", 10)
 	if err != nil {
 		t.Fatalf("ArchiveCandidates: %v", err)
 	}
 	if len(rows) != 1 || rows[0].Action != "archive_sure" {
+		t.Fatalf("rows=%+v", rows)
+	}
+}
+
+func TestArchiveCandidatesFiltersVault(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, filepath.Join(root, "data", "folder", "tree_profile_fast.tsv"), "vault\tsphere\tpath\tdepth\tdirect_dirs\tdirect_files\tdescendant_dirs\tdescendant_files\tprocessable_dirs\tprocessable_files\textensions\nnextcloud\twork\tproj/vendor/zlib\t3\t0\t120\t0\t0\t14\t120\t.dll:7\ndropbox\tprivate\tapp/vendor/lib\t3\t0\t120\t0\t0\t14\t120\t.dll:7\n")
+	rows, err := ArchiveCandidates(root, "nextcloud", 10)
+	if err != nil {
+		t.Fatalf("ArchiveCandidates: %v", err)
+	}
+	if len(rows) != 1 || rows[0].Vault != "nextcloud" {
 		t.Fatalf("rows=%+v", rows)
 	}
 }
