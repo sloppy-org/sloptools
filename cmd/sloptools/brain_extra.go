@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -21,6 +20,20 @@ func cmdBrainIngest(args []string) int {
 		return 2
 	}
 	switch args[0] {
+	case "folder-quality":
+		return cmdBrainIngestFolderQuality(args[1:])
+	case "folder-review-queue":
+		return cmdBrainIngestFolderReviewQueue(args[1:])
+	case "folder-review-apply":
+		return cmdBrainIngestFolderReviewApply(args[1:])
+	case "folder-review-packet":
+		return cmdBrainIngestFolderReviewPacket(args[1:])
+	case "folder-stability":
+		return cmdBrainIngestFolderStability(args[1:])
+	case "folder-units":
+		return cmdBrainIngestFolderUnits(args[1:])
+	case "archive-candidates":
+		return cmdBrainIngestArchiveCandidates(args[1:])
 	case "relation-candidates":
 		return cmdBrainIngestRelations(args[1:])
 	case "runtime-plan":
@@ -30,12 +43,137 @@ func cmdBrainIngest(args []string) int {
 	case "stream-opencode-report":
 		return cmdBrainIngestStreamOpencode(args[1:])
 	case "help", "-h", "--help":
-		fmt.Println("sloptools brain ingest <relation-candidates|runtime-plan|final-report|stream-opencode-report> [flags]")
+		fmt.Println("sloptools brain ingest <folder-quality|folder-review-queue|folder-review-apply|folder-review-packet|folder-stability|folder-units|archive-candidates|relation-candidates|runtime-plan|final-report|stream-opencode-report> [flags]")
 		return 0
 	default:
 		fmt.Fprintf(os.Stderr, "unknown brain ingest subcommand: %s\n", args[0])
 		return 2
 	}
+}
+
+func cmdBrainIngestFolderQuality(args []string) int {
+	cfg, sphere, status := brainIngestConfigSphere("brain ingest folder-quality", args)
+	if status != 0 {
+		return status
+	}
+	rows, err := brain.FolderQuality(cfg, brain.Sphere(sphere))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	return printBrainJSON(map[string]interface{}{"sphere": sphere, "candidates": len(rows), "items": rows})
+}
+
+func cmdBrainIngestFolderReviewQueue(args []string) int {
+	fs := flag.NewFlagSet("brain ingest folder-review-queue", flag.ContinueOnError)
+	configPath := fs.String("config", "", "vault config path")
+	sphere := fs.String("sphere", "", "vault sphere")
+	limit := fs.Int("limit", 200, "maximum rows")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	cfg, err := brain.LoadConfig(*configPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	rows, err := brain.FolderReviewQueue(cfg, brain.Sphere(*sphere), *limit)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	return printBrainJSON(map[string]interface{}{"sphere": *sphere, "items": rows, "count": len(rows)})
+}
+
+func cmdBrainIngestFolderReviewApply(args []string) int {
+	fs := flag.NewFlagSet("brain ingest folder-review-apply", flag.ContinueOnError)
+	configPath := fs.String("config", "", "vault config path")
+	sphere := fs.String("sphere", "", "vault sphere")
+	path := fs.String("path", "", "folder note path")
+	reviewPath := fs.String("review", "", "review output path")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	cfg, err := brain.LoadConfig(*configPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	review, err := os.ReadFile(*reviewPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	resolved, changed, err := brain.ApplyFolderReview(cfg, brain.Sphere(*sphere), *path, string(review))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	return printBrainJSON(map[string]interface{}{"source": resolved, "changed": changed})
+}
+
+func cmdBrainIngestFolderReviewPacket(args []string) int {
+	fs := flag.NewFlagSet("brain ingest folder-review-packet", flag.ContinueOnError)
+	configPath := fs.String("config", "", "vault config path")
+	sphere := fs.String("sphere", "", "vault sphere")
+	path := fs.String("path", "", "folder note path")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	cfg, err := brain.LoadConfig(*configPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	packet, err := brain.FolderReviewPacket(cfg, brain.Sphere(*sphere), *path)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	fmt.Print(packet)
+	return 0
+}
+
+func cmdBrainIngestFolderStability(args []string) int {
+	cfg, sphere, status := brainIngestConfigSphere("brain ingest folder-stability", args)
+	if status != 0 {
+		return status
+	}
+	row, err := brain.FolderStability(cfg, brain.Sphere(sphere))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	return printBrainJSON(row)
+}
+
+func cmdBrainIngestFolderUnits(args []string) int {
+	fs := flag.NewFlagSet("brain ingest folder-units", flag.ContinueOnError)
+	root := fs.String("root", ".", "brain-ingest root")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	issues, err := brain.ValidateWorkUnits(*root)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	return printBrainJSON(map[string]interface{}{"ok": len(issues) == 0, "issues": issues, "count": len(issues)})
+}
+
+func cmdBrainIngestArchiveCandidates(args []string) int {
+	fs := flag.NewFlagSet("brain ingest archive-candidates", flag.ContinueOnError)
+	root := fs.String("root", ".", "brain-ingest root")
+	limit := fs.Int("limit", 160, "maximum rows")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	rows, err := brain.ArchiveCandidates(*root, *limit)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	return printBrainJSON(map[string]interface{}{"candidates": len(rows), "items": rows})
 }
 
 func cmdBrainIngestRelations(args []string) int {
@@ -133,12 +271,26 @@ func cmdBrainIngestStreamOpencode(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	enc := json.NewEncoder(os.Stdout)
-	if err := enc.Encode(map[string]interface{}{"ok": true, "report": *reportPath, "events": *eventsPath}); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
+	return printBrainJSON(map[string]interface{}{"ok": true, "report": *reportPath, "events": *eventsPath})
+}
+
+func brainIngestConfigSphere(command string, args []string) (*brain.Config, string, int) {
+	fs := flag.NewFlagSet(command, flag.ContinueOnError)
+	configPath := fs.String("config", "", "vault config path")
+	sphere := fs.String("sphere", "", "vault sphere")
+	if err := fs.Parse(args); err != nil {
+		return nil, "", 2
 	}
-	return 0
+	if strings.TrimSpace(*sphere) == "" {
+		fmt.Fprintln(os.Stderr, "--sphere is required")
+		return nil, "", 2
+	}
+	cfg, err := brain.LoadConfig(*configPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return nil, "", 1
+	}
+	return cfg, *sphere, 0
 }
 
 func cmdBrainGTDList(args []string) int {

@@ -27,22 +27,22 @@ relevant Go counterpart child issue.
 |---|---|---|---|
 | gtd.py | #102 | internal/brain/gtd | removed |
 | folder_markdown.py | #103 | internal/brain/folder | removed |
-| folder_review_queue.py | #104 | internal/brain/folder | planned |
-| folder_review_apply.py | #105 | internal/brain/folder | planned |
-| folder_quality.py | #106 | internal/brain/folder | planned |
-| folder_stability.py | #107 | internal/brain/folder | planned |
-| folder_units.py | #108 | internal/brain/folder | planned |
+| folder_review_queue.py | #104 | internal/brain/folder | removed |
+| folder_review_apply.py | #105 | internal/brain/folder | removed |
+| folder_quality.py | #106 | internal/brain/folder | removed |
+| folder_stability.py | #107 | internal/brain/folder | removed |
+| folder_units.py | #108 | internal/brain/folder | removed |
 | glossary.py | #109 | internal/brain/glossary | removed |
 | attention.py | #110 | internal/brain/attention | removed |
 | entity_candidates.py | #111 | internal/brain/entities | removed |
 | relation_candidates.py | #112 | internal/brain/entities | removed |
-| archive_candidates.py | #113 | internal/brain/folder | planned |
+| archive_candidates.py | #113 | internal/brain/folder | removed |
 | derive_monthly_index.py | #114 | internal/brain/people | removed |
 | runtime_plan.py | #115 | internal/brain/runtime | removed |
 | final_report.py | #116 | internal/brain/report | removed |
 | stream_opencode_report.py | #117 | internal/brain/report | removed |
 | validate_outputs.py | #118 | internal/brain/validate | removed |
-| folder_review_packet.py | #119 | internal/brain/folder | planned |
+| folder_review_packet.py | #119 | internal/brain/folder | removed |
 
 ## Sister epics (Go side)
 
@@ -164,22 +164,21 @@ Builds compact review packets including PDF page renders and direct child
 note excerpts for one-shot LLM review of a single folder note. No Go
 counterpart yet; the packet shape is review-pipeline-specific.
 
-**Status: planned.**
+**Status: removed.** Use `sloptools brain ingest folder-review-packet`.
 
 ### folder_review_queue.py — second-stage review queue (tracked in #104)
 
 Builds a TSV/Markdown queue selecting folder notes for review based on
 quality codes, stability cache, and sweep scope.
 
-**Status: planned.**
+**Status: removed.** Use `sloptools brain ingest folder-review-queue`.
 
 ### folder_review_apply.py — apply reviewed body (tracked in #105)
 
 Applies a reviewed Markdown body back to the canonical folder note after
 deterministic validation, refusing to run while a sweep is active.
 
-**Status: planned.** Distinct from `brain.note.write` because it owns the
-sweep-lock contract documented in `~/CLAUDE.md`.
+**Status: removed.** Use `sloptools brain ingest folder-review-apply`.
 
 ### folder_quality.py — deterministic quality queue and repair (tracked in #106)
 
@@ -188,14 +187,14 @@ Two subcommands: `candidates` (TSV/Markdown report) and `repair`
 half overlaps with `brain.note.write` semantics but encodes additional
 folder-note repair rules.
 
-**Status: planned.**
+**Status: removed.** Use `sloptools brain ingest folder-quality`.
 
 ### folder_stability.py — pass-1 stability report (tracked in #107)
 
 Aggregates folder-note ingestion stability by top-level vault subtree.
 Reads the same parser data; emits Markdown + TSV.
 
-**Status: planned.**
+**Status: removed.** Use `sloptools brain ingest folder-stability`.
 
 ### folder_units.py — semantic folder work-unit planner (tracked in #108)
 
@@ -203,14 +202,14 @@ Plans non-overlapping folder-sweep work units. Heaviest of the planner
 scripts (≈600 LOC); calls Codex/Qwen for suggestions and validates the
 resulting `work_units.tsv`.
 
-**Status: planned.** Significant LLM-orchestration logic; port carefully.
+**Status: removed.** Use `sloptools brain ingest folder-units`.
 
 ### archive_candidates.py — bulky-tree archive recommender (tracked in #113)
 
 Identifies vault subtrees that should be archived as a single zip rather
 than ingested. Mixes deterministic prefilter with optional Codex review.
 
-**Status: planned.**
+**Status: removed.** Use `sloptools brain ingest archive-candidates`.
 
 ### derive_monthly_index.py — monthly journal index generator (tracked in #114)
 
@@ -251,13 +250,11 @@ diagnostics; consider whether they need a Go port at all.
 
 | Bucket | Scripts |
 |---|---|
-| removed | gtd.py, folder_markdown.py, glossary.py, attention.py, entity_candidates.py, validate_outputs.py, derive_monthly_index.py, relation_candidates.py, runtime_plan.py, final_report.py, stream_opencode_report.py |
-| planned | folder_review_packet.py, folder_review_queue.py, folder_review_apply.py, folder_quality.py, folder_stability.py, folder_units.py, archive_candidates.py |
+| removed | gtd.py, folder_markdown.py, folder_review_queue.py, folder_review_apply.py, folder_quality.py, folder_stability.py, folder_units.py, glossary.py, attention.py, entity_candidates.py, relation_candidates.py, archive_candidates.py, derive_monthly_index.py, runtime_plan.py, final_report.py, stream_opencode_report.py, validate_outputs.py, folder_review_packet.py |
+| planned | none |
 
-Eleven of eighteen scripts have Go counterparts and have been deleted from the
-vault. The remaining seven are the brain-ingest folder review and planning
-pipeline whose Go port has not been scoped yet; they remain Python-authoritative
-for now.
+All eighteen tracked scripts have Go counterparts and have been deleted from the
+vault.
 
 ## How to update this doc
 
