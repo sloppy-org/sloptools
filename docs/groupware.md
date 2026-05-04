@@ -93,6 +93,8 @@ Returns one normalized GTD review list across Markdown commitments, task provide
 
 Markdown remains canonical. If a source item already has a matching Markdown `source_bindings` entry, the source duplicate is skipped and reported in `duplicate_skipped` instead of materializing a second commitment. Todoist-style task dates map provider start/scheduled dates to `follow_up` and provider deadlines to `due`; calendar events are not imported as tasks.
 
+The response includes `queue_counts`, a stable `{queue: count}` map covering each surfaced bucket. `waiting` (passive — you flagged it and you don't expect motion until they reply on their own schedule) and `delegated` (active — you handed it over with a `delegated_to` person and a `follow_up` ping date) are counted independently so callers can sort the Manager's-Path delegation surface separately from the passive wait list. Validation requires both `delegated_to` and `follow_up` whenever `status: delegated` is set. Commitments still on the legacy `status: waiting` + `delegated_to:` shape are migrated to `status: delegated` the next time `brain.gtd.write` rewrites the note. The Friday weekly `brain.gtd.review_batch` surface only lists delegated commitments whose `follow_up` has elapsed; future-dated handoffs stay tracked in `review_list` but are hidden from the ping-worthy weekly slice.
+
 ### `mail_attachment_get`
 
 Downloads one mail attachment to disk. Required: `account_id`, `message_id`, `attachment_id`. Optional: `dest_dir` (defaults to `~/Downloads/sloppy-attachments`). All backends support this.

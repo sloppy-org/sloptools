@@ -52,6 +52,7 @@ type gtdReviewItem struct {
 	FollowUp     string   `json:"follow_up,omitempty"`
 	Labels       []string `json:"labels,omitempty"`
 	Actor        string   `json:"actor,omitempty"`
+	DelegatedTo  string   `json:"delegated_to,omitempty"`
 	Project      string   `json:"project,omitempty"`
 	Track        string   `json:"track,omitempty"`
 	ParentID     string   `json:"parent_id,omitempty"`
@@ -112,6 +113,7 @@ func (s *Server) brainGTDReviewList(args map[string]interface{}) (map[string]int
 		"sphere":             strArg(args, "sphere"),
 		"items":              build.items,
 		"count":              len(build.items),
+		"queue_counts":       queueCounts(build.items),
 		"duplicate_skipped":  build.duplicateCount,
 		"errors":             build.errors,
 		"over_wip":           overWIP,
@@ -211,18 +213,19 @@ func gtdReviewItemFromMailRecord(account store.ExternalAccount, record mailCommi
 	status := strings.ToLower(strings.TrimSpace(commitment.Status))
 	sourceRef := fmt.Sprintf("mail:%s:%d:%s", strings.ToLower(strings.TrimSpace(account.Sphere)), account.ID, strings.TrimSpace(record.SourceID))
 	return gtdReviewItem{
-		ID:        sourceRef,
-		Source:    "mail",
-		SourceRef: sourceRef,
-		Title:     firstNonEmpty(commitment.Title, record.Message.Subject, record.SourceID),
-		Status:    status,
-		Queue:     taskgtd.Queue(status, commitment.FollowUp, time.Now().UTC()),
-		URL:       record.SourceURL,
-		FollowUp:  commitment.FollowUp,
-		Labels:    append([]string(nil), commitment.Labels...),
-		Actor:     firstNonEmpty(commitment.WaitingFor, commitment.Actor),
-		Project:   commitment.Project,
-		Track:     commitment.EffectiveTrack(),
+		ID:          sourceRef,
+		Source:      "mail",
+		SourceRef:   sourceRef,
+		Title:       firstNonEmpty(commitment.Title, record.Message.Subject, record.SourceID),
+		Status:      status,
+		Queue:       taskgtd.Queue(status, commitment.FollowUp, time.Now().UTC()),
+		URL:         record.SourceURL,
+		FollowUp:    commitment.FollowUp,
+		Labels:      append([]string(nil), commitment.Labels...),
+		Actor:       firstNonEmpty(commitment.DelegatedTo, commitment.WaitingFor, commitment.Actor),
+		DelegatedTo: commitment.DelegatedTo,
+		Project:     commitment.Project,
+		Track:       commitment.EffectiveTrack(),
 	}
 }
 
@@ -323,12 +326,13 @@ func gtdReviewItemFromCommitment(note dedupNote) gtdReviewItem {
 		ID: "markdown:" + note.Entry.Path, Source: "markdown",
 		Title:  firstNonEmpty(c.Outcome, c.Title, c.NextAction, filepath.Base(note.Entry.Path)),
 		Status: status, Queue: taskgtd.Queue(status, c.FollowUp, time.Now().UTC()),
-		Path:    note.Entry.Path,
-		Due:     c.Due,
-		Labels:  append([]string(nil), c.Labels...),
-		Actor:   firstNonEmpty(c.WaitingFor, c.Actor),
-		Project: c.Project,
-		Track:   c.EffectiveTrack(), FollowUp: c.FollowUp,
+		Path:        note.Entry.Path,
+		Due:         c.Due,
+		Labels:      append([]string(nil), c.Labels...),
+		Actor:       firstNonEmpty(c.DelegatedTo, c.WaitingFor, c.Actor),
+		DelegatedTo: c.DelegatedTo,
+		Project:     c.Project,
+		Track:       c.EffectiveTrack(), FollowUp: c.FollowUp,
 	}
 }
 

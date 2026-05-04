@@ -425,3 +425,71 @@ func TestBrainGTDWriteToolCreatesMissingCommitmentNotes(t *testing.T) {
 		t.Fatalf("created note invalid: %#v\n%s", result.Diagnostics, string(created))
 	}
 }
+
+// TestBrainGTDWriteToolPromotesLegacyWaitingWithDelegatedTo verifies the
+// migration from `waiting` + `delegated_to` to first-class `delegated`
+// status, preserving the delegated_to person, follow_up date, and
+// existing fields. Surfaced from issue #91 (Manager's-Path delegation).
+func TestBrainGTDWriteToolPromotesLegacyWaitingWithDelegatedTo(t *testing.T) {
+	tmp := t.TempDir()
+	configPath := writeMCPBrainConfig(t, tmp)
+	notePath := filepath.Join("brain", "gtd", "delegate.md")
+	writeMCPBrainFile(t, filepath.Join(tmp, "work", notePath), `---
+kind: commitment
+sphere: work
+title: Hand off CI rollout
+status: waiting
+context: meeting
+outcome: Hand off CI rollout
+delegated_to: Ada Lovelace
+waiting_for: Ada Lovelace
+follow_up: 2026-05-15
+source_bindings:
+  - provider: meetings
+    ref: 2026-05-01-standup
+---
+# Hand off CI rollout
+
+## Summary
+Owned by Ada from this Friday.
+
+## Next Action
+- [ ] Ada drives rollout.
+
+## Evidence
+- meetings:2026-05-01-standup
+
+## Linked Items
+- None.
+
+## Review Notes
+- Hand-off recorded in standup notes.
+`)
+	s := NewServer(t.TempDir())
+	got, err := s.callTool("brain.gtd.write", map[string]interface{}{
+		"config_path": configPath, "sphere": "work", "path": notePath,
+		"commitment": map[string]interface{}{"context": "meeting"},
+	})
+	if err != nil {
+		t.Fatalf("brain.gtd.write: %v", err)
+	}
+	if got["valid"] != true {
+		t.Fatalf("valid = %v: %#v", got["valid"], got)
+	}
+	migrated, err := os.ReadFile(filepath.Join(tmp, "work", notePath))
+	if err != nil {
+		t.Fatalf("read migrated note: %v", err)
+	}
+	for _, want := range []string{"status: delegated", "delegated_to: Ada Lovelace", "follow_up: \"2026-05-15\"", "waiting_for: Ada Lovelace"} {
+		if !strings.Contains(string(migrated), want) {
+			t.Fatalf("migrated note missing %q:\n%s", want, string(migrated))
+		}
+	}
+	parsed := braingtd.ParseAndValidate(string(migrated))
+	if len(parsed.Diagnostics) != 0 {
+		t.Fatalf("migrated note invalid: %#v\n%s", parsed.Diagnostics, string(migrated))
+	}
+	if parsed.Commitment.Status != "delegated" || parsed.Commitment.DelegatedTo != "Ada Lovelace" {
+		t.Fatalf("commitment after migration = %#v", parsed.Commitment)
+	}
+}

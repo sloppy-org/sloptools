@@ -16,6 +16,21 @@ import (
 	"github.com/sloppy-org/sloptools/pkg/taskgtd"
 )
 
+// queueCounts buckets the rendered review items by their queue. The map is
+// stable across calls so callers (slopshell, dashboards) can count `delegated`
+// separately from `waiting` per the Manager's-Path delegation rule.
+func queueCounts(items []gtdReviewItem) map[string]int {
+	counts := make(map[string]int, 8)
+	for _, item := range items {
+		queue := strings.TrimSpace(item.Queue)
+		if queue == "" {
+			queue = taskgtd.StatusInbox
+		}
+		counts[queue]++
+	}
+	return counts
+}
+
 // loadGTDTracksConfig resolves the gtd.toml path from the gtd_config arg
 // or the default $HOME/.config/sloptools/gtd.toml location and returns the
 // parsed config. A missing default file is not an error; tools degrade to

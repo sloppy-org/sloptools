@@ -10,6 +10,7 @@ const (
 	StatusNext       = "next"
 	StatusInProgress = "in_progress"
 	StatusWaiting    = "waiting"
+	StatusDelegated  = "delegated"
 	StatusDeferred   = "deferred"
 	StatusSomeday    = "someday"
 	StatusDone       = "done"
@@ -71,6 +72,8 @@ func Status(list List, task Task, now time.Time) string {
 	}
 	for _, label := range task.Labels {
 		switch strings.ToLower(strings.TrimSpace(label)) {
+		case "delegated", "delegated_to", "delegated-to":
+			return StatusDelegated
 		case "waiting", "waiting-for", "waiting_for":
 			return StatusWaiting
 		case "someday", "maybe", "someday-maybe", "someday_maybe":
@@ -94,6 +97,8 @@ func Queue(status, followUp string, now time.Time) string {
 		return StatusDone
 	case StatusWaiting:
 		return StatusWaiting
+	case StatusDelegated, "delegated_to":
+		return StatusDelegated
 	case StatusDeferred:
 		if ReadyAt(followUp, now) {
 			return StatusNext
@@ -132,16 +137,18 @@ func QueueRank(queue string) int {
 		return 2
 	case StatusWaiting:
 		return 3
-	case StatusDeferred:
+	case StatusDelegated:
 		return 4
-	case StatusReview:
+	case StatusDeferred:
 		return 5
-	case StatusSomeday:
+	case StatusReview:
 		return 6
-	case StatusDone:
+	case StatusSomeday:
 		return 7
-	default:
+	case StatusDone:
 		return 8
+	default:
+		return 9
 	}
 }
 

@@ -15,6 +15,7 @@ func TestValidateCommitmentAcceptsCoreStatuses(t *testing.T) {
 		{"inbox", ""},
 		{"next", "next_action: Email the signed form\n"},
 		{"waiting", "waiting_for: Ada Lovelace\n"},
+		{"delegated", "delegated_to: Ada Lovelace\nfollow_up: 2026-05-15\n"},
 		{"deferred", "follow_up: 2026-05-01\n"},
 		{"someday", ""},
 		{"maybe_stale", ""},
@@ -34,6 +35,42 @@ func TestValidateCommitmentRejectsDueAsDeferredStart(t *testing.T) {
 	result := ParseAndValidate(commitmentFixture("status: deferred\ndue: 2026-05-01\n"))
 	assertDiagnosticContains(t, result.Diagnostics, "deferred commitments require follow_up")
 	assertDiagnosticContains(t, result.Diagnostics, "due is only a hard deadline")
+}
+
+func TestValidateCommitmentRequiresDelegatedTo(t *testing.T) {
+	result := ParseAndValidate(commitmentFixture("status: delegated\nfollow_up: 2026-05-15\n"))
+	assertDiagnosticContains(t, result.Diagnostics, "delegated commitments require delegated_to")
+}
+
+func TestValidateCommitmentRequiresDelegatedFollowUp(t *testing.T) {
+	result := ParseAndValidate(commitmentFixture("status: delegated\ndelegated_to: Ada Lovelace\n"))
+	assertDiagnosticContains(t, result.Diagnostics, "delegated commitments require follow_up")
+}
+
+func TestPromoteDelegatedStatusMigratesWaitingWithDelegatedTo(t *testing.T) {
+	c := &Commitment{Status: "waiting", DelegatedTo: "Ada Lovelace", WaitingFor: "Ada Lovelace"}
+	if !c.PromoteDelegatedStatus() {
+		t.Fatal("PromoteDelegatedStatus should report a change")
+	}
+	if c.Status != "delegated" {
+		t.Fatalf("Status = %q, want delegated", c.Status)
+	}
+	if c.DelegatedTo != "Ada Lovelace" {
+		t.Fatalf("DelegatedTo lost: %q", c.DelegatedTo)
+	}
+	if c.WaitingFor != "Ada Lovelace" {
+		t.Fatalf("WaitingFor lost: %q", c.WaitingFor)
+	}
+	if c.PromoteDelegatedStatus() {
+		t.Fatal("second call must be a no-op once status=delegated")
+	}
+	plain := &Commitment{Status: "waiting", WaitingFor: "Server X"}
+	if plain.PromoteDelegatedStatus() {
+		t.Fatal("waiting without delegated_to must not promote")
+	}
+	if plain.Status != "waiting" {
+		t.Fatalf("plain.Status = %q, want waiting", plain.Status)
+	}
 }
 
 func TestValidateCommitmentRejectsBadDatesAndMissingSource(t *testing.T) {

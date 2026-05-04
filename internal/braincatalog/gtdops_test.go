@@ -45,6 +45,24 @@ func TestGTDReviewBatchQueueUsesDeterministicSignals(t *testing.T) {
 			wantWhy:    "follow_up reached",
 		},
 		{
+			name:       "delegated elapsed",
+			item:       GTDListItem{Status: "delegated", DelegatedTo: "Ada", FollowUp: "2026-04-01"},
+			wantStatus: "delegated",
+			wantWhy:    "follow_up elapsed",
+		},
+		{
+			name:       "delegated future is skipped",
+			item:       GTDListItem{Status: "delegated", DelegatedTo: "Ada", FollowUp: "2026-05-15"},
+			wantStatus: "",
+			wantWhy:    "follow_up future",
+		},
+		{
+			name:       "delegated missing follow_up is skipped",
+			item:       GTDListItem{Status: "delegated", DelegatedTo: "Ada"},
+			wantStatus: "",
+			wantWhy:    "follow_up future",
+		},
+		{
 			name:       "overdue due",
 			item:       GTDListItem{Due: "2026-04-01"},
 			wantStatus: "review",
@@ -80,11 +98,13 @@ func TestSelectGTDReviewBatchItemsAppliesQueueingAndOrdering(t *testing.T) {
 		{Title: "Ada review", Due: "2026-04-01", Path: "review.md"},
 		{Title: "Ada deferred", Status: "deferred", FollowUp: "2026-05-01", Path: "deferred.md"},
 		{Title: "Ada waiting", Status: "waiting", Path: "waiting.md"},
+		{Title: "Ada delegated elapsed", Status: "delegated", DelegatedTo: "Ada", FollowUp: "2026-04-01", Path: "delegated-elapsed.md"},
+		{Title: "Ada delegated future", Status: "delegated", DelegatedTo: "Ada", FollowUp: "2026-05-15", Path: "delegated-future.md"},
 	}
 
 	got := selectGTDReviewBatchItemsAt(items, "Ada", now)
-	if len(got) != 4 {
-		t.Fatalf("len(got) = %d, want 4: %#v", len(got), got)
+	if len(got) != 5 {
+		t.Fatalf("len(got) = %d, want 5: %#v", len(got), got)
 	}
 	want := []struct {
 		title  string
@@ -92,6 +112,7 @@ func TestSelectGTDReviewBatchItemsAppliesQueueingAndOrdering(t *testing.T) {
 	}{
 		{title: "Ada next", status: "next"},
 		{title: "Ada waiting", status: "waiting"},
+		{title: "Ada delegated elapsed", status: "delegated"},
 		{title: "Ada review", status: "review"},
 		{title: "Ada deferred", status: "deferred"},
 	}
@@ -106,6 +127,12 @@ func TestSelectGTDReviewBatchItemsAppliesQueueingAndOrdering(t *testing.T) {
 	joined := BuildGTDReviewBatchMarkdown(items, "work", "Ada")
 	if strings.Contains(joined, "Drop") || strings.Contains(joined, "Close") {
 		t.Fatalf("review batch should exclude done and closed items:\n%s", joined)
+	}
+	if strings.Contains(joined, "Ada delegated future") {
+		t.Fatalf("review batch should hide delegated items with future follow_up:\n%s", joined)
+	}
+	if !strings.Contains(joined, "Ada delegated elapsed") {
+		t.Fatalf("review batch should surface delegated items whose follow_up has elapsed:\n%s", joined)
 	}
 }
 

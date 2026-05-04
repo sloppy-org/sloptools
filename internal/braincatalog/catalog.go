@@ -25,19 +25,20 @@ type GTDListFilter struct {
 }
 
 type GTDListItem struct {
-	Source     brain.ResolvedPath `json:"source"`
-	Path       string             `json:"path"`
-	Title      string             `json:"title"`
-	Status     string             `json:"status"`
-	Project    string             `json:"project,omitempty"`
-	Track      string             `json:"track,omitempty"`
-	Actor      string             `json:"actor,omitempty"`
-	WaitingFor string             `json:"waiting_for,omitempty"`
-	Due        string             `json:"due,omitempty"`
-	FollowUp   string             `json:"follow_up,omitempty"`
-	Labels     []string           `json:"labels,omitempty"`
-	Bindings   []string           `json:"bindings,omitempty"`
-	Why        string             `json:"why,omitempty"`
+	Source      brain.ResolvedPath `json:"source"`
+	Path        string             `json:"path"`
+	Title       string             `json:"title"`
+	Status      string             `json:"status"`
+	Project     string             `json:"project,omitempty"`
+	Track       string             `json:"track,omitempty"`
+	Actor       string             `json:"actor,omitempty"`
+	WaitingFor  string             `json:"waiting_for,omitempty"`
+	DelegatedTo string             `json:"delegated_to,omitempty"`
+	Due         string             `json:"due,omitempty"`
+	FollowUp    string             `json:"follow_up,omitempty"`
+	Labels      []string           `json:"labels,omitempty"`
+	Bindings    []string           `json:"bindings,omitempty"`
+	Why         string             `json:"why,omitempty"`
 }
 
 func ParseGTDVault(cfg *brain.Config, sphere brain.Sphere) ([]GTDRecord, error) {
@@ -97,18 +98,19 @@ func gtdListItemFromRecord(record GTDRecord) GTDListItem {
 		}
 	}
 	return GTDListItem{
-		Source:     record.Source,
-		Path:       record.Source.Rel,
-		Title:      title,
-		Status:     gtdListStatus(commitment),
-		Project:    strings.TrimSpace(commitment.Project),
-		Track:      commitment.EffectiveTrack(),
-		Actor:      strings.TrimSpace(commitment.Actor),
-		WaitingFor: strings.TrimSpace(commitment.WaitingFor),
-		Due:        strings.TrimSpace(commitment.Due),
-		FollowUp:   strings.TrimSpace(commitment.FollowUp),
-		Labels:     labels,
-		Bindings:   compactStrings(bindings),
+		Source:      record.Source,
+		Path:        record.Source.Rel,
+		Title:       title,
+		Status:      gtdListStatus(commitment),
+		Project:     strings.TrimSpace(commitment.Project),
+		Track:       commitment.EffectiveTrack(),
+		Actor:       strings.TrimSpace(commitment.Actor),
+		WaitingFor:  strings.TrimSpace(commitment.WaitingFor),
+		DelegatedTo: strings.TrimSpace(commitment.DelegatedTo),
+		Due:         strings.TrimSpace(commitment.Due),
+		FollowUp:    strings.TrimSpace(commitment.FollowUp),
+		Labels:      labels,
+		Bindings:    compactStrings(bindings),
 	}
 }
 
@@ -126,7 +128,7 @@ func gtdListMatches(item GTDListItem, filter GTDListFilter) bool {
 	}
 	if strings.TrimSpace(filter.Person) != "" {
 		person := strings.TrimSpace(filter.Person)
-		if !containsFold([]string{item.Actor, item.WaitingFor}, person) {
+		if !containsFold([]string{item.Actor, item.WaitingFor, item.DelegatedTo}, person) {
 			return false
 		}
 	}
