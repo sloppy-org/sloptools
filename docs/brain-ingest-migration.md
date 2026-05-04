@@ -1,23 +1,21 @@
 # Brain-ingest Python → Go MCP migration
 
-Tracks the deprecation lifecycle of the legacy Python brain-ingest pipeline
-in `~/<vault>/tools/brain-ingest/synthesize/` against the Go MCP equivalents
-served by `sloptools mcp-server`. See umbrella issue #60.
+Tracks removal of the legacy Python brain-ingest pipeline in
+`~/<vault>/tools/brain-ingest/synthesize/` against the Go equivalents served
+by `sloptools`. See umbrella issue #60.
 
 The Python scripts are vault-side (Nextcloud / Dropbox), not part of this
 repository. This doc is the in-repo source of truth for which Python entry
-points have a Go counterpart, what is still missing, and where each script
-sits in the deprecate → soak → archive lifecycle defined by #60.
+points have a Go counterpart, what is still missing, and which scripts have
+been deleted from the vault.
 
 ## Lifecycle states
 
 Each script moves through:
 
 1. **planned** — Go counterpart not yet merged.
-2. **ported** — Go MCP verb merged; Python still authoritative for users.
-3. **banner** — Python script prints a deprecation banner to stderr naming
-   the Go MCP verb. 60-day soak starts.
-4. **archived** — Python script removed from the vault (E10.3).
+2. **ported** — Go counterpart merged; Python removal still pending.
+3. **removed** — Python script deleted from the vault; use `sloptools`.
 
 ## Per-script tracking issues
 
@@ -27,23 +25,23 @@ relevant Go counterpart child issue.
 
 | Script | Issue | Target package | Status |
 |---|---|---|---|
-| gtd.py | #102 | internal/brain/gtd | ported |
-| folder_markdown.py | #103 | internal/brain/folder | ported |
+| gtd.py | #102 | internal/brain/gtd | removed |
+| folder_markdown.py | #103 | internal/brain/folder | removed |
 | folder_review_queue.py | #104 | internal/brain/folder | planned |
 | folder_review_apply.py | #105 | internal/brain/folder | planned |
 | folder_quality.py | #106 | internal/brain/folder | planned |
 | folder_stability.py | #107 | internal/brain/folder | planned |
 | folder_units.py | #108 | internal/brain/folder | planned |
-| glossary.py | #109 | internal/brain/glossary | ported |
-| attention.py | #110 | internal/brain/attention | ported |
-| entity_candidates.py | #111 | internal/brain/entities | ported |
+| glossary.py | #109 | internal/brain/glossary | removed |
+| attention.py | #110 | internal/brain/attention | removed |
+| entity_candidates.py | #111 | internal/brain/entities | removed |
 | relation_candidates.py | #112 | internal/brain/entities | planned |
 | archive_candidates.py | #113 | internal/brain/folder | planned |
-| derive_monthly_index.py | #114 | internal/brain/people | ported |
+| derive_monthly_index.py | #114 | internal/brain/people | removed |
 | runtime_plan.py | #115 | internal/brain/runtime | planned |
 | final_report.py | #116 | internal/brain/report | planned |
 | stream_opencode_report.py | #117 | internal/brain/report | planned |
-| validate_outputs.py | #118 | internal/brain/validate | ported |
+| validate_outputs.py | #118 | internal/brain/validate | removed |
 | folder_review_packet.py | #119 | internal/brain/folder | planned |
 
 ## Sister epics (Go side)
@@ -104,9 +102,9 @@ source adapters: `task_candidates`, `todoist_candidates`, `issue_candidates`,
 | meeting kickoff | `brain.meeting.kickoff` | per #56 |
 | project hubs | `brain.projects.render`, `brain.projects.list` | per #57 |
 
-**Status: ported.** The Discord adapter has no Go counterpart; if the user
+**Status: removed.** The Python script has been deleted from the vault. The Discord adapter has no Go counterpart; if the user
 still relies on it, file a separate adapter issue rather than blocking
-deprecation of the rest of `gtd.py`.
+removal of the rest of `gtd.py`.
 
 ### folder_markdown.py — folder-note parser/validator (tracked in #103)
 
@@ -118,7 +116,7 @@ deprecation of the rest of `gtd.py`.
 | `audit` | `brain.folder.audit` |
 | `index` | (renderer, vault-internal) |
 
-**Status: ported.** Index rendering remains vault-side because it writes
+**Status: removed.** Index rendering remains vault-side because it writes
 human-curated `_index.md` files; the data underneath comes from the parser.
 
 ### glossary.py — glossary validator and TSV/index emitter (tracked in #109)
@@ -129,7 +127,7 @@ human-curated `_index.md` files; the data underneath comes from the parser.
 | validate | `brain.glossary.validate` |
 | TSV / index emitters | (vault-internal renderers) |
 
-**Status: ported.** Renderers (TSV, index Markdown) are deterministic
+**Status: removed.** Renderers (TSV, index Markdown) are deterministic
 post-processing on top of the parsed structure; not Go-side targets.
 
 ### attention.py — attention-field tooling (tracked in #110)
@@ -141,7 +139,7 @@ post-processing on top of the parsed structure; not Go-side targets.
 | dashboard | `brain.people.dashboard`, `brain.people.render` |
 | migrate (one-shot) | — |
 
-**Status: ported.** The `migrate` subcommand was a one-shot bootstrapper
+**Status: removed.** The `migrate` subcommand was a one-shot bootstrapper
 to add `focus`/`cadence` fields to existing notes; intentionally not ported.
 
 ### entity_candidates.py — entity extraction from reviewed notes (tracked in #111)
@@ -150,7 +148,7 @@ to add `focus`/`cadence` fields to existing notes; intentionally not ported.
 |---|---|
 | candidates | `brain.entities.candidates` |
 
-**Status: ported.**
+**Status: removed.**
 
 ### validate_outputs.py — synthesis-output validator (tracked in #118)
 
@@ -158,7 +156,7 @@ to add `focus`/`cadence` fields to existing notes; intentionally not ported.
 parser-specific validators that map to `brain.folder.validate`,
 `brain.glossary.validate`, `brain.attention.validate`, `brain.note.validate`.
 
-**Status: ported.**
+**Status: removed.**
 
 ### folder_review_packet.py — review packets for folder notes (tracked in #119)
 
@@ -223,7 +221,7 @@ Emits `brain/journal/<YYYY-MM>.md` indexes from `## Log` bullets in
 |---|---|
 | (single command) | `brain.people.monthly_index` |
 
-**Status: ported.** Idempotent: re-runs do not rewrite unchanged pages.
+**Status: removed.** Idempotent: re-runs do not rewrite unchanged pages.
 The Python writes both vaults in one invocation; the Go verb takes a
 required `sphere` so callers iterate explicitly.
 
@@ -253,19 +251,16 @@ emits equivalent diagnostics natively.
 
 | Bucket | Scripts |
 |---|---|
-| ported (banner + soak ready) | gtd.py, folder_markdown.py, glossary.py, attention.py, entity_candidates.py, validate_outputs.py, derive_monthly_index.py |
+| removed | gtd.py, folder_markdown.py, glossary.py, attention.py, entity_candidates.py, validate_outputs.py, derive_monthly_index.py |
 | planned | folder_review_packet.py, folder_review_queue.py, folder_review_apply.py, folder_quality.py, folder_stability.py, folder_units.py, archive_candidates.py, relation_candidates.py, runtime_plan.py, final_report.py, stream_opencode_report.py |
 
-Seven of eighteen scripts have Go counterparts merged and are ready for the
-deprecation banner step (E10.2 of #60). The remaining eleven are the
-brain-ingest review/queue/report pipeline whose Go port has not been
-scoped yet; they remain Python-authoritative for now.
+Seven of eighteen scripts have Go counterparts and have been deleted from the
+vault. The remaining eleven are the brain-ingest review/queue/report pipeline
+whose Go port has not been scoped yet; they remain Python-authoritative for now.
 
 ## How to update this doc
 
-When a Python script gains a Go counterpart, move its row from `planned` to
-`ported` in the summary and fill in the per-script Go MCP verb table.
-When a banner lands, note the soak start date in the per-script section.
-When a script is archived (E10.3), strike the row through and note the
-archive commit. This file is the only place where lifecycle status lives;
-do not duplicate the table elsewhere in the repo.
+When a Python script gains a Go counterpart and is deleted from the vault, move
+its row from `planned` to `removed` in the summary and fill in the per-script
+Go verb table. This file is the only place where lifecycle status lives; do not
+duplicate the table elsewhere in the repo.
