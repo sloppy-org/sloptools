@@ -35,12 +35,12 @@ relevant Go counterpart child issue.
 | glossary.py | #109 | internal/brain/glossary | removed |
 | attention.py | #110 | internal/brain/attention | removed |
 | entity_candidates.py | #111 | internal/brain/entities | removed |
-| relation_candidates.py | #112 | internal/brain/entities | planned |
+| relation_candidates.py | #112 | internal/brain/entities | removed |
 | archive_candidates.py | #113 | internal/brain/folder | planned |
 | derive_monthly_index.py | #114 | internal/brain/people | removed |
-| runtime_plan.py | #115 | internal/brain/runtime | planned |
-| final_report.py | #116 | internal/brain/report | planned |
-| stream_opencode_report.py | #117 | internal/brain/report | planned |
+| runtime_plan.py | #115 | internal/brain/runtime | removed |
+| final_report.py | #116 | internal/brain/report | removed |
+| stream_opencode_report.py | #117 | internal/brain/report | removed |
 | validate_outputs.py | #118 | internal/brain/validate | removed |
 | folder_review_packet.py | #119 | internal/brain/folder | planned |
 
@@ -230,33 +230,34 @@ required `sphere` so callers iterate explicitly.
 Extracts simple typed relations between entities for the semantic graph
 phase.
 
-**Status: planned.**
+**Status: removed.** Use `sloptools brain ingest relation-candidates`.
 
 ### runtime_plan.py — runtime estimator (tracked in #115)
 
 Estimates remaining runtime for the brain-ingest workflow. Useful as a
 human dashboard, not a writer; low priority for porting.
 
-**Status: planned.**
+**Status: removed.** Use `sloptools brain ingest runtime-plan`.
 
 ### final_report.py / stream_opencode_report.py — report emitters (tracked in #116, #117)
 
 Emit final review reports / stream Opencode output. Pipeline-local
 diagnostics; consider whether they need a Go port at all.
 
-**Status: planned.** May be archived without porting if the Go pipeline
-emits equivalent diagnostics natively.
+**Status: removed.** Use `sloptools brain ingest final-report` and
+`sloptools brain ingest stream-opencode-report`.
 
 ## Summary
 
 | Bucket | Scripts |
 |---|---|
-| removed | gtd.py, folder_markdown.py, glossary.py, attention.py, entity_candidates.py, validate_outputs.py, derive_monthly_index.py |
-| planned | folder_review_packet.py, folder_review_queue.py, folder_review_apply.py, folder_quality.py, folder_stability.py, folder_units.py, archive_candidates.py, relation_candidates.py, runtime_plan.py, final_report.py, stream_opencode_report.py |
+| removed | gtd.py, folder_markdown.py, glossary.py, attention.py, entity_candidates.py, validate_outputs.py, derive_monthly_index.py, relation_candidates.py, runtime_plan.py, final_report.py, stream_opencode_report.py |
+| planned | folder_review_packet.py, folder_review_queue.py, folder_review_apply.py, folder_quality.py, folder_stability.py, folder_units.py, archive_candidates.py |
 
-Seven of eighteen scripts have Go counterparts and have been deleted from the
-vault. The remaining eleven are the brain-ingest review/queue/report pipeline
-whose Go port has not been scoped yet; they remain Python-authoritative for now.
+Eleven of eighteen scripts have Go counterparts and have been deleted from the
+vault. The remaining seven are the brain-ingest folder review and planning
+pipeline whose Go port has not been scoped yet; they remain Python-authoritative
+for now.
 
 ## How to update this doc
 

@@ -1,9 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -11,6 +14,132 @@ import (
 	braingtd "github.com/sloppy-org/sloptools/internal/brain/gtd"
 	"github.com/sloppy-org/sloptools/internal/braincatalog"
 )
+
+func cmdBrainIngest(args []string) int {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "brain ingest requires relation-candidates, runtime-plan, final-report, or stream-opencode-report")
+		return 2
+	}
+	switch args[0] {
+	case "relation-candidates":
+		return cmdBrainIngestRelations(args[1:])
+	case "runtime-plan":
+		return cmdBrainIngestRuntime(args[1:])
+	case "final-report":
+		return cmdBrainIngestFinalReport(args[1:])
+	case "stream-opencode-report":
+		return cmdBrainIngestStreamOpencode(args[1:])
+	case "help", "-h", "--help":
+		fmt.Println("sloptools brain ingest <relation-candidates|runtime-plan|final-report|stream-opencode-report> [flags]")
+		return 0
+	default:
+		fmt.Fprintf(os.Stderr, "unknown brain ingest subcommand: %s\n", args[0])
+		return 2
+	}
+}
+
+func cmdBrainIngestRelations(args []string) int {
+	fs := flag.NewFlagSet("brain ingest relation-candidates", flag.ContinueOnError)
+	configPath := fs.String("config", "", "vault config path")
+	sphere := fs.String("sphere", "", "vault sphere")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if strings.TrimSpace(*sphere) == "" {
+		fmt.Fprintln(os.Stderr, "--sphere is required")
+		return 2
+	}
+	cfg, err := brain.LoadConfig(*configPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	rows, err := brain.RelationCandidates(cfg, brain.Sphere(*sphere))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	return printBrainJSON(map[string]interface{}{"sphere": *sphere, "candidates": len(rows), "relations": rows})
+}
+
+func cmdBrainIngestRuntime(args []string) int {
+	fs := flag.NewFlagSet("brain ingest runtime-plan", flag.ContinueOnError)
+	configPath := fs.String("config", "", "vault config path")
+	root := fs.String("root", ".", "brain-ingest root")
+	slots := fs.Int("slots", 1, "parallel slots")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	cfg, err := brain.LoadConfig(*configPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	plan, err := brain.RuntimeEstimate(*root, cfg, *slots)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	return printBrainJSON(plan)
+}
+
+func cmdBrainIngestFinalReport(args []string) int {
+	fs := flag.NewFlagSet("brain ingest final-report", flag.ContinueOnError)
+	configPath := fs.String("config", "", "vault config path")
+	root := fs.String("root", ".", "brain-ingest root")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	cfg, err := brain.LoadConfig(*configPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	return printBrainJSON(brain.BuildFinalReport(*root, cfg))
+}
+
+func cmdBrainIngestStreamOpencode(args []string) int {
+	fs := flag.NewFlagSet("brain ingest stream-opencode-report", flag.ContinueOnError)
+	reportPath := fs.String("report", "", "report output path")
+	eventsPath := fs.String("events", "", "raw event output path")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if strings.TrimSpace(*reportPath) == "" || strings.TrimSpace(*eventsPath) == "" {
+		fmt.Fprintln(os.Stderr, "--report and --events are required")
+		return 2
+	}
+	if err := os.MkdirAll(filepath.Dir(*reportPath), 0o755); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	if err := os.MkdirAll(filepath.Dir(*eventsPath), 0o755); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	report, err := os.Create(*reportPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	defer report.Close()
+	events, err := os.Create(*eventsPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	defer events.Close()
+	if err := brain.StreamOpencodeReport(os.Stdin, report, events); err != nil && err != io.EOF {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	enc := json.NewEncoder(os.Stdout)
+	if err := enc.Encode(map[string]interface{}{"ok": true, "report": *reportPath, "events": *eventsPath}); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	return 0
+}
 
 func cmdBrainGTDList(args []string) int {
 	fs := flag.NewFlagSet("brain gtd list", flag.ContinueOnError)
