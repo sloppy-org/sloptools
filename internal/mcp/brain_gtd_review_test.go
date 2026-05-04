@@ -8,7 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sloppy-org/sloptools/internal/brain"
 	"github.com/sloppy-org/sloptools/internal/email"
+	"github.com/sloppy-org/sloptools/internal/mcp/gtdtoday"
 	"github.com/sloppy-org/sloptools/internal/providerdata"
 	"github.com/sloppy-org/sloptools/internal/store"
 	"github.com/sloppy-org/sloptools/internal/tasks"
@@ -203,4 +205,154 @@ func TestBrainGTDReviewListExcludesShadowMailMarkdown(t *testing.T) {
 	if len(items) != 1 {
 		t.Fatalf("items = %d, want only the manual commitment: %+v", len(items), items)
 	}
+}
+
+// TestBrainGTDTodayCapsAtEightAndPersists exercises the closed-daily-list
+// guarantee: at most eight items, written under brain/gtd/today/<date>.md,
+// validated by the same Markdown writer as other GTD mutations.
+func TestBrainGTDTodayCapsAtEightAndPersists(t *testing.T) {
+	tmp := t.TempDir()
+	configPath := writeMCPBrainConfig(t, tmp)
+	for i := 0; i < 12; i++ {
+		writeDedupCommitment(t, tmp, "work",
+			fmt.Sprintf("brain/gtd/c-%02d.md", i),
+			fmt.Sprintf("Outcome %02d", i),
+			"manual", fmt.Sprintf("ref-%02d", i))
+	}
+	s := NewServer(t.TempDir())
+	got, err := s.callTool("brain.gtd.today", map[string]interface{}{
+		"config_path": configPath,
+		"sphere":      "work",
+		"date":        "2026-05-04",
+	})
+	if err != nil {
+		t.Fatalf("brain.gtd.today: %v", err)
+	}
+	if got["count"] != gtdtoday.HardItemCap {
+		t.Fatalf("count=%v, want %d", got["count"], gtdtoday.HardItemCap)
+	}
+	rel, _ := got["path"].(string)
+	if rel == "" || filepath.ToSlash(rel) != "brain/gtd/today/2026-05-04.md" {
+		t.Fatalf("path=%q, want brain/gtd/today/2026-05-04.md", rel)
+	}
+	abs := filepath.Join(tmp, "work", filepath.FromSlash(rel))
+	data, err := os.ReadFile(abs)
+	if err != nil {
+		t.Fatalf("read closed list: %v", err)
+	}
+	if diags := brain.ValidateMarkdownNote(string(data), brain.MarkdownParseOptions{}); len(diags) != 0 {
+		t.Fatalf("closed list invalid: %#v\n%s", diags, string(data))
+	}
+	if got["frozen"] != true || got["updated"] != true {
+		t.Fatalf("frozen/updated=%v/%v, want true/true", got["frozen"], got["updated"])
+	}
+}
+
+// TestBrainGTDTodayClosesTheListForLateAdditions captures the regression the
+// issue calls out: anything inserted after the day's closed list is generated
+// must NOT appear in that same day's list.
+func TestBrainGTDTodayClosesTheListForLateAdditions(t *testing.T) {
+	tmp := t.TempDir()
+	configPath := writeMCPBrainConfig(t, tmp)
+	writeDedupCommitment(t, tmp, "work", "brain/gtd/early-1.md", "Early one", "manual", "ref-1")
+	writeDedupCommitment(t, tmp, "work", "brain/gtd/early-2.md", "Early two", "manual", "ref-2")
+
+	s := NewServer(t.TempDir())
+	first, err := s.callTool("brain.gtd.today", map[string]interface{}{
+		"config_path": configPath,
+		"sphere":      "work",
+		"date":        "2026-05-04",
+	})
+	if err != nil {
+		t.Fatalf("first today: %v", err)
+	}
+	if first["count"] != 2 {
+		t.Fatalf("first count=%v, want 2", first["count"])
+	}
+
+	writeDedupCommitment(t, tmp, "work", "brain/gtd/late.md", "Late arrival", "manual", "ref-3")
+
+	second, err := s.callTool("brain.gtd.today", map[string]interface{}{
+		"config_path": configPath,
+		"sphere":      "work",
+		"date":        "2026-05-04",
+	})
+	if err != nil {
+		t.Fatalf("second today: %v", err)
+	}
+	if second["count"] != 2 {
+		t.Fatalf("second count=%v, want 2 (closed list must not absorb late commitments)", second["count"])
+	}
+	if second["updated"] != false || second["frozen"] != true {
+		t.Fatalf("second updated/frozen=%v/%v, want false/true", second["updated"], second["frozen"])
+	}
+	items, _ := second["items"].([]gtdtoday.Item)
+	for _, item := range items {
+		if item.Path == "brain/gtd/late.md" {
+			t.Fatalf("late commitment leaked into closed list: %+v", item)
+		}
+	}
+
+	refreshed, err := s.callTool("brain.gtd.today", map[string]interface{}{
+		"config_path": configPath,
+		"sphere":      "work",
+		"date":        "2026-05-04",
+		"refresh":     true,
+	})
+	if err != nil {
+		t.Fatalf("refresh today: %v", err)
+	}
+	if refreshed["count"] != 3 {
+		t.Fatalf("refresh count=%v, want 3 (refresh must include the late commitment)", refreshed["count"])
+	}
+}
+
+// TestBrainGTDTodayHonoursPinnedPathsAndFamilyFloor checks that explicit pin
+// inputs and the optional family floor seed the day's list as the issue spec
+// describes.
+func TestBrainGTDTodayHonoursPinnedPathsAndFamilyFloor(t *testing.T) {
+	tmp := t.TempDir()
+	configPath := writeMCPBrainConfig(t, tmp)
+	writeDedupCommitment(t, tmp, "work", "brain/gtd/filler-1.md", "Filler one", "manual", "ref-f1")
+	writeDedupCommitment(t, tmp, "work", "brain/gtd/filler-2.md", "Filler two", "manual", "ref-f2")
+	writeFamilyCoreCommitment(t, tmp, "work", "brain/gtd/family.md", "Family floor", "manual", "ref-fam")
+	writeDedupCommitment(t, tmp, "work", "brain/gtd/pinned.md", "Pinned outcome", "manual", "ref-pin")
+
+	s := NewServer(t.TempDir())
+	got, err := s.callTool("brain.gtd.today", map[string]interface{}{
+		"config_path":          configPath,
+		"sphere":               "work",
+		"date":                 "2026-05-04",
+		"pinned_paths":         []interface{}{"brain/gtd/pinned.md"},
+		"include_family_floor": true,
+	})
+	if err != nil {
+		t.Fatalf("brain.gtd.today: %v", err)
+	}
+	items, _ := got["items"].([]gtdtoday.Item)
+	if len(items) == 0 || items[0].Path != "brain/gtd/pinned.md" || !items[0].Pinned {
+		t.Fatalf("first item = %+v, want pinned brain/gtd/pinned.md first", items)
+	}
+	familyIndex := -1
+	for i, item := range items {
+		if item.Path == "brain/gtd/family.md" {
+			familyIndex = i
+			break
+		}
+	}
+	if familyIndex <= 0 {
+		t.Fatalf("family floor item missing or out of order: %+v", items)
+	}
+	for i := 1; i < familyIndex; i++ {
+		if !items[i].Pinned {
+			t.Fatalf("non-pinned item %+v interleaved before family-core item", items[i])
+		}
+	}
+}
+
+func writeFamilyCoreCommitment(t *testing.T, root, sphere, rel, outcome, provider, ref string) {
+	t.Helper()
+	header := fmt.Sprintf("---\nkind: commitment\nsphere: %s\ntitle: %s\nstatus: next\ncontext: review\nnext_action: Review the item\noutcome: %s\nlabels:\n  - track/core\nsource_bindings:\n  - provider: %s\n    ref: %q\n---\n", sphere, outcome, outcome, provider, ref)
+	body := header + fmt.Sprintf("# %s\n\n## Summary\nReview the item.\n\n## Next Action\n- [ ] Review the item\n\n## Evidence\n- %s:%s\n\n## Linked Items\n- None.\n\n## Review Notes\n- None.\n", outcome, provider, ref)
+	writeMCPBrainFile(t, filepath.Join(root, sphere, filepath.FromSlash(rel)), body)
 }

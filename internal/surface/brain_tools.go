@@ -114,6 +114,17 @@ func init() {
 			"name":        {Type: "string", Description: "Dashboard subject name."},
 			"path":        {Type: "string", Description: "Optional output note path. Defaults to brain/gtd/dashboards/<slug>.md."},
 		}},
+		Tool{Name: "brain.gtd.today", Description: "Generate or read the closed daily list (<= 8 items) for one date. Items added after the day's list is generated do not appear until the next day.", Required: []string{"sphere"}, Properties: map[string]ToolProperty{
+			"config_path":          {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},
+			"sphere":               {Type: "string", Description: "Vault sphere to inspect.", Enum: []string{"work", "private"}},
+			"date":                 {Type: "string", Description: "Optional date (YYYY-MM-DD or RFC3339). Defaults to today UTC."},
+			"pinned_paths":         {Type: "array", Description: "Optional commitment paths that must appear first."},
+			"include_family_floor": {Type: "boolean", Description: "When true, pre-fill remaining slots with track/core (focus: core) commitments before filler."},
+			"limit":                {Type: "integer", Description: "Optional cap (1-8). Hard cap is 8."},
+			"refresh":              {Type: "boolean", Description: "Regenerate today's list, replacing any persisted closed list for this date."},
+			"sources":              {Type: "array", Description: "Optional review_list sources passed through to the underlying query."},
+			"project_dirs":         {Type: "array", Description: "Optional Git checkout directories for GitHub/GitLab issue and PR sources."},
+		}},
 		Tool{Name: "brain.gtd.review_batch", Description: "Generate a Markdown review batch from GTD items selected by deterministic review signals and optional query matching.", Required: []string{"sphere"}, Properties: map[string]ToolProperty{
 			"config_path": {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},
 			"sphere":      {Type: "string", Description: "Vault sphere to inspect.", Enum: []string{"work", "private"}},

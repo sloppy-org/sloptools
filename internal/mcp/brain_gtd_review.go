@@ -11,6 +11,7 @@ import (
 	"github.com/sloppy-org/sloptools/internal/brain"
 	braingtd "github.com/sloppy-org/sloptools/internal/brain/gtd"
 	"github.com/sloppy-org/sloptools/internal/mcp/gtdfocus"
+	"github.com/sloppy-org/sloptools/internal/mcp/gtdtoday"
 	"github.com/sloppy-org/sloptools/internal/providerdata"
 	"github.com/sloppy-org/sloptools/internal/sourceitems"
 	"github.com/sloppy-org/sloptools/internal/store"
@@ -456,4 +457,27 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// todayCandidates pulls the underlying review_list output and projects each
+// item into the gtdtoday Item shape. Lives next to the review_list helpers so
+// brain.gtd.today does not need to know how the review pipeline is wired.
+func (s *Server) todayCandidates(args map[string]interface{}, sphere string) ([]gtdtoday.Item, error) {
+	reviewArgs := copyArgs(args)
+	reviewArgs["sphere"] = sphere
+	delete(reviewArgs, "limit")
+	reviewResult, err := s.brainGTDReviewList(reviewArgs)
+	if err != nil {
+		return nil, err
+	}
+	reviewItems, _ := reviewResult["items"].([]gtdReviewItem)
+	out := make([]gtdtoday.Item, 0, len(reviewItems))
+	for _, item := range reviewItems {
+		out = append(out, gtdtoday.Item{
+			ID: item.ID, Title: item.Title, Source: item.Source, Path: item.Path,
+			Queue: item.Queue, Track: item.Track, Project: item.Project,
+			Actor: item.Actor, Due: item.Due, FollowUp: item.FollowUp, URL: item.URL,
+		})
+	}
+	return out, nil
 }

@@ -5,12 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 	"unicode"
 
 	"github.com/sloppy-org/sloptools/internal/brain"
 	braingtd "github.com/sloppy-org/sloptools/internal/brain/gtd"
+	"github.com/sloppy-org/sloptools/internal/mcp/gtdtoday"
 )
 
 func (s *Server) dispatchBrain(method string, args map[string]interface{}) (map[string]interface{}, error) {
@@ -81,6 +83,8 @@ func (s *Server) dispatchBrain(method string, args map[string]interface{}) (map[
 		return s.brainGTDResurface(args)
 	case "brain.gtd.dashboard":
 		return s.brainGTDDashboard(args)
+	case "brain.gtd.today":
+		return s.brainGTDToday(args)
 	case "brain.gtd.review_batch":
 		return s.brainGTDReviewBatch(args)
 	case "brain.gtd.ingest":
@@ -429,4 +433,45 @@ func displayIngestSource(source string) string {
 		return "Source"
 	}
 	return strings.ToUpper(source[:1]) + strings.ToLower(source[1:])
+}
+
+func (s *Server) brainGTDToday(args map[string]interface{}) (map[string]interface{}, error) {
+	cfg, err := brain.LoadConfig(s.brainConfigArg(args))
+	if err != nil {
+		return nil, err
+	}
+	sphere := strings.TrimSpace(strArg(args, "sphere"))
+	if sphere == "" {
+		return nil, errors.New("sphere is required")
+	}
+	date, err := gtdtoday.FormatDate(strArg(args, "date"), time.Now())
+	if err != nil {
+		return nil, err
+	}
+	rel := filepath.ToSlash(filepath.Join("brain", "gtd", "today", date+".md"))
+	resolved, err := brain.ResolveNotePath(cfg, brain.Sphere(sphere), rel)
+	if err != nil {
+		return nil, err
+	}
+	opts := gtdtoday.RunOptions{
+		Sphere:             sphere,
+		Date:               date,
+		PinnedPaths:        stringListArg(args, "pinned_paths"),
+		IncludeFamilyFloor: boolArg(args, "include_family_floor"),
+		Limit:              intArg(args, "limit", gtdtoday.HardItemCap),
+		Refresh:            boolArg(args, "refresh"),
+	}
+	result, err := gtdtoday.Run(resolved.Path, opts, func() ([]gtdtoday.Item, error) {
+		return s.todayCandidates(args, sphere)
+	}, validateRenderedBrainNote)
+	if err != nil {
+		return nil, err
+	}
+	return withAffected(map[string]interface{}{
+		"sphere": sphere, "date": date, "path": resolved.Rel,
+		"items": result.Snapshot.Items, "count": len(result.Snapshot.Items),
+		"pinned_paths":         result.Snapshot.PinnedPaths,
+		"include_family_floor": result.Snapshot.IncludeFamilyFloor,
+		"frozen":               result.Frozen, "updated": result.Updated,
+	}, brainCommitmentAffectedRef(sphere, resolved.Rel)), nil
 }

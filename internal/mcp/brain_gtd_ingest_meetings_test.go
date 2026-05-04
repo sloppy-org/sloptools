@@ -49,11 +49,14 @@ func TestBrainGTDIngestMeetingsRequiresPathsOrConfiguredRoot(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(tmp, "work", "brain"), 0o755); err != nil {
 		t.Fatalf("mkdir brain: %v", err)
 	}
+	emptySources := filepath.Join(tmp, "sources.toml")
+	writeMCPBrainFile(t, emptySources, "")
 	server := NewServer(t.TempDir())
 	_, err := server.callTool("brain.gtd.ingest", map[string]interface{}{
-		"config_path": configPath,
-		"sphere":      "work",
-		"source":      "meetings",
+		"config_path":    configPath,
+		"sphere":         "work",
+		"source":         "meetings",
+		"sources_config": emptySources,
 	})
 	if err == nil || !strings.Contains(err.Error(), "paths are required") {
 		t.Fatalf("expected paths-required-or-configured-root error, got %v", err)
