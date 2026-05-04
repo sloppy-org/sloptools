@@ -43,7 +43,9 @@ type itemXML struct {
 		Mailboxes []mailboxXML `xml:"Mailbox"`
 	} `xml:"CcRecipients"`
 	Flag struct {
-		Status string `xml:"FlagStatus"`
+		Status    string `xml:"FlagStatus"`
+		StartDate string `xml:"StartDate"`
+		DueDate   string `xml:"DueDate"`
 	} `xml:"Flag"`
 	Attachments struct {
 		Files []attachmentXML `xml:"FileAttachment"`
@@ -117,7 +119,11 @@ func (i itemXML) toMessage() Message {
 	for _, attachment := range i.Attachments.Files {
 		attachments = append(attachments, Attachment{ID: strings.TrimSpace(attachment.ID.ID), Name: strings.TrimSpace(attachment.Name), ContentType: strings.TrimSpace(attachment.ContentType), Size: parseInt64(attachment.Size), IsInline: parseBool(attachment.IsInline)})
 	}
-	return Message{ID: strings.TrimSpace(i.ItemID.ID), ChangeKey: strings.TrimSpace(i.ItemID.ChangeKey), ParentFolderID: strings.TrimSpace(i.ParentFolderID.ID), ConversationID: strings.TrimSpace(i.ConversationID.ID), ConversationTopic: strings.TrimSpace(i.ConversationTopic), InternetMessageID: strings.TrimSpace(i.InternetMessageID), Subject: strings.TrimSpace(i.Subject), Body: strings.TrimSpace(i.Body.Value), BodyType: strings.TrimSpace(i.Body.Type), From: i.From.Mailbox.toMailbox(), Sender: i.Sender.Mailbox.toMailbox(), To: mailboxSlice(i.ToRecipients.Mailboxes), Cc: mailboxSlice(i.CcRecipients.Mailboxes), DisplayTo: strings.TrimSpace(i.DisplayTo), DisplayCc: strings.TrimSpace(i.DisplayCc), WebLink: strings.TrimSpace(i.WebLink), IsRead: parseBool(i.IsRead), IsDraft: parseBool(i.IsDraft), HasAttachments: parseBool(i.HasAttachments), ReceivedAt: parseTime(i.DateTimeReceived), SentAt: parseTime(i.DateTimeSent), CreatedAt: parseTime(i.DateTimeCreated), FlagStatus: strings.TrimSpace(i.Flag.Status), Attachments: attachments}
+	flagDue := parseTime(i.Flag.DueDate)
+	if flagDue.IsZero() {
+		flagDue = parseTime(i.Flag.StartDate)
+	}
+	return Message{ID: strings.TrimSpace(i.ItemID.ID), ChangeKey: strings.TrimSpace(i.ItemID.ChangeKey), ParentFolderID: strings.TrimSpace(i.ParentFolderID.ID), ConversationID: strings.TrimSpace(i.ConversationID.ID), ConversationTopic: strings.TrimSpace(i.ConversationTopic), InternetMessageID: strings.TrimSpace(i.InternetMessageID), Subject: strings.TrimSpace(i.Subject), Body: strings.TrimSpace(i.Body.Value), BodyType: strings.TrimSpace(i.Body.Type), From: i.From.Mailbox.toMailbox(), Sender: i.Sender.Mailbox.toMailbox(), To: mailboxSlice(i.ToRecipients.Mailboxes), Cc: mailboxSlice(i.CcRecipients.Mailboxes), DisplayTo: strings.TrimSpace(i.DisplayTo), DisplayCc: strings.TrimSpace(i.DisplayCc), WebLink: strings.TrimSpace(i.WebLink), IsRead: parseBool(i.IsRead), IsDraft: parseBool(i.IsDraft), HasAttachments: parseBool(i.HasAttachments), ReceivedAt: parseTime(i.DateTimeReceived), SentAt: parseTime(i.DateTimeSent), CreatedAt: parseTime(i.DateTimeCreated), FlagStatus: strings.TrimSpace(i.Flag.Status), FlagDueAt: flagDue, Attachments: attachments}
 }
 
 func (i itemXML) toContact() Contact {

@@ -5,13 +5,9 @@ import (
 	"fmt"
 	"net/mail"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/BurntSushi/toml"
-	"github.com/sloppy-org/sloptools/internal/brain"
 	"github.com/sloppy-org/sloptools/internal/providerdata"
 	"github.com/sloppy-org/sloptools/internal/store"
 )
@@ -151,6 +147,29 @@ func mailCommitmentLabels(message *providerdata.EmailMessage) []string {
 		return nil
 	}
 	return append([]string(nil), message.Labels...)
+}
+
+// mergeMailLabels combines the provider-derived labels with D5
+// classification track/* labels, dropping any provider track/* labels so
+// the classifier owns track derivation.
+func mergeMailLabels(messageLabels, classificationLabels []string) []string {
+	merged := make([]string, 0, len(messageLabels)+len(classificationLabels))
+	for _, label := range messageLabels {
+		clean := strings.TrimSpace(label)
+		if clean == "" {
+			continue
+		}
+		lower := strings.ToLower(clean)
+		if strings.HasPrefix(lower, "track/") || strings.HasPrefix(lower, "track:") {
+			continue
+		}
+		merged = append(merged, clean)
+	}
+	merged = append(merged, classificationLabels...)
+	if len(merged) == 0 {
+		return nil
+	}
+	return merged
 }
 
 func mailCommitmentPeople(status, peer string) []string {
@@ -338,96 +357,6 @@ func mailSourceURL(account store.ExternalAccount, messageID string) string {
 		Host:   "mail",
 		Path:   fmt.Sprintf("/%s/%d/%s", url.PathEscape(strings.TrimSpace(account.Provider)), account.ID, url.PathEscape(strings.TrimSpace(messageID))),
 	}).String()
-}
-
-func loadMailProjectRules(path string) ([]mailProjectRule, error) {
-	resolved, explicit, err := sloptoolsConfigPath(path, "projects.toml")
-	if err != nil {
-		return nil, err
-	}
-	var cfg mailProjectConfig
-	if _, err := toml.DecodeFile(resolved, &cfg); err != nil {
-		if !explicit && os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("load mail project rules: %w", err)
-	}
-	out := make([]mailProjectRule, 0, len(cfg.Projects))
-	for _, rule := range cfg.Projects {
-		rule.Name = strings.TrimSpace(rule.Name)
-		if rule.Name == "" {
-			continue
-		}
-		rule.Name = strings.Trim(rule.Name, "/")
-		rule.Keywords = compactStringList(rule.Keywords)
-		rule.People = compactStringList(rule.People)
-		out = append(out, rule)
-	}
-	return out, nil
-}
-
-func loadMailBrainConfig(path string) (*brain.Config, error) {
-	if strings.TrimSpace(path) == "" {
-		cfg, err := brain.LoadConfig("")
-		if err != nil {
-			return nil, nil
-		}
-		return cfg, nil
-	}
-	cfg, err := brain.LoadConfig(path)
-	if err != nil {
-		return nil, err
-	}
-	return cfg, nil
-}
-
-func mailPersonNoteDiagnostic(cfg *brain.Config, sphere, person string) string {
-	target, ok := mailPersonNoteTarget(person)
-	if !ok || cfg == nil {
-		return ""
-	}
-	vault, ok := cfg.Vault(brain.Sphere(sphere))
-	if !ok {
-		return ""
-	}
-	path := filepath.Join(vault.BrainRoot(), "people", target+".md")
-	if _, err := os.Stat(path); err == nil {
-		return ""
-	}
-	return "needs_person_note: " + target
-}
-
-func mailPersonNoteTarget(person string) (string, bool) {
-	clean := strings.TrimSpace(person)
-	if clean == "" {
-		return "", false
-	}
-	if strings.Contains(clean, "@") && !strings.Contains(clean, " ") {
-		return "", false
-	}
-	clean = strings.Trim(clean, "/")
-	clean = strings.ReplaceAll(clean, string(filepath.Separator), " ")
-	clean = strings.Join(strings.Fields(clean), " ")
-	return clean, clean != ""
-}
-
-func sloptoolsConfigPath(path, name string) (string, bool, error) {
-	clean := strings.TrimSpace(path)
-	if clean != "" {
-		if strings.HasPrefix(clean, "~/") {
-			home, err := os.UserHomeDir()
-			if err != nil {
-				return "", true, err
-			}
-			clean = filepath.Join(home, strings.TrimPrefix(clean, "~/"))
-		}
-		return filepath.Clean(clean), true, nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", false, err
-	}
-	return filepath.Join(home, ".config", "sloptools", name), false, nil
 }
 
 func stringPtr(value string) *string {

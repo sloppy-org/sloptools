@@ -38,9 +38,10 @@ type mailCommitmentCandidate struct {
 }
 
 type mailCommitmentOptions struct {
-	projectRules []mailProjectRule
-	brainConfig  *brain.Config
-	writeable    bool
+	projectRules  []mailProjectRule
+	brainConfig   *brain.Config
+	writeable     bool
+	waitingFolder string
 }
 
 var (
@@ -88,7 +89,7 @@ func (s *Server) mailCommitmentList(args map[string]interface{}) (map[string]int
 	if err != nil {
 		return nil, err
 	}
-	options := mailCommitmentOptions{projectRules: projectRules, brainConfig: brainConfig, writeable: boolArg(args, "writeable")}
+	options := mailCommitmentOptions{projectRules: projectRules, brainConfig: brainConfig, writeable: boolArg(args, "writeable"), waitingFolder: mailAccountWaitingFolder(account)}
 
 	analysis := make([]mailCommitmentCandidate, 0, len(orderedMetadata))
 	bodyIDs := make([]string, 0, minInt(bodyLimit, len(orderedMetadata)))
@@ -281,19 +282,34 @@ func buildMailCommitmentRecord(account store.ExternalAccount, metadata, body *pr
 	if candidate.status == "waiting" && !hasAsk && !hasDeadline {
 		return mailCommitmentRecord{}, false
 	}
+	derived := mailMessageToGTDStatus(message, options.waitingFolder)
+	status := candidate.status
+	if derived.Status != "" {
+		status = derived.Status
+	}
+	if derived.Status == "deferred" {
+		followUp = derived.FollowUp
+	}
+	heuristicProject := mailProjectForMessage(message, candidate, options.projectRules)
+	classification := mailFolderToLabel(mailMessageFolder(message), account.Sphere, options.brainConfig)
+	project := classification.Project
+	if project == "" {
+		project = heuristicProject
+	}
+	labels := mergeMailLabels(mailCommitmentLabels(message), classification.Labels)
 	commitment := braingtd.Commitment{
 		Kind:           "commitment",
-		Title:          mailCommitmentTitle(candidate.status, peer, message.Subject),
+		Title:          mailCommitmentTitle(status, peer, message.Subject),
 		Sphere:         account.Sphere,
-		Status:         candidate.status,
+		Status:         status,
 		Context:        candidate.context,
 		NextAction:     candidate.nextAction,
 		FollowUp:       followUp,
 		Actor:          candidate.actor,
 		WaitingFor:     candidate.waitingFor,
-		Project:        mailProjectForMessage(message, candidate, options.projectRules),
-		Labels:         mailCommitmentLabels(message),
-		People:         mailCommitmentPeople(candidate.status, peer),
+		Project:        project,
+		Labels:         labels,
+		People:         mailCommitmentPeople(status, peer),
 		LastEvidenceAt: evidenceTimestamp(message.Date),
 		SourceBindings: []braingtd.SourceBinding{{
 			Provider:         account.Provider,
@@ -306,15 +322,15 @@ func buildMailCommitmentRecord(account store.ExternalAccount, metadata, body *pr
 			UpdatedAt:        evidenceTimestamp(message.Date),
 		}},
 		LocalOverlay: braingtd.LocalOverlay{
-			Status:   candidate.status,
+			Status:   status,
 			FollowUp: followUp,
 			Actor:    candidate.actor,
 		},
 	}
-	if followUp != "" && candidate.status == "waiting" && commitment.NextAction == "" {
+	if followUp != "" && status == "waiting" && commitment.NextAction == "" {
 		commitment.NextAction = "Follow up with " + peer
 	}
-	if hasDeadline && commitment.FollowUp == "" {
+	if hasDeadline && commitment.FollowUp == "" && status != "deferred" {
 		if parsed, ok := mailDeadlineFromText(text, message.Date); ok {
 			commitment.FollowUp = parsed
 			commitment.LocalOverlay.FollowUp = parsed

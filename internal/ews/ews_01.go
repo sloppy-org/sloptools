@@ -176,6 +176,7 @@ type Message struct {
 	SentAt            time.Time
 	CreatedAt         time.Time
 	FlagStatus        string
+	FlagDueAt         time.Time
 	Attachments       []Attachment
 }
 

@@ -2,7 +2,6 @@ package mcp
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -15,7 +14,6 @@ import (
 	"github.com/sloppy-org/sloptools/internal/providerdata"
 	"github.com/sloppy-org/sloptools/internal/sourceitems"
 	"github.com/sloppy-org/sloptools/internal/store"
-	"github.com/sloppy-org/sloptools/internal/tasks"
 	"github.com/sloppy-org/sloptools/pkg/taskgtd"
 )
 
@@ -65,17 +63,26 @@ type gtdReviewBuild struct {
 
 func (s *Server) brainGTDReviewList(args map[string]interface{}) (map[string]interface{}, error) {
 	build := gtdReviewBuild{bindings: make(map[string]string), seen: make(map[string]struct{})}
-	sources := gtdReviewSources(args)
+	sources, explicit := gtdReviewSources(args)
 	if sources["markdown"] {
 		if err := s.addMarkdownGTDItems(args, &build); err != nil {
 			return nil, err
 		}
 	}
-	if sources["tasks"] || sources["todoist"] {
-		s.addTaskGTDItems(args, &build)
+	if sources["mail"] {
+		s.addMailGTDItems(args, &build)
 	}
-	if sources["source"] || sources["sources"] || sources["issues"] {
+	if sources["github"] || sources["gitlab"] || sources["source"] || sources["sources"] || sources["issues"] {
 		s.addIssueGTDItems(args, &build)
+	}
+	if sources["tasks"] || sources["todoist"] || sources["google_tasks"] {
+		if explicit {
+			build.errors = append(build.errors, "tasks source is deprecated as a default; pass explicit sources=['tasks'] to opt in")
+			s.addTaskGTDItems(args, &build)
+		}
+	}
+	if sources["evernote"] && explicit {
+		build.errors = append(build.errors, "evernote source is deprecated; knowledge import only, no GTD items returned")
 	}
 	build.items = filterGTDReviewItems(build.items, args)
 	sort.SliceStable(build.items, func(i, j int) bool {
@@ -101,16 +108,21 @@ func (s *Server) brainGTDReviewList(args map[string]interface{}) (map[string]int
 	}, nil
 }
 
-func gtdReviewSources(args map[string]interface{}) map[string]bool {
+// gtdReviewSources returns the source set and whether the caller passed
+// `sources` explicitly. Default is markdown + live live mail + GitHub +
+// GitLab; tasks/todoist/google_tasks/evernote remain accepted but emit a
+// deprecation warning when explicitly requested.
+func gtdReviewSources(args map[string]interface{}) (map[string]bool, bool) {
 	values := stringListArg(args, "sources")
-	if len(values) == 0 {
-		values = []string{"markdown", "tasks", "source"}
+	explicit := len(values) > 0
+	if !explicit {
+		values = []string{"markdown", "mail", "github", "gitlab"}
 	}
 	out := make(map[string]bool, len(values))
 	for _, value := range values {
 		out[strings.ToLower(strings.TrimSpace(value))] = true
 	}
-	return out
+	return out, explicit
 }
 
 func (s *Server) addMarkdownGTDItems(args map[string]interface{}, build *gtdReviewBuild) error {
@@ -119,6 +131,9 @@ func (s *Server) addMarkdownGTDItems(args map[string]interface{}, build *gtdRevi
 		return err
 	}
 	for _, note := range notes {
+		if isMailShadowMarkdownPath(note.Entry.Path) {
+			continue
+		}
 		item := gtdReviewItemFromCommitment(note)
 		for _, binding := range note.Entry.Commitment.SourceBindings {
 			id := binding.StableID()
@@ -131,158 +146,73 @@ func (s *Server) addMarkdownGTDItems(args map[string]interface{}, build *gtdRevi
 	return nil
 }
 
-func (s *Server) addTaskGTDItems(args map[string]interface{}, build *gtdReviewBuild) {
-	accounts, err := s.taskAccountsForReview(args)
+// isMailShadowMarkdownPath flags brain/commitments/mail/** files. The
+// live mail branch surfaces those items directly off provider state, so
+// keeping markdown shadows in the walker would double-count.
+func isMailShadowMarkdownPath(rel string) bool {
+	clean := strings.TrimSpace(strings.ReplaceAll(rel, "\\", "/"))
+	return strings.HasPrefix(clean, "brain/commitments/mail/")
+}
+
+// addMailGTDItems surfaces commitments derived live from mail provider
+// state across every enabled mail-capable account in the requested
+// sphere. The D5 mapping is applied in mail_commitment_list, so this
+// branch just unwraps the records into review items.
+func (s *Server) addMailGTDItems(args map[string]interface{}, build *gtdReviewBuild) {
+	st, err := s.requireStore()
 	if err != nil {
 		build.errors = append(build.errors, err.Error())
 		return
 	}
-	ctx := context.Background()
-	listIDs := stringListArg(args, "list_ids")
-	for _, account := range accounts {
-		provider, err := s.tasksProviderForAccount(ctx, account)
-		if err != nil {
-			build.errors = append(build.errors, fmt.Sprintf("%s %q: %v", account.Provider, account.AccountName, err))
-			continue
-		}
-		func() {
-			defer provider.Close()
-			lists, err := taskListsForReview(ctx, provider, listIDs)
-			if err != nil {
-				build.errors = append(build.errors, fmt.Sprintf("%s %q: %v", account.Provider, account.AccountName, err))
-				return
-			}
-			if len(listIDs) == 0 {
-				if bulk, ok := provider.(tasks.BulkLister); ok {
-					items, err := bulk.ListAllTasks(ctx)
-					if err == nil {
-						addBulkTaskReviewItems(build, account.Sphere, provider.ProviderName(), lists, items)
-						return
-					}
-					if !errors.Is(err, tasks.ErrUnsupported) {
-						build.errors = append(build.errors, fmt.Sprintf("%s %q: %v", account.Provider, account.AccountName, err))
-						return
-					}
-				}
-			}
-			for _, list := range lists {
-				items, err := provider.ListTasks(ctx, list.ID)
-				if err != nil {
-					build.errors = append(build.errors, fmt.Sprintf("%s %q list %q: %v", account.Provider, account.AccountName, list.Name, err))
-					continue
-				}
-				parentIDs := taskgtd.ParentTaskIDs(taskGTDTasks(items))
-				for _, item := range items {
-					reviewItem := gtdReviewItemFromTask(account.Sphere, provider.ProviderName(), list, item)
-					if parentIDs[strings.TrimSpace(item.ID)] {
-						reviewItem.Kind = "project"
-					}
-					build.addOrSkipExisting(reviewItem)
-				}
-			}
-		}()
-	}
-}
-
-func addBulkTaskReviewItems(build *gtdReviewBuild, sphere, providerName string, lists []providerdata.TaskList, items []providerdata.TaskItem) {
-	byID := make(map[string]providerdata.TaskList, len(lists))
-	for _, list := range lists {
-		byID[strings.TrimSpace(list.ID)] = list
-	}
-	parentIDs := taskgtd.ParentTaskIDs(taskGTDTasks(items))
-	for _, item := range items {
-		list := taskListForReviewItem(byID, item)
-		reviewItem := gtdReviewItemFromTask(sphere, providerName, list, item)
-		if parentIDs[strings.TrimSpace(item.ID)] {
-			reviewItem.Kind = "project"
-		}
-		build.addOrSkipExisting(reviewItem)
-	}
-}
-
-func taskListForReviewItem(byID map[string]providerdata.TaskList, item providerdata.TaskItem) providerdata.TaskList {
-	for _, candidate := range []string{strings.TrimSpace(item.ListID), strings.TrimSpace(item.ProjectID)} {
-		if candidate == "" {
-			continue
-		}
-		if list, ok := byID[candidate]; ok {
-			return list
-		}
-		return providerdata.TaskList{ID: candidate, Name: candidate}
-	}
-	return providerdata.TaskList{}
-}
-
-func (s *Server) taskAccountsForReview(args map[string]interface{}) ([]store.ExternalAccount, error) {
-	st, err := s.requireStore()
-	if err != nil {
-		return nil, err
-	}
-	accountIDPtr, _, err := optionalInt64Arg(args, "account_id")
-	if err != nil {
-		return nil, err
-	}
-	if accountIDPtr != nil {
-		account, err := accountForTool(st, args, "tasks-capable", isTasksCapableProvider)
-		if err != nil {
-			return nil, err
-		}
-		return []store.ExternalAccount{account}, nil
-	}
 	accounts, err := st.ListExternalAccounts(strings.TrimSpace(strArg(args, "sphere")))
 	if err != nil {
-		return nil, err
+		build.errors = append(build.errors, err.Error())
+		return
 	}
-	matches := make([]store.ExternalAccount, 0, len(accounts))
 	for _, account := range accounts {
-		if !account.Enabled || !isTasksCapableProvider(account.Provider) {
+		if !account.Enabled || !emailCapableProvider(account.Provider) {
 			continue
 		}
-		matches = append(matches, account)
+		s.collectMailReviewItems(args, account, build)
 	}
-	if len(matches) == 0 {
-		sphere := strings.TrimSpace(strArg(args, "sphere"))
-		if sphere != "" {
-			return nil, fmt.Errorf("no enabled tasks-capable account for sphere %q", sphere)
-		}
-		return nil, fmt.Errorf("no enabled tasks-capable account is configured")
-	}
-	if len(stringListArg(args, "list_ids")) > 0 && len(matches) > 1 {
-		return nil, errors.New("account_id is required when list_ids are supplied and multiple tasks-capable accounts are configured")
-	}
-	sort.Slice(matches, func(i, j int) bool {
-		if matches[i].Sphere != matches[j].Sphere {
-			return matches[i].Sphere < matches[j].Sphere
-		}
-		if matches[i].Provider != matches[j].Provider {
-			return matches[i].Provider < matches[j].Provider
-		}
-		return matches[i].ID < matches[j].ID
-	})
-	return matches, nil
 }
 
-func taskListsForReview(ctx context.Context, provider tasks.Provider, ids []string) ([]providerdata.TaskList, error) {
-	if len(ids) == 0 {
-		return provider.ListTaskLists(ctx)
-	}
-	available, err := provider.ListTaskLists(ctx)
-	if err != nil {
-		return nil, err
-	}
-	byID := make(map[string]providerdata.TaskList, len(available))
-	for _, list := range available {
-		byID[strings.TrimSpace(list.ID)] = list
-	}
-	out := make([]providerdata.TaskList, 0, len(ids))
-	for _, id := range ids {
-		list, ok := byID[strings.TrimSpace(id)]
-		if !ok {
-			return nil, fmt.Errorf("task list %q not found", id)
+func (s *Server) collectMailReviewItems(args map[string]interface{}, account store.ExternalAccount, build *gtdReviewBuild) {
+	mailArgs := map[string]interface{}{"account_id": account.ID, "limit": intArg(args, "limit", 50)}
+	for _, key := range []string{"folder", "project_config", "vault_config"} {
+		if value, ok := args[key]; ok {
+			mailArgs[key] = value
 		}
-		out = append(out, list)
 	}
-	return out, nil
+	result, err := s.mailCommitmentList(mailArgs)
+	if err != nil {
+		build.errors = append(build.errors, fmt.Sprintf("%s %q: %v", account.Provider, account.AccountName, err))
+		return
+	}
+	records, _ := result["commitments"].([]mailCommitmentRecord)
+	for _, record := range records {
+		build.addOrSkipExisting(gtdReviewItemFromMailRecord(account, record))
+	}
+}
+
+func gtdReviewItemFromMailRecord(account store.ExternalAccount, record mailCommitmentRecord) gtdReviewItem {
+	commitment := record.Commitment
+	status := strings.ToLower(strings.TrimSpace(commitment.Status))
+	sourceRef := fmt.Sprintf("mail:%s:%d:%s", strings.ToLower(strings.TrimSpace(account.Sphere)), account.ID, strings.TrimSpace(record.SourceID))
+	return gtdReviewItem{
+		ID:        sourceRef,
+		Source:    "mail",
+		SourceRef: sourceRef,
+		Title:     firstNonEmpty(commitment.Title, record.Message.Subject, record.SourceID),
+		Status:    status,
+		Queue:     taskgtd.Queue(status, commitment.FollowUp, time.Now().UTC()),
+		URL:       record.SourceURL,
+		FollowUp:  commitment.FollowUp,
+		Labels:    append([]string(nil), commitment.Labels...),
+		Actor:     firstNonEmpty(commitment.WaitingFor, commitment.Actor),
+		Project:   commitment.Project,
+		Track:     commitment.EffectiveTrack(),
+	}
 }
 
 func (s *Server) addIssueGTDItems(args map[string]interface{}, build *gtdReviewBuild) {
@@ -324,11 +254,43 @@ func sourceProviderForReview(projectDir, providerName string) (sourceitems.Provi
 }
 
 func (b *gtdReviewBuild) addOrSkipExisting(item gtdReviewItem) {
-	if path := b.bindings[item.ID]; path != "" {
+	shadowPath := b.bindings[item.ID]
+	if shadowPath != "" && isIssueShadowMarkdownPath(shadowPath) {
+		if item.Status != "closed" {
+			b.removeMarkdownItem("markdown:" + shadowPath)
+			b.add(item)
+			return
+		}
+		b.duplicateCount++
+		return
+	}
+	if shadowPath != "" {
 		b.duplicateCount++
 		return
 	}
 	b.add(item)
+}
+
+// removeMarkdownItem drops a previously-added markdown shadow item so a
+// live API result can win the dedup. Used by the issue branch when an
+// open issue arrives with a markdown shadow at commitments/{github,gitlab}/.
+func (b *gtdReviewBuild) removeMarkdownItem(id string) {
+	for i, existing := range b.items {
+		if existing.ID == id {
+			b.items = append(b.items[:i], b.items[i+1:]...)
+			delete(b.seen, id)
+			b.duplicateCount++
+			return
+		}
+	}
+}
+
+// isIssueShadowMarkdownPath flags brain/commitments/{github,gitlab}/**
+// markdown files. Live API state for matching open issues replaces the
+// markdown shadow until the API state reaches closed.
+func isIssueShadowMarkdownPath(rel string) bool {
+	clean := strings.TrimSpace(strings.ReplaceAll(rel, "\\", "/"))
+	return strings.HasPrefix(clean, "brain/commitments/github/") || strings.HasPrefix(clean, "brain/commitments/gitlab/")
 }
 
 func (b *gtdReviewBuild) add(item gtdReviewItem) {
@@ -356,49 +318,6 @@ func gtdReviewItemFromCommitment(note dedupNote) gtdReviewItem {
 		Actor:   firstNonEmpty(c.WaitingFor, c.Actor),
 		Project: c.Project,
 		Track:   c.EffectiveTrack(), FollowUp: c.FollowUp,
-	}
-}
-
-func gtdReviewItemFromTask(sphere, providerName string, list providerdata.TaskList, task providerdata.TaskItem) gtdReviewItem {
-	modelList := taskGTDList(list)
-	modelTask := taskGTDTask(task)
-	binding := braingtd.SourceBinding{Provider: providerName, Ref: taskgtd.BindingRef(list.ID, modelTask)}
-	status := taskgtd.Status(modelList, modelTask, time.Now().UTC())
-	return gtdReviewItem{
-		ID: binding.StableID(), Source: providerName, SourceRef: binding.Ref,
-		Title: task.Title, Status: status,
-		Queue:    taskgtd.Queue(status, taskgtd.TimeString(task.StartAt), time.Now().UTC()),
-		Kind:     "task",
-		URL:      task.ProviderURL,
-		Due:      taskgtd.TimeString(task.Due),
-		FollowUp: taskgtd.TimeString(task.StartAt),
-		Labels:   append([]string(nil), task.Labels...),
-		Actor:    firstNonEmpty(task.AssigneeName, task.AssigneeID),
-		Project:  firstNonEmpty(list.Name, task.ProjectID, sphere),
-		Track:    braingtd.TrackFromLabels(task.Labels),
-		ParentID: strings.TrimSpace(task.ParentID),
-	}
-}
-
-func taskGTDList(list providerdata.TaskList) taskgtd.List {
-	return taskgtd.List{ID: list.ID, Name: list.Name, Primary: list.Primary, IsInboxProject: list.IsInboxProject}
-}
-
-func taskGTDTasks(tasks []providerdata.TaskItem) []taskgtd.Task {
-	out := make([]taskgtd.Task, 0, len(tasks))
-	for _, task := range tasks {
-		out = append(out, taskGTDTask(task))
-	}
-	return out
-}
-
-func taskGTDTask(task providerdata.TaskItem) taskgtd.Task {
-	return taskgtd.Task{
-		ID: task.ID, ListID: task.ListID, Title: task.Title, ProjectID: task.ProjectID,
-		ParentID: task.ParentID, ProviderRef: task.ProviderRef,
-		Labels:    append([]string(nil), task.Labels...),
-		StartAt:   task.StartAt, Due: task.Due, Completed: task.Completed,
-		AssigneeID: task.AssigneeID, AssigneeName: task.AssigneeName, ProviderURL: task.ProviderURL,
 	}
 }
 
@@ -452,24 +371,66 @@ func reviewTimeMatches(value string, args map[string]interface{}, key string, be
 
 func gtdReviewItemFromSourceItem(source providerdata.SourceItem) gtdReviewItem {
 	binding := braingtd.SourceBinding{Provider: source.Provider, Ref: strings.TrimPrefix(source.SourceRef, source.Provider+":"), URL: source.URL}
-	status := "next"
-	if sourceClosed(source.State) {
-		status = "done"
-	}
+	status := sourceItemStatus(source)
+	followUp := sourceItemFollowUp(source)
 	return gtdReviewItem{
 		ID:        binding.StableID(),
 		Source:    source.Provider,
 		SourceRef: binding.Ref,
 		Title:     source.Title,
 		Status:    status,
-		Queue:     taskgtd.Queue(status, "", time.Now().UTC()),
+		Queue:     taskgtd.Queue(status, followUp, time.Now().UTC()),
 		Kind:      source.Kind,
 		URL:       source.URL,
+		FollowUp:  followUp,
 		Labels:    append([]string(nil), source.Labels...),
 		Actor:     firstNonEmpty(strings.Join(source.Assignees, ", "), source.Author),
 		Project:   source.Container,
 		Track:     braingtd.TrackFromLabels(source.Labels),
 	}
+}
+
+// sourceItemStatus maps a GitHub/GitLab issue or pull-request to its GTD
+// status per the locked plan: closed → closed; review-requested or
+// reviewer assignment → waiting; future follow-up label or due → deferred;
+// open with assignee → next.
+func sourceItemStatus(source providerdata.SourceItem) string {
+	if sourceClosed(source.State) {
+		return "closed"
+	}
+	if hasFollowUpLabel(source.Labels) {
+		return "deferred"
+	}
+	if len(source.Reviewers) > 0 {
+		return "waiting"
+	}
+	switch strings.ToLower(strings.TrimSpace(source.ReviewStatus)) {
+	case "review_requested", "changes_requested":
+		return "waiting"
+	}
+	return "next"
+}
+
+func sourceItemFollowUp(source providerdata.SourceItem) string {
+	for _, label := range source.Labels {
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(label)), "follow-up:") {
+			parts := strings.SplitN(label, ":", 2)
+			if len(parts) == 2 {
+				return strings.TrimSpace(parts[1])
+			}
+		}
+	}
+	return ""
+}
+
+func hasFollowUpLabel(labels []string) bool {
+	for _, label := range labels {
+		lower := strings.ToLower(strings.TrimSpace(label))
+		if lower == "follow-up" || strings.HasPrefix(lower, "follow-up:") || lower == "deferred" {
+			return true
+		}
+	}
+	return false
 }
 
 func effectiveGTDStatus(c braingtd.Commitment) string {

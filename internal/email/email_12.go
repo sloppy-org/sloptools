@@ -474,5 +474,13 @@ type MessageBody struct {
 }
 
 type MessageFlag struct {
-	FlagStatus string `json:"flagStatus"`
+	FlagStatus    string         `json:"flagStatus"`
+	StartDateTime *DateTimeValue `json:"startDateTime,omitempty"`
+	DueDateTime   *DateTimeValue `json:"dueDateTime,omitempty"`
+}
+
+// DateTimeValue is the Microsoft Graph dateTimeTimeZone shape.
+type DateTimeValue struct {
+	DateTime string `json:"dateTime"`
+	TimeZone string `json:"timeZone"`
 }

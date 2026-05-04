@@ -236,7 +236,7 @@ func parseGmailMessage(msg *gmail.Message) *providerdata.EmailMessage {
 			isFlagged = true
 		}
 	}
-	email := &providerdata.EmailMessage{ID: msg.Id, ThreadID: msg.ThreadId, Subject: headers["Subject"], Sender: headers["From"], Snippet: msg.Snippet, Labels: msg.LabelIds, IsRead: isRead, IsFlagged: isFlagged}
+	email := &providerdata.EmailMessage{ID: msg.Id, ThreadID: msg.ThreadId, Subject: headers["Subject"], Sender: headers["From"], Snippet: msg.Snippet, Labels: msg.LabelIds, Folder: gmailFolderFromLabels(msg.LabelIds), IsRead: isRead, IsFlagged: isFlagged}
 	if email.Subject == "" {
 		email.Subject = "(No subject)"
 	}
@@ -259,6 +259,39 @@ func parseGmailMessage(msg *gmail.Message) *providerdata.EmailMessage {
 		email.BodyHTML = extractGmailBody(msg.Payload, "text/html")
 	}
 	return email
+}
+
+// gmailFolderFromLabels picks the folder string used by D5 mapping. Gmail
+// represents folders as labels: system labels INBOX/SENT/DRAFT/SPAM/TRASH
+// stand in for top-level folders, while user labels with `/` (e.g.
+// `INBOX/Teaching`) carry sub-folder paths. Plain user labels stay in
+// `Labels[]` only and do not surface as Folder.
+func gmailFolderFromLabels(labels []string) string {
+	const (
+		inbox = "INBOX"
+		sent  = "SENT"
+		draft = "DRAFT"
+		spam  = "SPAM"
+		trash = "TRASH"
+	)
+	hasSystem := ""
+	pathLabel := ""
+	for _, raw := range labels {
+		clean := strings.TrimSpace(raw)
+		switch clean {
+		case inbox, sent, draft, spam, trash:
+			if hasSystem == "" || clean == inbox {
+				hasSystem = clean
+			}
+		}
+		if pathLabel == "" && strings.Contains(clean, "/") {
+			pathLabel = clean
+		}
+	}
+	if pathLabel != "" {
+		return pathLabel
+	}
+	return hasSystem
 }
 
 func extractGmailBody(payload *gmail.MessagePart, mimeType string) *string {
@@ -328,143 +361,6 @@ func minInt64(a, b int64) int64 {
 var _ DraftProvider = (*GmailClient)(nil)
 
 var _ ExistingDraftSender = (*GmailClient)(nil)
-
-func (c *GmailClient) CreateDraft(ctx context.Context, input DraftInput) (Draft, error) {
-	normalized, err := NormalizeDraftInput(input)
-	if err != nil {
-		return Draft{}, err
-	}
-	raw, err := encodeGmailRawMessage(normalized)
-	if err != nil {
-		return Draft{}, err
-	}
-	service, err := c.getService(ctx)
-	if err != nil {
-		return Draft{}, err
-	}
-	message := &gmail.Message{Raw: raw}
-	if normalized.ThreadID != "" {
-		message.ThreadId = normalized.ThreadID
-	}
-	created, err := service.Users.Drafts.Create("me", &gmail.Draft{Message: message}).Context(ctx).Do()
-	if err != nil {
-		return Draft{}, fmt.Errorf("gmail create draft: %w", err)
-	}
-	threadID := normalized.ThreadID
-	if created != nil && created.Message != nil && strings.TrimSpace(created.Message.ThreadId) != "" {
-		threadID = strings.TrimSpace(created.Message.ThreadId)
-	}
-	return Draft{ID: strings.TrimSpace(created.Id), ThreadID: threadID}, nil
-}
-
-func (c *GmailClient) CreateReplyDraft(ctx context.Context, messageID string, input DraftInput) (Draft, error) {
-	service, err := c.getService(ctx)
-	if err != nil {
-		return Draft{}, err
-	}
-	original, err := service.Users.Messages.Get("me", strings.TrimSpace(messageID)).Format("full").Context(ctx).Do()
-	if err != nil {
-		return Draft{}, fmt.Errorf("gmail get reply source: %w", err)
-	}
-	reply := input
-	headers := gmailHeaderMap(original)
-	if len(reply.To) == 0 {
-		reply.To = []string{strings.TrimSpace(headers["Reply-To"])}
-		if strings.TrimSpace(reply.To[0]) == "" {
-			reply.To = []string{strings.TrimSpace(headers["From"])}
-		}
-	}
-	if strings.TrimSpace(reply.Subject) == "" {
-		reply.Subject = ensureReplySubject(strings.TrimSpace(headers["Subject"]))
-	} else {
-		reply.Subject = ensureReplySubject(reply.Subject)
-	}
-	if strings.TrimSpace(reply.ThreadID) == "" {
-		reply.ThreadID = strings.TrimSpace(original.ThreadId)
-	}
-	if strings.TrimSpace(reply.InReplyTo) == "" {
-		reply.InReplyTo = strings.TrimSpace(headers["Message-ID"])
-	}
-	if len(reply.References) == 0 && strings.TrimSpace(headers["References"]) != "" {
-		reply.References = strings.Fields(strings.TrimSpace(headers["References"]))
-	}
-	if reply.InReplyTo != "" && len(reply.References) == 0 {
-		reply.References = []string{reply.InReplyTo}
-	}
-	return c.CreateDraft(ctx, reply)
-}
-
-func (c *GmailClient) UpdateDraft(ctx context.Context, draftID string, input DraftInput) (Draft, error) {
-	normalized, err := NormalizeDraftInput(input)
-	if err != nil {
-		return Draft{}, err
-	}
-	raw, err := encodeGmailRawMessage(normalized)
-	if err != nil {
-		return Draft{}, err
-	}
-	service, err := c.getService(ctx)
-	if err != nil {
-		return Draft{}, err
-	}
-	message := &gmail.Message{Raw: raw}
-	if normalized.ThreadID != "" {
-		message.ThreadId = normalized.ThreadID
-	}
-	updated, err := service.Users.Drafts.Update("me", strings.TrimSpace(draftID), &gmail.Draft{Id: strings.TrimSpace(draftID), Message: message}).Context(ctx).Do()
-	if err != nil {
-		return Draft{}, fmt.Errorf("gmail update draft: %w", err)
-	}
-	threadID := normalized.ThreadID
-	if updated != nil && updated.Message != nil && strings.TrimSpace(updated.Message.ThreadId) != "" {
-		threadID = strings.TrimSpace(updated.Message.ThreadId)
-	}
-	return Draft{ID: strings.TrimSpace(updated.Id), ThreadID: threadID}, nil
-}
-
-func (c *GmailClient) SendDraft(ctx context.Context, draftID string, _ DraftInput) error {
-	return c.SendExistingDraft(ctx, draftID)
-}
-
-func (c *GmailClient) SendExistingDraft(ctx context.Context, draftID string) error {
-	draftID = strings.TrimSpace(draftID)
-	if draftID == "" {
-		return fmt.Errorf("draft_id is required")
-	}
-	service, err := c.getService(ctx)
-	if err != nil {
-		return err
-	}
-	if _, err := service.Users.Drafts.Send("me", &gmail.Draft{Id: draftID}).Context(ctx).Do(); err != nil {
-		return fmt.Errorf("gmail send draft: %w", err)
-	}
-	return nil
-}
-
-func gmailHeaderMap(message *gmail.Message) map[string]string {
-	out := map[string]string{}
-	if message == nil || message.Payload == nil {
-		return out
-	}
-	for _, header := range message.Payload.Headers {
-		name := strings.TrimSpace(header.Name)
-		if name == "" {
-			continue
-		}
-		out[name] = strings.TrimSpace(header.Value)
-	}
-	if from := strings.TrimSpace(out["From"]); from != "" {
-		if addr, err := mail.ParseAddress(from); err == nil {
-			out["From"] = strings.TrimSpace(addr.Address)
-		}
-	}
-	if replyTo := strings.TrimSpace(out["Reply-To"]); replyTo != "" {
-		if addr, err := mail.ParseAddress(replyTo); err == nil {
-			out["Reply-To"] = strings.TrimSpace(addr.Address)
-		}
-	}
-	return out
-}
 
 type searchResult struct {
 	folder string

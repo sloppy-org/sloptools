@@ -7,7 +7,6 @@ import (
 	"github.com/sloppy-org/sloptools/internal/providerdata"
 	gmail "google.golang.org/api/gmail/v1"
 	"html"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -217,79 +216,6 @@ func resolveExchangeFolderID(folders []Folder, raw string) (string, bool) {
 	return "", false
 }
 
-func filterExchangeMessages(messages []Message, opts SearchOptions) []Message {
-	out := make([]Message, 0, len(messages))
-	for _, message := range messages {
-		if !matchExchangeMessage(message, opts) {
-			continue
-		}
-		out = append(out, message)
-	}
-	sort.Slice(out, func(i, j int) bool {
-		left := exchangeMessageTime(out[i])
-		right := exchangeMessageTime(out[j])
-		switch {
-		case left.Equal(right):
-			return strings.TrimSpace(out[i].ID) < strings.TrimSpace(out[j].ID)
-		case left.IsZero():
-			return false
-		case right.IsZero():
-			return true
-		default:
-			return left.After(right)
-		}
-	})
-	if opts.MaxResults > 0 && len(out) > int(opts.MaxResults) {
-		limit := int(opts.MaxResults)
-		return append([]Message(nil), out[:limit]...)
-	}
-	return out
-}
-
-func matchExchangeMessage(message Message, opts SearchOptions) bool {
-	if opts.IsRead != nil && message.IsRead != *opts.IsRead {
-		return false
-	}
-	if opts.IsFlagged != nil && exchangeMessageFlagged(message) != *opts.IsFlagged {
-		return false
-	}
-	if opts.HasAttachment != nil && message.HasAttachments != *opts.HasAttachment {
-		return false
-	}
-	if opts.Subject != "" && !containsFold(message.Subject, opts.Subject) {
-		return false
-	}
-	if opts.From != "" && !containsFold(exchangeSenderString(message.From), opts.From) {
-		return false
-	}
-	if opts.To != "" && !containsFold(strings.Join(exchangeRecipientStrings(message.ToRecipients, message.CcRecipients), " "), opts.To) {
-		return false
-	}
-	if opts.Text != "" && !containsFold(strings.Join(exchangeSearchText(message), " "), opts.Text) {
-		return false
-	}
-	receivedAt := exchangeMessageTime(message)
-	if !opts.After.IsZero() && (receivedAt.IsZero() || receivedAt.Before(opts.After)) {
-		return false
-	}
-	if !opts.Before.IsZero() && !receivedAt.IsZero() && !receivedAt.Before(opts.Before) {
-		return false
-	}
-	if !opts.Since.IsZero() && (receivedAt.IsZero() || receivedAt.Before(opts.Since)) {
-		return false
-	}
-	if !opts.Until.IsZero() && !receivedAt.IsZero() && receivedAt.After(opts.Until) {
-		return false
-	}
-	return true
-}
-
-func exchangeSearchText(message Message) []string {
-	values := []string{strings.TrimSpace(message.Subject), strings.TrimSpace(message.BodyPreview), exchangeSenderString(message.From)}
-	values = append(values, exchangeRecipientStrings(message.ToRecipients, message.CcRecipients)...)
-	return values
-}
-
 func exchangeRecipientStrings(groups ...[]Recipient) []string {
 	out := []string{}
 	for _, recipients := range groups {
@@ -341,8 +267,64 @@ func exchangeTop(maxResults int64) int {
 func decodeExchangeEmailMessage(message Message, folders []Folder) providerdata.EmailMessage {
 	bodyText, bodyHTML := decodeExchangeBody(message.Body)
 	labels := exchangeMessageLabels(message.ParentFolderID, folders)
-	out := providerdata.EmailMessage{ID: strings.TrimSpace(message.ID), ThreadID: strings.TrimSpace(message.ConversationID), Subject: strings.TrimSpace(message.Subject), Sender: exchangeSenderString(message.From), Recipients: exchangeRecipientStrings(message.ToRecipients, message.CcRecipients), Date: exchangeMessageTime(message), Snippet: strings.TrimSpace(message.BodyPreview), Labels: labels, IsRead: message.IsRead, IsFlagged: exchangeMessageFlagged(message), BodyText: bodyText, BodyHTML: bodyHTML, Attachments: exchangeMessageAttachments(message)}
+	folder := exchangeMessageFolder(message.ParentFolderID, folders)
+	followUp := exchangeMessageFollowUp(message.Flag)
+	out := providerdata.EmailMessage{ID: strings.TrimSpace(message.ID), ThreadID: strings.TrimSpace(message.ConversationID), Subject: strings.TrimSpace(message.Subject), Sender: exchangeSenderString(message.From), Recipients: exchangeRecipientStrings(message.ToRecipients, message.CcRecipients), Date: exchangeMessageTime(message), Snippet: strings.TrimSpace(message.BodyPreview), Labels: labels, Folder: folder, IsRead: message.IsRead, IsFlagged: exchangeMessageFlagged(message), FollowUpAt: followUp, BodyText: bodyText, BodyHTML: bodyHTML, Attachments: exchangeMessageAttachments(message)}
 	return out
+}
+
+// exchangeMessageFolder returns the canonical Folder string for the
+// message's parent folder. WellKnownName "inbox" maps to "INBOX" so the
+// D5 mapping recognizes Inbox messages; anything else falls back to the
+// folder display name.
+func exchangeMessageFolder(parentFolderID string, folders []Folder) string {
+	folderID := strings.TrimSpace(parentFolderID)
+	if folderID == "" {
+		return ""
+	}
+	for _, folder := range folders {
+		if strings.TrimSpace(folder.ID) != folderID {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(folder.WellKnownName), "inbox") {
+			return "INBOX"
+		}
+		if display := strings.TrimSpace(folder.DisplayName); display != "" {
+			return display
+		}
+		return strings.TrimSpace(folder.WellKnownName)
+	}
+	return ""
+}
+
+// exchangeMessageFollowUp parses the dueDateTime on a Graph message flag.
+// Only dueDateTime drives the GTD `deferred` rule; startDateTime is a
+// fallback used by the Outlook UI but not the GTD mapping.
+func exchangeMessageFollowUp(flag MessageFlag) *time.Time {
+	value := flag.DueDateTime
+	if value == nil {
+		value = flag.StartDateTime
+	}
+	if value == nil {
+		return nil
+	}
+	clean := strings.TrimSpace(value.DateTime)
+	if clean == "" {
+		return nil
+	}
+	loc := time.UTC
+	if zone := strings.TrimSpace(value.TimeZone); zone != "" {
+		if parsed, err := time.LoadLocation(zone); err == nil {
+			loc = parsed
+		}
+	}
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02T15:04:05.0000000", "2006-01-02T15:04:05"} {
+		if parsed, err := time.ParseInLocation(layout, clean, loc); err == nil {
+			t := parsed.UTC()
+			return &t
+		}
+	}
+	return nil
 }
 
 func exchangeMessageAttachments(message Message) []providerdata.Attachment {

@@ -32,7 +32,9 @@ func TestMailCommitmentListDerivesCommitmentsWithBoundedBodyFetches(t *testing.T
 			Date:     day0,
 			Snippet:  "See below.",
 			BodyText: &askBody,
+			Folder:   "INBOX",
 			Labels:   []string{"Inbox"},
+			IsRead:   true,
 		},
 		"m2": {
 			ID:         "m2",
@@ -41,7 +43,9 @@ func TestMailCommitmentListDerivesCommitmentsWithBoundedBodyFetches(t *testing.T
 			Recipients: []string{"bob@example.com"},
 			Date:       day0.Add(1 * time.Hour),
 			Snippet:    "Follow up on the recap.",
+			Folder:     "Waiting",
 			Labels:     []string{"Sent"},
+			IsRead:     true,
 		},
 		"m3": {
 			ID:       "m3",
@@ -50,6 +54,7 @@ func TestMailCommitmentListDerivesCommitmentsWithBoundedBodyFetches(t *testing.T
 			Date:     day0.Add(2 * time.Hour),
 			Snippet:  "Project news",
 			BodyText: &newsletterBody,
+			Folder:   "INBOX",
 			Labels:   []string{"Inbox"},
 		},
 		"m4": {
@@ -58,6 +63,7 @@ func TestMailCommitmentListDerivesCommitmentsWithBoundedBodyFetches(t *testing.T
 			Sender:  "auto-reply@example.com",
 			Date:    day0.Add(3 * time.Hour),
 			Snippet: "I am out of office.",
+			Folder:  "INBOX",
 			Labels:  []string{"Inbox"},
 		},
 	}
@@ -279,24 +285,19 @@ func TestMailMessageToGTDStatusCoversD5Table(t *testing.T) {
 }
 
 func TestMailActionArchiveClosesBoundCommitment(t *testing.T) {
-	s, account, provider := newMailToolsFixture(t)
-	cfgPath, vaultRoot := writeMailLabelTestVault(t, "work", []string{"RT-08"})
-	s.brainConfigPath = cfgPath
-	commitmentRel := "brain/commitments/mail/m1.md"
-	writeMailLabelCommitment(t, vaultRoot, commitmentRel, "m1", "next")
-	provider.messages = map[string]*providerdata.EmailMessage{
+	fix := setupMailActionFixture(t, "m1", "next", nil, "")
+	fix.provider.messages = map[string]*providerdata.EmailMessage{
 		"m1": {ID: "m1", Subject: "Topic", Folder: "Archive", Labels: []string{"Archive"}, IsRead: true, Date: time.Now().UTC()},
 	}
-	s.newEmailProvider = func(context.Context, store.ExternalAccount) (email.EmailProvider, error) { return provider, nil }
-	got, err := s.callTool("mail_action", map[string]interface{}{"account_id": account.ID, "action": "archive", "message_ids": []interface{}{"m1"}})
+	got, err := fix.s.callTool("mail_action", map[string]interface{}{"account_id": fix.account.ID, "action": "archive", "message_ids": []interface{}{"m1"}})
 	if err != nil {
 		t.Fatalf("mail_action archive failed: %v", err)
 	}
 	refs := requireAffectedRefs(t, got)
-	if !affectedHas(refs, "mail", "message", "m1", "") || !affectedHas(refs, "brain", "gtd_commitment", "", commitmentRel) {
+	if !affectedHas(refs, "mail", "message", "m1", "") || !affectedHas(refs, "brain", "gtd_commitment", "", fix.commitmentRel) {
 		t.Fatalf("affected refs missing message+commitment: %#v", refs)
 	}
-	commitment := readCommitmentFile(t, filepath.Join(vaultRoot, filepath.FromSlash(commitmentRel)))
+	commitment := readCommitmentFile(t, filepath.Join(fix.vaultRoot, filepath.FromSlash(fix.commitmentRel)))
 	if commitment.LocalOverlay.Status != "closed" {
 		t.Fatalf("local_overlay.status = %q, want closed", commitment.LocalOverlay.Status)
 	}
@@ -306,19 +307,14 @@ func TestMailActionArchiveClosesBoundCommitment(t *testing.T) {
 }
 
 func TestMailActionMoveBetweenInboxSubfoldersUpdatesLabels(t *testing.T) {
-	s, account, provider := newMailToolsFixture(t)
-	cfgPath, vaultRoot := writeMailLabelTestVault(t, "work", []string{"RT-08"})
-	s.brainConfigPath = cfgPath
-	commitmentRel := "brain/commitments/mail/m1.md"
-	writeMailLabelCommitmentWithLabels(t, vaultRoot, commitmentRel, "m1", "next", []string{"track/rt-08"}, "[[projects/RT-08]]")
-	provider.messages = map[string]*providerdata.EmailMessage{
+	fix := setupMailActionFixture(t, "m1", "next", []string{"track/rt-08"}, "[[projects/RT-08]]")
+	fix.provider.messages = map[string]*providerdata.EmailMessage{
 		"m1": {ID: "m1", Subject: "Topic", Folder: "INBOX", Labels: []string{"INBOX"}, IsRead: true, Date: time.Now().UTC()},
 	}
-	s.newEmailProvider = func(context.Context, store.ExternalAccount) (email.EmailProvider, error) { return provider, nil }
-	if _, err := s.callTool("mail_action", map[string]interface{}{"account_id": account.ID, "action": "move_to_inbox", "message_ids": []interface{}{"m1"}}); err != nil {
+	if _, err := fix.s.callTool("mail_action", map[string]interface{}{"account_id": fix.account.ID, "action": "move_to_inbox", "message_ids": []interface{}{"m1"}}); err != nil {
 		t.Fatalf("mail_action move_to_inbox failed: %v", err)
 	}
-	commitment := readCommitmentFile(t, filepath.Join(vaultRoot, filepath.FromSlash(commitmentRel)))
+	commitment := readCommitmentFile(t, filepath.Join(fix.vaultRoot, filepath.FromSlash(fix.commitmentRel)))
 	if commitment.LocalOverlay.Status != "next" {
 		t.Fatalf("status = %q, want next", commitment.LocalOverlay.Status)
 	}
@@ -333,19 +329,14 @@ func TestMailActionMoveBetweenInboxSubfoldersUpdatesLabels(t *testing.T) {
 }
 
 func TestMailActionMoveIntoInboxSubfolderAddsTrackLabel(t *testing.T) {
-	s, account, provider := newMailToolsFixture(t)
-	cfgPath, vaultRoot := writeMailLabelTestVault(t, "work", []string{"RT-08"})
-	s.brainConfigPath = cfgPath
-	commitmentRel := "brain/commitments/mail/m1.md"
-	writeMailLabelCommitment(t, vaultRoot, commitmentRel, "m1", "next")
-	provider.messages = map[string]*providerdata.EmailMessage{
+	fix := setupMailActionFixture(t, "m1", "next", nil, "")
+	fix.provider.messages = map[string]*providerdata.EmailMessage{
 		"m1": {ID: "m1", Subject: "Topic", Folder: "INBOX/RT-08", Labels: []string{"INBOX/RT-08"}, IsRead: true, Date: time.Now().UTC()},
 	}
-	s.newEmailProvider = func(context.Context, store.ExternalAccount) (email.EmailProvider, error) { return provider, nil }
-	if _, err := s.callTool("mail_action", map[string]interface{}{"account_id": account.ID, "action": "move_to_folder", "message_ids": []interface{}{"m1"}, "folder": "INBOX/RT-08"}); err != nil {
+	if _, err := fix.s.callTool("mail_action", map[string]interface{}{"account_id": fix.account.ID, "action": "move_to_folder", "message_ids": []interface{}{"m1"}, "folder": "INBOX/RT-08"}); err != nil {
 		t.Fatalf("mail_action move_to_folder failed: %v", err)
 	}
-	commitment := readCommitmentFile(t, filepath.Join(vaultRoot, filepath.FromSlash(commitmentRel)))
+	commitment := readCommitmentFile(t, filepath.Join(fix.vaultRoot, filepath.FromSlash(fix.commitmentRel)))
 	if commitment.LocalOverlay.Status != "next" {
 		t.Fatalf("status = %q, want next", commitment.LocalOverlay.Status)
 	}
@@ -360,45 +351,54 @@ func TestMailActionMoveIntoInboxSubfolderAddsTrackLabel(t *testing.T) {
 }
 
 func TestMailActionMoveFromSubfolderToArchiveClosesCommitment(t *testing.T) {
-	s, account, provider := newMailToolsFixture(t)
-	cfgPath, vaultRoot := writeMailLabelTestVault(t, "work", []string{"RT-08"})
-	s.brainConfigPath = cfgPath
-	commitmentRel := "brain/commitments/mail/m1.md"
-	writeMailLabelCommitmentWithLabels(t, vaultRoot, commitmentRel, "m1", "next", []string{"track/rt-08"}, "[[projects/RT-08]]")
-	provider.messages = map[string]*providerdata.EmailMessage{
+	fix := setupMailActionFixture(t, "m1", "next", []string{"track/rt-08"}, "[[projects/RT-08]]")
+	fix.provider.messages = map[string]*providerdata.EmailMessage{
 		"m1": {ID: "m1", Subject: "Topic", Folder: "Archive", Labels: []string{"Archive"}, IsRead: true, Date: time.Now().UTC()},
 	}
-	s.newEmailProvider = func(context.Context, store.ExternalAccount) (email.EmailProvider, error) { return provider, nil }
-	if _, err := s.callTool("mail_action", map[string]interface{}{"account_id": account.ID, "action": "move_to_folder", "message_ids": []interface{}{"m1"}, "folder": "Archive"}); err != nil {
+	if _, err := fix.s.callTool("mail_action", map[string]interface{}{"account_id": fix.account.ID, "action": "move_to_folder", "message_ids": []interface{}{"m1"}, "folder": "Archive"}); err != nil {
 		t.Fatalf("mail_action move_to_folder failed: %v", err)
 	}
-	commitment := readCommitmentFile(t, filepath.Join(vaultRoot, filepath.FromSlash(commitmentRel)))
+	commitment := readCommitmentFile(t, filepath.Join(fix.vaultRoot, filepath.FromSlash(fix.commitmentRel)))
 	if commitment.LocalOverlay.Status != "closed" {
 		t.Fatalf("status = %q, want closed", commitment.LocalOverlay.Status)
 	}
 }
 
 func TestMailFlagSetWithFutureDateDefersBoundCommitment(t *testing.T) {
-	s, account, provider := newMailToolsFixture(t)
-	cfgPath, vaultRoot := writeMailLabelTestVault(t, "work", nil)
-	s.brainConfigPath = cfgPath
-	commitmentRel := "brain/commitments/mail/m1.md"
-	writeMailLabelCommitment(t, vaultRoot, commitmentRel, "m1", "next")
+	fix := setupMailActionFixture(t, "m1", "next", nil, "")
 	due := time.Now().UTC().AddDate(0, 0, 14)
-	provider.messages = map[string]*providerdata.EmailMessage{
+	fix.provider.messages = map[string]*providerdata.EmailMessage{
 		"m1": {ID: "m1", Subject: "Defer me", Folder: "INBOX", Labels: []string{"INBOX"}, IsRead: true, IsFlagged: true, FollowUpAt: &due, Date: time.Now().UTC()},
 	}
-	s.newEmailProvider = func(context.Context, store.ExternalAccount) (email.EmailProvider, error) { return provider, nil }
-	if _, err := s.callTool("mail_flag_set", map[string]interface{}{"account_id": account.ID, "message_ids": []interface{}{"m1"}, "status": "flagged", "due_at": due.Format(time.RFC3339)}); err != nil {
+	if _, err := fix.s.callTool("mail_flag_set", map[string]interface{}{"account_id": fix.account.ID, "message_ids": []interface{}{"m1"}, "status": "flagged", "due_at": due.Format(time.RFC3339)}); err != nil {
 		t.Fatalf("mail_flag_set failed: %v", err)
 	}
-	commitment := readCommitmentFile(t, filepath.Join(vaultRoot, filepath.FromSlash(commitmentRel)))
+	commitment := readCommitmentFile(t, filepath.Join(fix.vaultRoot, filepath.FromSlash(fix.commitmentRel)))
 	if commitment.LocalOverlay.Status != "deferred" {
 		t.Fatalf("status = %q, want deferred", commitment.LocalOverlay.Status)
 	}
 	if commitment.LocalOverlay.FollowUp != due.Format("2006-01-02") {
 		t.Fatalf("follow_up = %q, want %q", commitment.LocalOverlay.FollowUp, due.Format("2006-01-02"))
 	}
+}
+
+type mailActionFixture struct {
+	s             *Server
+	account       store.ExternalAccount
+	provider      *fakeMailProvider
+	vaultRoot     string
+	commitmentRel string
+}
+
+func setupMailActionFixture(t *testing.T, messageID, status string, labels []string, project string) mailActionFixture {
+	t.Helper()
+	s, account, provider := newMailToolsFixture(t)
+	cfgPath, vaultRoot := writeMailLabelTestVault(t, "work", []string{"RT-08"})
+	s.brainConfigPath = cfgPath
+	rel := "brain/commitments/mail/" + messageID + ".md"
+	writeMailLabelCommitmentWithLabels(t, vaultRoot, rel, messageID, status, labels, project)
+	s.newEmailProvider = func(context.Context, store.ExternalAccount) (email.EmailProvider, error) { return provider, nil }
+	return mailActionFixture{s: s, account: account, provider: provider, vaultRoot: vaultRoot, commitmentRel: rel}
 }
 
 func writeMailLabelBrainConfig(t *testing.T, projects []string) *brain.Config {
@@ -436,13 +436,12 @@ func setupMailLabelVaultRoot(t *testing.T, sphere string, projects []string) (st
 		if err := os.MkdirAll(filepath.Join(root, s, "brain", "commitments", "mail"), 0o755); err != nil {
 			t.Fatalf("MkdirAll: %v", err)
 		}
-		if s != sphere {
-			continue
-		}
-		for _, name := range projects {
-			path := filepath.Join(root, s, "brain", "projects", name+".md")
-			if err := os.WriteFile(path, []byte("---\nkind: project\n---\n"), 0o644); err != nil {
-				t.Fatalf("WriteFile project: %v", err)
+		if s == sphere {
+			for _, name := range projects {
+				path := filepath.Join(root, s, "brain", "projects", name+".md")
+				if err := os.WriteFile(path, []byte("---\nkind: project\n---\n"), 0o644); err != nil {
+					t.Fatalf("WriteFile project: %v", err)
+				}
 			}
 		}
 	}
@@ -490,9 +489,9 @@ func readCommitmentFile(t *testing.T, path string) braingtd.Commitment {
 	if err != nil {
 		t.Fatalf("ReadFile: %v", err)
 	}
-	commitment, _, diags := braingtd.ParseCommitmentMarkdown(string(data))
+	c, _, diags := braingtd.ParseCommitmentMarkdown(string(data))
 	if len(diags) != 0 {
 		t.Fatalf("parse diagnostics: %#v", diags)
 	}
-	return *commitment
+	return *c
 }

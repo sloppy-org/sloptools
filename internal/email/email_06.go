@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 )
 
 func (p *ExchangeEWSMailProvider) resolveFolderRef(ctx context.Context, folder string) (string, error) {
@@ -267,88 +268,6 @@ func exchangeEWSDisplayFolderName(name string) string {
 	return strings.TrimSpace(clean)
 }
 
-func matchExchangeEWSMessage(message ews.Message, opts SearchOptions) bool {
-	if opts.IsRead != nil && message.IsRead != *opts.IsRead {
-		return false
-	}
-	if opts.HasAttachment != nil && message.HasAttachments != *opts.HasAttachment {
-		return false
-	}
-	if opts.IsFlagged != nil {
-		flagged := strings.EqualFold(strings.TrimSpace(message.FlagStatus), "Flagged")
-		if flagged != *opts.IsFlagged {
-			return false
-		}
-	}
-	haystack := strings.ToLower(strings.Join([]string{message.Subject, message.Body, message.From.Name, message.From.Email, message.DisplayTo, message.DisplayCc}, "\n"))
-	if opts.Text != "" && !strings.Contains(haystack, strings.ToLower(strings.TrimSpace(opts.Text))) {
-		return false
-	}
-	if opts.Subject != "" && !strings.Contains(strings.ToLower(message.Subject), strings.ToLower(strings.TrimSpace(opts.Subject))) {
-		return false
-	}
-	if opts.From != "" {
-		from := strings.ToLower(message.From.Name + "\n" + message.From.Email)
-		if !strings.Contains(from, strings.ToLower(strings.TrimSpace(opts.From))) {
-			return false
-		}
-	}
-	if opts.To != "" {
-		var recipients []string
-		for _, mb := range append([]ews.Mailbox(nil), append(message.To, message.Cc...)...) {
-			recipients = append(recipients, mb.Name, mb.Email)
-		}
-		if !strings.Contains(strings.ToLower(strings.Join(recipients, "\n")), strings.ToLower(strings.TrimSpace(opts.To))) {
-			return false
-		}
-	}
-	received := message.ReceivedAt
-	if !opts.After.IsZero() && (received.IsZero() || received.Before(opts.After)) {
-		return false
-	}
-	if !opts.Before.IsZero() && !received.IsZero() && !received.Before(opts.Before) {
-		return false
-	}
-	if !opts.Since.IsZero() && (received.IsZero() || received.Before(opts.Since)) {
-		return false
-	}
-	if !opts.Until.IsZero() && !received.IsZero() && received.After(opts.Until) {
-		return false
-	}
-	return true
-}
-
-func exchangeEWSNeedsMessageFilter(opts SearchOptions) bool {
-	return opts.IsRead != nil || opts.HasAttachment != nil || opts.IsFlagged != nil || opts.Text != "" || opts.Subject != "" || opts.From != "" || opts.To != "" || !opts.After.IsZero() || !opts.Before.IsZero() || !opts.Since.IsZero() || !opts.Until.IsZero()
-}
-
-func exchangeEWSBuildRestriction(opts SearchOptions) *ews.FindRestriction {
-	if !exchangeEWSNeedsMessageFilter(opts) {
-		return nil
-	}
-	r := &ews.FindRestriction{From: strings.TrimSpace(opts.From), HasAttachment: opts.HasAttachment}
-	if !opts.After.IsZero() {
-		r.After = opts.After
-	}
-	if !opts.Since.IsZero() && (r.After.IsZero() || opts.Since.After(r.After)) {
-		r.After = opts.Since
-	}
-	if !opts.Before.IsZero() {
-		r.Before = opts.Before
-	}
-	if !opts.Until.IsZero() && (r.Before.IsZero() || opts.Until.Before(r.Before)) {
-		r.Before = opts.Until
-	}
-	if r.From == "" && r.HasAttachment == nil && r.After.IsZero() && r.Before.IsZero() {
-		return nil
-	}
-	return r
-}
-
-func exchangeEWSNeedsClientFilter(opts SearchOptions) bool {
-	return opts.IsRead != nil || opts.IsFlagged != nil || opts.Text != "" || opts.Subject != "" || opts.To != ""
-}
-
 func exchangeEWSFolderIndex(folders []ews.Folder) map[string]ews.Folder {
 	out := make(map[string]ews.Folder, len(folders))
 	for _, folder := range folders {
@@ -436,7 +355,31 @@ func decodeExchangeEWSMessage(message ews.Message, folders map[string]ews.Folder
 	if body != "" && !strings.EqualFold(strings.TrimSpace(format), "metadata") {
 		bodyPtr = &body
 	}
-	return providerdata.EmailMessage{ID: strings.TrimSpace(message.ID), ThreadID: strings.TrimSpace(message.ConversationID), InternetMessageID: strings.TrimSpace(message.InternetMessageID), Subject: strings.TrimSpace(message.Subject), Sender: sender, Recipients: recipients, Date: message.ReceivedAt, Snippet: snippetFromBody(message.Body), Labels: exchangeEWSFolderLabels(message.ParentFolderID, folders), IsRead: message.IsRead, IsFlagged: strings.EqualFold(strings.TrimSpace(message.FlagStatus), "Flagged"), BodyText: bodyPtr, Attachments: attachments}
+	folder := exchangeEWSMessageFolder(message.ParentFolderID, folders)
+	var followUp *time.Time
+	if !message.FlagDueAt.IsZero() {
+		due := message.FlagDueAt.UTC()
+		followUp = &due
+	}
+	return providerdata.EmailMessage{ID: strings.TrimSpace(message.ID), ThreadID: strings.TrimSpace(message.ConversationID), InternetMessageID: strings.TrimSpace(message.InternetMessageID), Subject: strings.TrimSpace(message.Subject), Sender: sender, Recipients: recipients, Date: message.ReceivedAt, Snippet: snippetFromBody(message.Body), Labels: exchangeEWSFolderLabels(message.ParentFolderID, folders), Folder: folder, IsRead: message.IsRead, IsFlagged: strings.EqualFold(strings.TrimSpace(message.FlagStatus), "Flagged"), FollowUpAt: followUp, BodyText: bodyPtr, Attachments: attachments}
+}
+
+// exchangeEWSMessageFolder returns the message's folder path. For an Inbox
+// message we emit "INBOX" so the D5 mapping recognizes it; for any other
+// folder we emit the leaf display name.
+func exchangeEWSMessageFolder(parentFolderID string, folders map[string]ews.Folder) string {
+	folderID := strings.TrimSpace(parentFolderID)
+	if folderID == "" || len(folders) == 0 {
+		return ""
+	}
+	folder, ok := folders[folderID]
+	if !ok {
+		return ""
+	}
+	if exchangeEWSInboxFolderName(folder.Name) {
+		return "INBOX"
+	}
+	return exchangeEWSMessageFolderName(folder.Name)
 }
 
 func snippetFromBody(body string) string {

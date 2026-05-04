@@ -413,7 +413,7 @@ func parseMessageID(messageID string) (folder string, uid imap.UID, err error) {
 }
 
 func parseIMAPMessage(folder string, msg *imapclient.FetchMessageBuffer, fetchBody bool) (*providerdata.EmailMessage, error) {
-	email := &providerdata.EmailMessage{ID: fmt.Sprintf("%s:%d", folder, msg.UID), Labels: []string{folder}}
+	email := &providerdata.EmailMessage{ID: fmt.Sprintf("%s:%d", folder, msg.UID), Labels: []string{folder}, Folder: folder}
 	seenFound := false
 	flaggedFound := false
 	for _, flag := range msg.Flags {

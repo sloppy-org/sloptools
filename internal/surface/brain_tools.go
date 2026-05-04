@@ -174,7 +174,7 @@ func init() {
 		Tool{Name: "brain.gtd.review_list", Description: "Return a normalized GTD review list across Markdown commitments, task providers, and issue sources without materializing duplicate Markdown notes.", Required: []string{"sphere"}, Properties: map[string]ToolProperty{
 			"config_path":      {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},
 			"sphere":           {Type: "string", Description: "Vault/account sphere to inspect.", Enum: []string{"work", "private"}},
-			"sources":          {Type: "array", Description: "Optional source classes. Defaults to markdown,tasks,source."},
+			"sources":          {Type: "array", Description: "Optional source classes. Defaults to markdown,mail,github,gitlab. tasks/todoist/google_tasks/evernote remain accepted but emit a deprecation warning when explicit."},
 			"account_id":       {Type: "integer", Description: "Optional tasks-capable account id for task-backed items."},
 			"list_ids":         {Type: "array", Description: "Optional task list/project ids to scan. Defaults to all lists."},
 			"project_dirs":     {Type: "array", Description: "Optional Git checkout directories for GitHub/GitLab issue and PR sources."},
