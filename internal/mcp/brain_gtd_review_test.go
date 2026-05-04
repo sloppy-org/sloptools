@@ -193,8 +193,11 @@ wip_limit = 2
 `), 0o644); err != nil {
 		t.Fatalf("write gtd.toml: %v", err)
 	}
+	// Mix next and in_progress: per issue #89 both statuses must count
+	// toward open_wip_count and the wip_status classification.
+	statuses := []string{"next", "in_progress", "in_progress"}
 	for i, title := range []string{"A", "B", "C"} {
-		writeTrackedCommitment(t, tmp, fmt.Sprintf("brain/gtd/research-%d.md", i), title, "next", "research")
+		writeTrackedCommitment(t, tmp, fmt.Sprintf("brain/gtd/research-%d.md", i), title, statuses[i], "research")
 	}
 	s := NewServer(t.TempDir())
 	got, err := s.callTool("brain.gtd.tracks", map[string]interface{}{
@@ -224,7 +227,7 @@ wip_limit = 2
 	}
 }
 
-func TestBrainGTDReviewListReturnsOverWIPWhenNextExceedsLimit(t *testing.T) {
+func TestBrainGTDReviewListReturnsOverWIPWhenActiveExceedsLimit(t *testing.T) {
 	tmp := t.TempDir()
 	configPath := writeMCPBrainConfig(t, tmp)
 	gtdConfig := filepath.Join(tmp, "gtd.toml")
@@ -240,8 +243,11 @@ wip_limit = 5
 `), 0o644); err != nil {
 		t.Fatalf("write gtd.toml: %v", err)
 	}
+	// Mix next and in_progress to exercise the issue #89 regression: WIP
+	// counting must include both statuses, not next alone.
+	statuses := []string{"next", "in_progress", "in_progress"}
 	for i, title := range []string{"Alpha", "Beta", "Gamma"} {
-		writeTrackedCommitment(t, tmp, fmt.Sprintf("brain/gtd/research-%d.md", i), title, "next", "research")
+		writeTrackedCommitment(t, tmp, fmt.Sprintf("brain/gtd/research-%d.md", i), title, statuses[i], "research")
 	}
 	writeTrackedCommitment(t, tmp, "brain/gtd/research-waiting.md", "Wait", "waiting", "research")
 	writeTrackedCommitment(t, tmp, "brain/gtd/teaching-1.md", "Teach", "next", "teaching")

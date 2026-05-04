@@ -86,17 +86,19 @@ func Tracks(cfg *brain.Config, sphere string, tracksCfg *TracksConfig) (map[stri
 }
 
 // WIPCounts reports whether a GTD item with the given status and follow-up
-// counts toward work-in-progress. Only items whose effective queue is
-// "next" count; waiting/deferred (still in the future)/someday/done/review
-// do not. Deferred items whose follow-up has elapsed roll into next via
-// taskgtd.Queue and therefore count.
+// counts toward work-in-progress. Items count when their effective queue is
+// either "next" or "in_progress"; waiting/deferred (still in the
+// future)/someday/done/review do not. Deferred items whose follow-up has
+// elapsed roll into next via taskgtd.Queue and therefore count.
 func WIPCounts(status, followUp string, now time.Time) bool {
-	return taskgtd.Queue(strings.ToLower(strings.TrimSpace(status)), followUp, now) == taskgtd.StatusNext
+	queue := taskgtd.Queue(strings.ToLower(strings.TrimSpace(status)), followUp, now)
+	return queue == taskgtd.StatusNext || queue == taskgtd.StatusInProgress
 }
 
 // DashboardWIPRows builds the dashboard's WIP rows for the configured
 // tracks of sphere. Tracks without a positive wip_limit are skipped.
-// Items count toward a track only when their effective queue is "next".
+// Items count toward a track when their effective queue is "next" or
+// "in_progress" (see WIPCounts).
 func DashboardWIPRows(items []braincatalog.GTDListItem, sphere string, tracksCfg *TracksConfig, now time.Time) []braincatalog.DashboardWIPRow {
 	configured := tracksCfg.SphereTracks(sphere)
 	if len(configured) == 0 {

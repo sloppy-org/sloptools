@@ -38,6 +38,18 @@ func TestStatusAndQueue(t *testing.T) {
 	if got := Status(List{}, Task{Labels: []string{"waiting-for"}}, now); got != StatusWaiting {
 		t.Fatalf("waiting label status = %q, want waiting", got)
 	}
+	if got := Queue(StatusInProgress, "", now); got != StatusInProgress {
+		t.Fatalf("in_progress queue = %q, want in_progress", got)
+	}
+	if got := Queue("in-progress", "", now); got != StatusInProgress {
+		t.Fatalf("in-progress alias queue = %q, want in_progress", got)
+	}
+	if got := Queue("inprogress", "", now); got != StatusInProgress {
+		t.Fatalf("inprogress alias queue = %q, want in_progress", got)
+	}
+	if got := QueueRank(StatusInProgress); got >= QueueRank(StatusNext) {
+		t.Fatalf("in_progress rank %d should sort before next rank %d", got, QueueRank(StatusNext))
+	}
 }
 
 func TestBindingRef(t *testing.T) {

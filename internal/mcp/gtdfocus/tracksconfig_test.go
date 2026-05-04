@@ -96,7 +96,7 @@ func TestWIPStatusClassification(t *testing.T) {
 	}
 }
 
-func TestDashboardWIPRowsCountsNextQueueOnly(t *testing.T) {
+func TestDashboardWIPRowsCountsNextAndInProgress(t *testing.T) {
 	now := time.Date(2026, 5, 4, 12, 0, 0, 0, time.UTC)
 	path := filepath.Join(t.TempDir(), "gtd.toml")
 	body := `[[track]]
@@ -114,11 +114,12 @@ wip_limit = 2
 	items := []braincatalog.GTDListItem{
 		{Title: "A", Status: "next", Track: "research"},
 		{Title: "B", Status: "next", Track: "research"},
-		{Title: "C", Status: "next", Track: "research"},
+		{Title: "C", Status: "in_progress", Track: "research"},
 		{Title: "D", Status: "waiting", Track: "research"},
 		{Title: "E", Status: "deferred", Track: "research", FollowUp: "2099-01-01"},
 		{Title: "F", Status: "deferred", Track: "research", FollowUp: "2026-01-01"},
-		{Title: "G", Status: "next", Track: "teaching"}, // teaching has no limit, ignored
+		{Title: "G", Status: "next", Track: "teaching"},      // teaching has no limit, ignored
+		{Title: "H", Status: "in_progress", Track: "teaching"},
 	}
 	rows := DashboardWIPRows(items, "work", cfg, now)
 	if len(rows) != 1 {
@@ -128,11 +129,30 @@ wip_limit = 2
 	if row.Track != "research" || row.Limit != 2 {
 		t.Fatalf("row = %#v, want research/2", row)
 	}
-	// 3 explicit "next" + 1 deferred-with-elapsed-followup = 4
+	// 2 next + 1 in_progress + 1 elapsed-deferred = 4
 	if row.Count != 4 {
-		t.Fatalf("count = %d, want 4 (3 next + 1 elapsed-deferred)", row.Count)
+		t.Fatalf("count = %d, want 4 (2 next + 1 in_progress + 1 elapsed-deferred)", row.Count)
 	}
 	if row.Status != WIPStatusOver {
 		t.Fatalf("status = %q, want over", row.Status)
+	}
+}
+
+func TestWIPCountsRecognizesInProgress(t *testing.T) {
+	now := time.Date(2026, 5, 4, 12, 0, 0, 0, time.UTC)
+	if !WIPCounts("in_progress", "", now) {
+		t.Fatalf("in_progress should count toward WIP")
+	}
+	if !WIPCounts("next", "", now) {
+		t.Fatalf("next should count toward WIP")
+	}
+	if WIPCounts("waiting", "", now) {
+		t.Fatalf("waiting should not count toward WIP")
+	}
+	if WIPCounts("deferred", "2099-01-01", now) {
+		t.Fatalf("future deferred should not count toward WIP")
+	}
+	if !WIPCounts("deferred", "2026-01-01", now) {
+		t.Fatalf("elapsed deferred should count toward WIP")
 	}
 }

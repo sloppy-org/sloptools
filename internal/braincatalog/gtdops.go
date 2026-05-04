@@ -139,6 +139,8 @@ func gtdReviewBatchQueue(item GTDListItem, now time.Time) (string, string) {
 		return "inbox", "status=inbox"
 	case "next":
 		return "next", "status=next"
+	case "in_progress":
+		return "in_progress", "status=in_progress"
 	}
 	if due, ok := parseGTDReviewDate(item.Due); ok && !due.After(now) {
 		return "review", "due overdue"
@@ -307,7 +309,7 @@ func gtdItemMatchesQuery(item GTDListItem, query string) bool {
 
 func normalizeGTDStatus(status string) string {
 	switch strings.ToLower(strings.TrimSpace(status)) {
-	case "inbox", "next", "waiting", "review", "deferred", "someday", "done", "closed":
+	case "inbox", "in_progress", "next", "waiting", "review", "deferred", "someday", "done", "closed":
 		return strings.ToLower(strings.TrimSpace(status))
 	default:
 		return "other"
@@ -318,22 +320,24 @@ func gtdStatusRank(status string) int {
 	switch normalizeGTDStatus(status) {
 	case "inbox":
 		return 0
-	case "next":
+	case "in_progress":
 		return 1
-	case "waiting":
+	case "next":
 		return 2
-	case "review":
+	case "waiting":
 		return 3
-	case "deferred":
+	case "review":
 		return 4
-	case "someday":
+	case "deferred":
 		return 5
-	case "done":
+	case "someday":
 		return 6
-	case "closed":
+	case "done":
 		return 7
-	default:
+	case "closed":
 		return 8
+	default:
+		return 9
 	}
 }
 

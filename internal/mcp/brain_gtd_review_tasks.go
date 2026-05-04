@@ -29,8 +29,9 @@ func (s *Server) loadGTDTracksConfig(args map[string]interface{}) (*gtdfocus.Tra
 }
 
 // overWIPTracks returns the alphabetical list of track names whose open
-// next count exceeds the configured wip_limit for sphere. Empty when no
-// configured track is over its limit. The signal is informational; no
+// active count exceeds the configured wip_limit for sphere. Active items
+// are those whose effective queue is "next" or "in_progress". Empty when
+// no configured track is over its limit. The signal is informational; no
 // caller filters items based on it.
 func overWIPTracks(items []gtdReviewItem, tracksCfg *gtdfocus.TracksConfig, sphere string) []string {
 	configured := tracksCfg.SphereTracks(sphere)
@@ -39,7 +40,7 @@ func overWIPTracks(items []gtdReviewItem, tracksCfg *gtdfocus.TracksConfig, sphe
 	}
 	counts := map[string]int{}
 	for _, item := range items {
-		if item.Queue != taskgtd.StatusNext {
+		if item.Queue != taskgtd.StatusNext && item.Queue != taskgtd.StatusInProgress {
 			continue
 		}
 		track := strings.TrimSpace(item.Track)

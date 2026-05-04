@@ -192,7 +192,7 @@ func init() {
 			"list_ids":         {Type: "array", Description: "Optional task list/project ids to scan. Defaults to all lists."},
 			"project_dirs":     {Type: "array", Description: "Optional Git checkout directories for GitHub/GitLab issue and PR sources."},
 			"provider":         {Type: "string", Description: "Optional issue provider override for project_dirs.", Enum: []string{"auto", "github", "gitlab"}},
-			"queue":            {Type: "string", Description: "Optional GTD queue filter.", Enum: []string{"inbox", "next", "waiting", "deferred", "review", "someday", "done"}},
+			"queue":            {Type: "string", Description: "Optional GTD queue filter.", Enum: []string{"inbox", "next", "in_progress", "waiting", "deferred", "review", "someday", "done"}},
 			"project":          {Type: "string", Description: "Optional project/list/outcome filter."},
 			"track":            {Type: "string", Description: "Optional attention track filter."},
 			"due_before":       {Type: "string", Description: "Optional inclusive due upper bound, RFC3339 or YYYY-MM-DD."},
