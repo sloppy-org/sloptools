@@ -19,6 +19,33 @@ Each script moves through:
    the Go MCP verb. 60-day soak starts.
 4. **archived** — Python script removed from the vault (E10.3).
 
+## Per-script tracking issues
+
+One open `Port <script>.py to internal/brain/<pkg>` issue per Python script
+(E10.1 of #60). Each tracking issue carries a `Closes` cross-reference to the
+relevant Go counterpart child issue.
+
+| Script | Issue | Target package | Status |
+|---|---|---|---|
+| gtd.py | #102 | internal/brain/gtd | ported |
+| folder_markdown.py | #103 | internal/brain/folder | ported |
+| folder_review_queue.py | #104 | internal/brain/folder | planned |
+| folder_review_apply.py | #105 | internal/brain/folder | planned |
+| folder_quality.py | #106 | internal/brain/folder | planned |
+| folder_stability.py | #107 | internal/brain/folder | planned |
+| folder_units.py | #108 | internal/brain/folder | planned |
+| glossary.py | #109 | internal/brain/glossary | ported |
+| attention.py | #110 | internal/brain/attention | ported |
+| entity_candidates.py | #111 | internal/brain/entities | ported |
+| relation_candidates.py | #112 | internal/brain/entities | planned |
+| archive_candidates.py | #113 | internal/brain/folder | planned |
+| derive_monthly_index.py | #114 | internal/brain/people | planned |
+| runtime_plan.py | #115 | internal/brain/runtime | planned |
+| final_report.py | #116 | internal/brain/report | planned |
+| stream_opencode_report.py | #117 | internal/brain/report | planned |
+| validate_outputs.py | #118 | internal/brain/validate | ported |
+| folder_review_packet.py | #119 | internal/brain/folder | planned |
+
 ## Sister epics (Go side)
 
 All sister epics that produced the Go MCP surface are merged:
@@ -43,7 +70,7 @@ Coverage is verified against the brain MCP dispatch table at
 `internal/mcp/mcp_tool_dispatch.go:180` and the per-method handlers in
 `internal/mcp/mcp_15.go`.
 
-### gtd.py — multi-command commitment tooling
+### gtd.py — multi-command commitment tooling (tracked in #102)
 
 CLI surface (`gtd.py <command>`): `init`, `validate`, `index`, `import`,
 `parse`, `organize`, `resurface`, `triage`, `apply-triage`, `review`. Plus
@@ -81,7 +108,7 @@ source adapters: `task_candidates`, `todoist_candidates`, `issue_candidates`,
 still relies on it, file a separate adapter issue rather than blocking
 deprecation of the rest of `gtd.py`.
 
-### folder_markdown.py — folder-note parser/validator
+### folder_markdown.py — folder-note parser/validator (tracked in #103)
 
 | Subcommand | Go MCP verb |
 |---|---|
@@ -94,7 +121,7 @@ deprecation of the rest of `gtd.py`.
 **Status: ported.** Index rendering remains vault-side because it writes
 human-curated `_index.md` files; the data underneath comes from the parser.
 
-### glossary.py — glossary validator and TSV/index emitter
+### glossary.py — glossary validator and TSV/index emitter (tracked in #109)
 
 | Subcommand | Go MCP verb |
 |---|---|
@@ -105,7 +132,7 @@ human-curated `_index.md` files; the data underneath comes from the parser.
 **Status: ported.** Renderers (TSV, index Markdown) are deterministic
 post-processing on top of the parsed structure; not Go-side targets.
 
-### attention.py — attention-field tooling
+### attention.py — attention-field tooling (tracked in #110)
 
 | Subcommand | Go MCP verb |
 |---|---|
@@ -117,7 +144,7 @@ post-processing on top of the parsed structure; not Go-side targets.
 **Status: ported.** The `migrate` subcommand was a one-shot bootstrapper
 to add `focus`/`cadence` fields to existing notes; intentionally not ported.
 
-### entity_candidates.py — entity extraction from reviewed notes
+### entity_candidates.py — entity extraction from reviewed notes (tracked in #111)
 
 | Subcommand | Go MCP verb |
 |---|---|
@@ -125,7 +152,7 @@ to add `focus`/`cadence` fields to existing notes; intentionally not ported.
 
 **Status: ported.**
 
-### validate_outputs.py — synthesis-output validator
+### validate_outputs.py — synthesis-output validator (tracked in #118)
 
 `brain.vault.validate` covers vault-level validation. The script also wraps
 parser-specific validators that map to `brain.folder.validate`,
@@ -133,7 +160,7 @@ parser-specific validators that map to `brain.folder.validate`,
 
 **Status: ported.**
 
-### folder_review_packet.py — review packets for folder notes
+### folder_review_packet.py — review packets for folder notes (tracked in #119)
 
 Builds compact review packets including PDF page renders and direct child
 note excerpts for one-shot LLM review of a single folder note. No Go
@@ -141,14 +168,14 @@ counterpart yet; the packet shape is review-pipeline-specific.
 
 **Status: planned.**
 
-### folder_review_queue.py — second-stage review queue
+### folder_review_queue.py — second-stage review queue (tracked in #104)
 
 Builds a TSV/Markdown queue selecting folder notes for review based on
 quality codes, stability cache, and sweep scope.
 
 **Status: planned.**
 
-### folder_review_apply.py — apply reviewed body
+### folder_review_apply.py — apply reviewed body (tracked in #105)
 
 Applies a reviewed Markdown body back to the canonical folder note after
 deterministic validation, refusing to run while a sweep is active.
@@ -156,7 +183,7 @@ deterministic validation, refusing to run while a sweep is active.
 **Status: planned.** Distinct from `brain.note.write` because it owns the
 sweep-lock contract documented in `~/CLAUDE.md`.
 
-### folder_quality.py — deterministic quality queue and repair
+### folder_quality.py — deterministic quality queue and repair (tracked in #106)
 
 Two subcommands: `candidates` (TSV/Markdown report) and `repair`
 (deterministic note rewrites with frontmatter normalization). The repair
@@ -165,14 +192,14 @@ folder-note repair rules.
 
 **Status: planned.**
 
-### folder_stability.py — pass-1 stability report
+### folder_stability.py — pass-1 stability report (tracked in #107)
 
 Aggregates folder-note ingestion stability by top-level vault subtree.
 Reads the same parser data; emits Markdown + TSV.
 
 **Status: planned.**
 
-### folder_units.py — semantic folder work-unit planner
+### folder_units.py — semantic folder work-unit planner (tracked in #108)
 
 Plans non-overlapping folder-sweep work units. Heaviest of the planner
 scripts (≈600 LOC); calls Codex/Qwen for suggestions and validates the
@@ -180,34 +207,34 @@ resulting `work_units.tsv`.
 
 **Status: planned.** Significant LLM-orchestration logic; port carefully.
 
-### archive_candidates.py — bulky-tree archive recommender
+### archive_candidates.py — bulky-tree archive recommender (tracked in #113)
 
 Identifies vault subtrees that should be archived as a single zip rather
 than ingested. Mixes deterministic prefilter with optional Codex review.
 
 **Status: planned.**
 
-### derive_monthly_index.py — monthly journal index generator
+### derive_monthly_index.py — monthly journal index generator (tracked in #114)
 
 Emits `monthly/<YYYY-MM>.md` indexes from entity-note logs.
 
 **Status: planned.** Small (≈60 LOC); a thin renderer, low risk.
 
-### relation_candidates.py — typed-relation extraction
+### relation_candidates.py — typed-relation extraction (tracked in #112)
 
 Extracts simple typed relations between entities for the semantic graph
 phase.
 
 **Status: planned.**
 
-### runtime_plan.py — runtime estimator
+### runtime_plan.py — runtime estimator (tracked in #115)
 
 Estimates remaining runtime for the brain-ingest workflow. Useful as a
 human dashboard, not a writer; low priority for porting.
 
 **Status: planned.**
 
-### final_report.py / stream_opencode_report.py — report emitters
+### final_report.py / stream_opencode_report.py — report emitters (tracked in #116, #117)
 
 Emit final review reports / stream Opencode output. Pipeline-local
 diagnostics; consider whether they need a Go port at all.
