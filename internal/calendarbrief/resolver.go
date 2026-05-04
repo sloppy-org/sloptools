@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/sloppy-org/sloptools/internal/brain"
-	"github.com/sloppy-org/sloptools/internal/mcp/peoplebrief"
+	"github.com/sloppy-org/sloptools/internal/brain/peoplebrief"
 )
 
 // VaultResolver resolves a calendar attendee to a brain/people/ note inside

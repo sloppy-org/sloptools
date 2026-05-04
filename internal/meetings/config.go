@@ -32,6 +32,27 @@ type SphereConfig struct {
 	RenderCommand     []string
 	Share             ShareConfig
 	Nextcloud         NextcloudConfig
+	Zulip             ZulipConfig
+}
+
+// ZulipConfig captures the per-sphere Zulip realm credentials plus a
+// MeetingSeries map that resolves a meeting id (e.g. "plasma-orga")
+// to the Zulip stream that hosts the §5 pre-meeting topic. The
+// TopicFormat is rendered with the literal `{date}` placeholder.
+type ZulipConfig struct {
+	BaseURL       string
+	Email         string
+	APIKey        string
+	TopicFormat   string
+	MeetingSeries map[string]ZulipMeetingSeries
+}
+
+// ZulipMeetingSeries names the Zulip stream for a meeting id and
+// optionally overrides the realm-level TopicFormat for that series.
+type ZulipMeetingSeries struct {
+	ID          string
+	Stream      string
+	TopicFormat string
 }
 
 // ShareConfig captures the per-sphere defaults that the summary
@@ -60,18 +81,32 @@ type configFile struct {
 }
 
 type rawSphereConfig struct {
-	Inbox             string             `toml:"inbox"`
-	MeetingsRoot      string             `toml:"meetings_root"`
-	CanonicalHost     string             `toml:"canonical_host"`
-	Owner             string             `toml:"owner"`
-	MailAccountID     int64              `toml:"mail_account_id"`
-	ShortMemoSeconds  int                `toml:"short_memo_seconds"`
-	OwnerAliases      map[string]string  `toml:"owner_aliases"`
-	PeopleEmails      map[string]string  `toml:"people_emails"`
-	TranscribeCommand []string           `toml:"transcribe_command"`
-	RenderCommand     []string           `toml:"render_command"`
-	Share             rawShareConfig     `toml:"share"`
-	Nextcloud         rawNextcloudConfig `toml:"nextcloud"`
+	Inbox             string                      `toml:"inbox"`
+	MeetingsRoot      string                      `toml:"meetings_root"`
+	CanonicalHost     string                      `toml:"canonical_host"`
+	Owner             string                      `toml:"owner"`
+	MailAccountID     int64                       `toml:"mail_account_id"`
+	ShortMemoSeconds  int                         `toml:"short_memo_seconds"`
+	OwnerAliases      map[string]string           `toml:"owner_aliases"`
+	PeopleEmails      map[string]string           `toml:"people_emails"`
+	TranscribeCommand []string                    `toml:"transcribe_command"`
+	RenderCommand     []string                    `toml:"render_command"`
+	Share             rawShareConfig              `toml:"share"`
+	Nextcloud         rawNextcloudConfig          `toml:"nextcloud"`
+	Zulip             rawZulipConfig              `toml:"zulip"`
+	MeetingSeries     map[string]rawMeetingSeries `toml:"meeting_series"`
+}
+
+type rawZulipConfig struct {
+	BaseURL     string `toml:"base_url"`
+	Email       string `toml:"email"`
+	APIKey      string `toml:"api_key"`
+	TopicFormat string `toml:"topic_format"`
+}
+
+type rawMeetingSeries struct {
+	Stream      string `toml:"stream"`
+	TopicFormat string `toml:"topic_format"`
 }
 
 type rawNextcloudConfig struct {
@@ -175,6 +210,7 @@ func normalizeSphere(sphere string, raw rawSphereConfig) (SphereConfig, error) {
 		RenderCommand:     append([]string(nil), raw.RenderCommand...),
 		Share:             normalizeShare(raw.Share),
 		Nextcloud:         normalizeNextcloud(raw.Nextcloud),
+		Zulip:             normalizeZulip(raw.Zulip, raw.MeetingSeries),
 	}
 	if cfg.ShortMemoSeconds <= 0 {
 		cfg.ShortMemoSeconds = DefaultShortMemoSeconds
@@ -212,6 +248,48 @@ func normalizeNextcloud(raw rawNextcloudConfig) NextcloudConfig {
 		LocalSyncDir: cleanPath(raw.LocalSyncDir),
 	}
 	return cfg
+}
+
+func normalizeZulip(raw rawZulipConfig, series map[string]rawMeetingSeries) ZulipConfig {
+	cfg := ZulipConfig{
+		BaseURL:     strings.TrimRight(strings.TrimSpace(raw.BaseURL), "/"),
+		Email:       strings.TrimSpace(raw.Email),
+		APIKey:      strings.TrimSpace(raw.APIKey),
+		TopicFormat: strings.TrimSpace(raw.TopicFormat),
+	}
+	if len(series) == 0 {
+		return cfg
+	}
+	cfg.MeetingSeries = make(map[string]ZulipMeetingSeries, len(series))
+	for id, entry := range series {
+		key := strings.ToLower(strings.TrimSpace(id))
+		stream := strings.TrimSpace(entry.Stream)
+		if key == "" || stream == "" {
+			continue
+		}
+		cfg.MeetingSeries[key] = ZulipMeetingSeries{
+			ID:          key,
+			Stream:      stream,
+			TopicFormat: strings.TrimSpace(entry.TopicFormat),
+		}
+	}
+	return cfg
+}
+
+// SeriesStream returns the Zulip stream and effective topic format for
+// the given meeting id; ok is false when the id is not configured.
+func (c ZulipConfig) SeriesStream(id string) (ZulipMeetingSeries, bool) {
+	if c.MeetingSeries == nil {
+		return ZulipMeetingSeries{}, false
+	}
+	series, ok := c.MeetingSeries[strings.ToLower(strings.TrimSpace(id))]
+	if !ok {
+		return ZulipMeetingSeries{}, false
+	}
+	if strings.TrimSpace(series.TopicFormat) == "" {
+		series.TopicFormat = c.TopicFormat
+	}
+	return series, true
 }
 
 func normalizeShare(raw rawShareConfig) ShareConfig {

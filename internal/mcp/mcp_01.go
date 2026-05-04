@@ -16,6 +16,7 @@ import (
 	"github.com/sloppy-org/sloptools/internal/meetings"
 	"github.com/sloppy-org/sloptools/internal/store"
 	"github.com/sloppy-org/sloptools/internal/tasks"
+	"github.com/sloppy-org/sloptools/internal/zulip"
 	"io"
 	"os"
 	"sort"
@@ -56,6 +57,7 @@ type Server struct {
 	newContactsProvider        func(context.Context, store.ExternalAccount) (contacts.Provider, error)
 	newTasksProvider           func(context.Context, store.ExternalAccount) (tasks.Provider, error)
 	newNextcloudShareClient    func(meetings.NextcloudConfig) (meetings.NextcloudShareClient, error)
+	newZulipMessagesProvider   func(meetings.ZulipConfig) (zulip.MessagesProvider, error)
 }
 
 type handoffEnvelope struct {
@@ -81,7 +83,12 @@ func NewServerWithStore(projectDir string, st *store.Store) *Server {
 		return srv.groupware.TasksFor(ctx, account.ID)
 	}
 	srv.newNextcloudShareClient = meetings.NewNextcloudShareClient
+	srv.newZulipMessagesProvider = defaultZulipMessagesProvider
 	return srv
+}
+
+func defaultZulipMessagesProvider(cfg meetings.ZulipConfig) (zulip.MessagesProvider, error) {
+	return zulip.NewClient(zulip.Config{BaseURL: cfg.BaseURL, Email: cfg.Email, APIKey: cfg.APIKey})
 }
 
 func (s *Server) ProjectDir() string {

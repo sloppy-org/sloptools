@@ -12,7 +12,8 @@ import (
 
 	"github.com/sloppy-org/sloptools/internal/brain"
 	braingtd "github.com/sloppy-org/sloptools/internal/brain/gtd"
-	"github.com/sloppy-org/sloptools/internal/mcp/gtdtoday"
+	"github.com/sloppy-org/sloptools/internal/brain/gtd/today"
+	"github.com/sloppy-org/sloptools/internal/meetings/kickoff"
 )
 
 func (s *Server) dispatchBrain(method string, args map[string]interface{}) (map[string]interface{}, error) {
@@ -97,6 +98,8 @@ func (s *Server) dispatchBrain(method string, args map[string]interface{}) (map[
 		return s.brainPeopleRender(args)
 	case "brain.people.brief":
 		return s.brainPeopleBrief(args)
+	case "brain.meeting.kickoff":
+		return s.runMeetingKickoff(args)
 	case "brain.search", "brain_search":
 		return s.brainSearch(args)
 	case "brain.backlinks", "brain_backlinks":
@@ -104,6 +107,18 @@ func (s *Server) dispatchBrain(method string, args map[string]interface{}) (map[
 	default:
 		return nil, errors.New("unknown brain method: " + method)
 	}
+}
+
+func (s *Server) runMeetingKickoff(args map[string]interface{}) (map[string]interface{}, error) {
+	cfg, err := brain.LoadConfig(s.brainConfigArg(args))
+	if err != nil {
+		return nil, err
+	}
+	sourcesPath, explicit, err := sloptoolsConfigPath(strArg(args, "sources_config"), "sources.toml")
+	if err != nil {
+		return nil, err
+	}
+	return kickoff.Run(args, cfg, sourcesPath, explicit, s.newZulipMessagesProvider)
 }
 
 func (s *Server) brainSearch(args map[string]interface{}) (map[string]interface{}, error) {

@@ -10,8 +10,8 @@ import (
 
 	"github.com/sloppy-org/sloptools/internal/brain"
 	braingtd "github.com/sloppy-org/sloptools/internal/brain/gtd"
-	"github.com/sloppy-org/sloptools/internal/mcp/gtdfocus"
-	"github.com/sloppy-org/sloptools/internal/mcp/gtdtoday"
+	"github.com/sloppy-org/sloptools/internal/brain/gtd/focus"
+	"github.com/sloppy-org/sloptools/internal/brain/gtd/today"
 	"github.com/sloppy-org/sloptools/internal/providerdata"
 	"github.com/sloppy-org/sloptools/internal/sourceitems"
 	"github.com/sloppy-org/sloptools/internal/store"
