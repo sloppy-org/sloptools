@@ -39,6 +39,14 @@ func cmdBrain(args []string) int {
 		return cmdBrainVault(args[1:])
 	case "ingest":
 		return cmdBrainIngest(args[1:])
+	case "move":
+		return cmdBrainMove(args[1:])
+	case "cleanup-dead-dirs":
+		return cmdBrainCleanupDeadDirs(args[1:])
+	case "consolidate":
+		return cmdBrainConsolidate(args[1:])
+	case "dream":
+		return cmdBrainDream(args[1:])
 	case "help", "-h", "--help":
 		printBrainHelp()
 		return 0
@@ -50,7 +58,7 @@ func cmdBrain(args []string) int {
 }
 
 func printBrainHelp() {
-	fmt.Println("sloptools brain <search|backlinks|gtd|people|folder|entities|glossary|attention|links|vault|ingest> [flags]")
+	fmt.Println("sloptools brain <search|backlinks|gtd|people|folder|entities|glossary|attention|links|vault|ingest|move|cleanup-dead-dirs|consolidate|dream> [flags]")
 	fmt.Println()
 	fmt.Println("search flags:")
 	fmt.Println("  --config PATH   vault config path (default ~/.config/sloptools/vaults.toml)")

@@ -1,0 +1,160 @@
+package main
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"os"
+	"strings"
+
+	"github.com/sloppy-org/sloptools/internal/brain"
+)
+
+const cleanupDeleteTarget = "/dev/null"
+
+func cmdBrainCleanupDeadDirs(args []string) int {
+	fs := flag.NewFlagSet("brain cleanup-dead-dirs", flag.ContinueOnError)
+	configPath := fs.String("config", "", "vault config path")
+	sphere := fs.String("sphere", "", "vault sphere")
+	mode := fs.String("mode", "scan", "mode: scan or apply")
+	confirm := fs.String("confirm", "", "candidate-list digest required for --mode apply")
+	maxApply := fs.Int("max", 25, "maximum candidates to apply per run")
+	includeLinked := fs.Bool("include-linked", false, "apply candidates with confidence=medium too")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if strings.TrimSpace(*sphere) == "" {
+		fmt.Fprintln(os.Stderr, "--sphere is required")
+		return 2
+	}
+	cfg, err := brain.LoadConfig(*configPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	switch strings.ToLower(strings.TrimSpace(*mode)) {
+	case "", "scan":
+		return runCleanupScan(cfg, brain.Sphere(*sphere))
+	case "apply":
+		return runCleanupApply(cfg, brain.Sphere(*sphere), strings.TrimSpace(*confirm), *maxApply, *includeLinked)
+	default:
+		fmt.Fprintf(os.Stderr, "unknown mode: %s\n", *mode)
+		return 2
+	}
+}
+
+func runCleanupScan(cfg *brain.Config, sphere brain.Sphere) int {
+	candidates, err := brain.CleanupDeadDirsScan(cfg, sphere)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	digest, err := candidatesDigest(candidates)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	return printBrainJSON(map[string]interface{}{
+		"sphere":     string(sphere),
+		"count":      len(candidates),
+		"digest":     digest,
+		"candidates": candidates,
+	})
+}
+
+func runCleanupApply(cfg *brain.Config, sphere brain.Sphere, confirm string, maxApply int, includeLinked bool) int {
+	if confirm == "" {
+		fmt.Fprintln(os.Stderr, "--confirm is required for --mode apply")
+		return 2
+	}
+	candidates, err := brain.CleanupDeadDirsScan(cfg, sphere)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	digest, err := candidatesDigest(candidates)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	if digest != confirm {
+		fmt.Fprintf(os.Stderr, "candidate digest changed since scan: have %s, got %s\n", digest, confirm)
+		return 1
+	}
+	encoder := json.NewEncoder(os.Stdout)
+	applied, skipped, failed := 0, 0, 0
+	for _, candidate := range candidates {
+		if !cleanupApplicable(candidate, includeLinked) {
+			skipped++
+			emitApplyEvent(encoder, candidate, "skipped", "low confidence")
+			continue
+		}
+		if applied >= maxApply {
+			skipped++
+			emitApplyEvent(encoder, candidate, "skipped", "max reached")
+			continue
+		}
+		plan, err := brain.PlanMove(cfg, candidate.Sphere, candidate.Path, cleanupDeleteTarget)
+		if err != nil {
+			failed++
+			emitApplyEvent(encoder, candidate, "error", err.Error())
+			continue
+		}
+		if err := brain.ApplyMove(cfg, plan, plan.Digest); err != nil {
+			failed++
+			emitApplyEvent(encoder, candidate, "error", err.Error())
+			continue
+		}
+		applied++
+		emitApplyEvent(encoder, candidate, "ok", "")
+	}
+	if err := encoder.Encode(map[string]interface{}{
+		"summary": map[string]interface{}{
+			"sphere":  string(sphere),
+			"applied": applied,
+			"skipped": skipped,
+			"failed":  failed,
+			"total":   len(candidates),
+		},
+	}); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	if failed > 0 {
+		return 1
+	}
+	return 0
+}
+
+func cleanupApplicable(candidate brain.DeadDirCandidate, includeLinked bool) bool {
+	if candidate.Confidence == "high" {
+		return true
+	}
+	return includeLinked && candidate.Confidence == "medium"
+}
+
+func emitApplyEvent(encoder *json.Encoder, candidate brain.DeadDirCandidate, status, errMsg string) {
+	event := map[string]interface{}{
+		"sphere": string(candidate.Sphere),
+		"path":   candidate.Path,
+		"reason": candidate.Reason,
+		"status": status,
+	}
+	if errMsg != "" {
+		event["error"] = errMsg
+	}
+	if err := encoder.Encode(event); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+	}
+}
+
+func candidatesDigest(candidates []brain.DeadDirCandidate) (string, error) {
+	canonical, err := json.Marshal(candidates)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(canonical)
+	return hex.EncodeToString(sum[:]), nil
+}
