@@ -233,6 +233,30 @@ Prepare slides.
 		t.Fatalf("dashboard output invalid: %#v\n%s", diags, string(dashData))
 	}
 
+	writeBrainCLIFile(t, filepath.Join(tmp, "work", "brain", "people", "Ada.md"), "# Ada\n## Log\n- 2026-04-12 — coffee\n")
+	stdout, stderr, code = captureRun(t, []string{
+		"brain", "people", "monthly-index",
+		"--config", configPath,
+		"--sphere", "work",
+	})
+	if code != 0 {
+		t.Fatalf("monthly-index exit code = %d, stderr=%q", code, stderr)
+	}
+	var monthly map[string]interface{}
+	if err := json.Unmarshal([]byte(stdout), &monthly); err != nil {
+		t.Fatalf("decode monthly-index stdout: %v\n%s", err, stdout)
+	}
+	if int(monthly["writes"].(float64)) != 1 {
+		t.Fatalf("monthly-index writes = %#v, stdout=%s", monthly["writes"], stdout)
+	}
+	journal, err := os.ReadFile(filepath.Join(tmp, "work", "brain", "journal", "2026-04.md"))
+	if err != nil {
+		t.Fatalf("read monthly journal: %v", err)
+	}
+	if string(journal) != "# 2026-04\n\n- [[Ada]] — coffee\n" {
+		t.Fatalf("monthly journal:\n%s", string(journal))
+	}
+
 	stdout, stderr, code = captureRun(t, []string{
 		"brain", "gtd", "review-batch",
 		"--config", configPath,

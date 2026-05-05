@@ -23,6 +23,8 @@ func cmdBrain(args []string) int {
 		return cmdBrainBacklinks(args[1:])
 	case "gtd":
 		return cmdBrainGTD(args[1:])
+	case "people":
+		return cmdBrainPeople(args[1:])
 	case "folder":
 		return cmdBrainFolder(args[1:])
 	case "entities":
@@ -48,7 +50,7 @@ func cmdBrain(args []string) int {
 }
 
 func printBrainHelp() {
-	fmt.Println("sloptools brain <search|backlinks|gtd|folder|entities|glossary|attention|links|vault|ingest> [flags]")
+	fmt.Println("sloptools brain <search|backlinks|gtd|people|folder|entities|glossary|attention|links|vault|ingest> [flags]")
 	fmt.Println()
 	fmt.Println("search flags:")
 	fmt.Println("  --config PATH   vault config path (default ~/.config/sloptools/vaults.toml)")
@@ -68,6 +70,11 @@ func printBrainHelp() {
 	fmt.Println("  --sphere NAME   vault sphere: work or private")
 	fmt.Println("  --path PATH     GTD note path")
 	fmt.Println("  subcommands: parse validate list update write organize resurface dashboard review-batch ingest")
+	fmt.Println()
+	fmt.Println("people flags:")
+	fmt.Println("  --config PATH   vault config path (default ~/.config/sloptools/vaults.toml)")
+	fmt.Println("  --sphere NAME   vault sphere: work or private")
+	fmt.Println("  subcommands: monthly-index")
 	fmt.Println()
 	fmt.Println("folder flags:")
 	fmt.Println("  --config PATH   vault config path (default ~/.config/sloptools/vaults.toml)")
