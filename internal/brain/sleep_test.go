@@ -201,4 +201,3 @@ func TestRunSleepDefaultsBudgetAndModel(t *testing.T) {
 		t.Fatalf("result Model=%q, want %q", res.Model, SleepDefaultModel)
 	}
 }
-

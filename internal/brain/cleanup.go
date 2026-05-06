@@ -266,11 +266,11 @@ func classifyBackupName(name string) (string, string) {
 // subtrees must never be flagged "empty" even if their tracked files are
 // hidden behind metadata directories.
 var vcsMarkerNames = map[string]bool{
-	".git":  true,
-	".hg":   true,
-	".svn":  true,
-	".bzr":  true,
-	".jj":   true,
+	".git":      true,
+	".hg":       true,
+	".svn":      true,
+	".bzr":      true,
+	".jj":       true,
 	".fslckout": true,
 }
 

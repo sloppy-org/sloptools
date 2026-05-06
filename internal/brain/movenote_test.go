@@ -333,4 +333,3 @@ func inodeOf(t *testing.T, path string) uint64 {
 	}
 	return stat.Ino
 }
-

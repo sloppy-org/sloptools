@@ -208,5 +208,3 @@ func ApplyArchive(cfg *Config, plan *ArchivePlan, confirm string, ac ArchiveAppl
 	}
 	return nil
 }
-
-

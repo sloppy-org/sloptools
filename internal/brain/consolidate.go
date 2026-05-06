@@ -332,4 +332,3 @@ func isProtectedScannedNote(info *scannedNote) bool {
 	}
 	return false
 }
-

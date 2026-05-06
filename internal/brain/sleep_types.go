@@ -14,8 +14,8 @@ package brain
 // dispatches to PlanMerge for re-derivation when MergeTarget is non-empty.
 type MovePlan struct {
 	Sphere      Sphere     `json:"sphere"`
-	From        string     `json:"from"`                  // vault-relative source
-	To          string     `json:"to"`                    // vault-relative dest; "/dev/null" means delete
+	From        string     `json:"from"`                   // vault-relative source
+	To          string     `json:"to"`                     // vault-relative dest; "/dev/null" means delete
 	MergeTarget string     `json:"merge_target,omitempty"` // consolidate redirect target (loser->survivor)
 	Files       []FileMove `json:"files"`                  // files/dirs that move
 	Edits       []LinkEdit `json:"edits"`                  // wikilink/markdown rewrites in non-moved files
@@ -26,12 +26,12 @@ type MovePlan struct {
 
 // LinkEdit is a single line edit to apply.
 type LinkEdit struct {
-	Path    string `json:"path"`             // vault-relative path of file to edit
-	Sphere  Sphere `json:"sphere"`           // which vault the edited file lives in
-	Line    int    `json:"line"`             // 1-based line number
-	OldText string `json:"old_text"`         // exact existing line
-	NewText string `json:"new_text"`         // replacement line
-	Kind    string `json:"kind"`             // "wikilink" | "markdown" | "frontmatter"
+	Path    string `json:"path"`     // vault-relative path of file to edit
+	Sphere  Sphere `json:"sphere"`   // which vault the edited file lives in
+	Line    int    `json:"line"`     // 1-based line number
+	OldText string `json:"old_text"` // exact existing line
+	NewText string `json:"new_text"` // replacement line
+	Kind    string `json:"kind"`     // "wikilink" | "markdown" | "frontmatter"
 }
 
 // FileMove is a single rename. IsDir is true when moving a directory.
@@ -45,7 +45,7 @@ type FileMove struct {
 type DeadDirCandidate struct {
 	Sphere     Sphere `json:"sphere"`
 	Path       string `json:"path"`
-	Reason     string `json:"reason"` // "svn" | "empty" | "old-with-live-sibling" | "bak-with-live-sibling" | "pycache" | "node-modules"
+	Reason     string `json:"reason"`     // "svn" | "empty" | "old-with-live-sibling" | "bak-with-live-sibling" | "pycache" | "node-modules"
 	Confidence string `json:"confidence"` // "high" | "medium"
 	Inbound    int    `json:"inbound"`    // count of inbound brain wikilinks; >0 demotes to medium
 }
@@ -74,11 +74,11 @@ type ConsolidateRow struct {
 
 // MergePlan describes a consolidate --merge dry-run output.
 type MergePlan struct {
-	Loser     string     `json:"loser"`
-	Survivor  string     `json:"survivor"`
-	Body      string     `json:"body"`         // merged body with conflict markers
-	YAML      string     `json:"yaml"`         // merged frontmatter with conflict markers
-	LinkPlan  *MovePlan  `json:"link_plan"`    // PlanMove(from=loser, to=survivor)
+	Loser    string    `json:"loser"`
+	Survivor string    `json:"survivor"`
+	Body     string    `json:"body"`      // merged body with conflict markers
+	YAML     string    `json:"yaml"`      // merged frontmatter with conflict markers
+	LinkPlan *MovePlan `json:"link_plan"` // PlanMove(from=loser, to=survivor)
 }
 
 // DreamReport is the Phase 7 free-association evidence packet.

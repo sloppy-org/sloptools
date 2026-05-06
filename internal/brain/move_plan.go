@@ -425,4 +425,3 @@ func encodeMarkdownTarget(rel, original string) string {
 	}
 	return strings.Join(segments, "/")
 }
-

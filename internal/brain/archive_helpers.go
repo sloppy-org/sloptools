@@ -423,14 +423,14 @@ func canonicalArchiveDigest(plan *ArchivePlan) string {
 		return edits[i].CanonicalNote < edits[j].CanonicalNote
 	})
 	payload := struct {
-		Sphere      Sphere            `json:"sphere"`
-		Source      string            `json:"source"`
-		Kind        string            `json:"kind"`
-		GigaDest    string            `json:"giga_dest"`
-		EventPath   string            `json:"event_path"`
-		EventBody   string            `json:"event_body"`
-		FolderNote  string            `json:"folder_note"`
-		Backlinks   []ArchiveBacklink `json:"backlinks"`
+		Sphere     Sphere            `json:"sphere"`
+		Source     string            `json:"source"`
+		Kind       string            `json:"kind"`
+		GigaDest   string            `json:"giga_dest"`
+		EventPath  string            `json:"event_path"`
+		EventBody  string            `json:"event_body"`
+		FolderNote string            `json:"folder_note"`
+		Backlinks  []ArchiveBacklink `json:"backlinks"`
 	}{plan.Sphere, plan.Source, plan.SourceKind, plan.GigaDest,
 		plan.EventNotePath, plan.EventNoteBody, plan.FolderNotePath, edits}
 	buf, err := json.Marshal(payload)

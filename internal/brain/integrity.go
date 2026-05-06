@@ -126,7 +126,6 @@ func resolveRelativeMarkdownLink(vault Vault, noteDir, raw string) (string, bool
 	return abs, true
 }
 
-
 // collectIntegrityDiagnostics dispatches to the kind-specific validator. It
 // mirrors the cmd-side inspector but keeps the result a flat diagnostic slice
 // the gate can count without caring about note shape.
@@ -162,10 +161,10 @@ func isBrokenLinkDiagnostic(diag MarkdownDiagnostic) bool {
 // boolean) lets callers print an actionable diff and terminate the run with
 // non-zero status without rolling back the partial state we already wrote.
 type IntegrityRegression struct {
-	Before        IntegrityReport `json:"before"`
-	After         IntegrityReport `json:"after"`
-	NewBrokenLinks int            `json:"new_broken_links"`
-	NewIssues      int            `json:"new_issues"`
+	Before         IntegrityReport `json:"before"`
+	After          IntegrityReport `json:"after"`
+	NewBrokenLinks int             `json:"new_broken_links"`
+	NewIssues      int             `json:"new_issues"`
 }
 
 // IsRegression reports whether the after-snapshot is strictly worse than the

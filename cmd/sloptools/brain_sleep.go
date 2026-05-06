@@ -20,6 +20,7 @@ func cmdBrainSleep(args []string) int {
 	backend := fs.String("backend", brain.SleepBackendCodex, "codex or none")
 	model := fs.String("model", brain.SleepDefaultModel, "codex model (e.g. gpt-5.5)")
 	dryRun := fs.Bool("dry-run", false, "skip LLM, do not apply prune-links, do not write report file")
+	activity := fs.Bool("activity", false, "include sanitized activity summary for the report date when present")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -33,11 +34,12 @@ func cmdBrainSleep(args []string) int {
 		return 1
 	}
 	res, err := brain.RunSleep(cfg, brain.SleepOpts{
-		Sphere:  brain.Sphere(*sphere),
-		Budget:  *budget,
-		Backend: *backend,
-		Model:   *model,
-		DryRun:  *dryRun,
+		Sphere:   brain.Sphere(*sphere),
+		Budget:   *budget,
+		Backend:  *backend,
+		Model:    *model,
+		DryRun:   *dryRun,
+		Activity: *activity,
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
