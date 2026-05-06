@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/sloppy-org/sloptools/internal/brain"
 )
@@ -20,7 +21,6 @@ func cmdBrainSleep(args []string) int {
 	backend := fs.String("backend", brain.SleepBackendCodex, "codex or none")
 	model := fs.String("model", brain.SleepDefaultModel, "codex model (e.g. gpt-5.5)")
 	dryRun := fs.Bool("dry-run", false, "skip LLM, do not apply prune-links, do not write report file")
-	activity := fs.Bool("activity", false, "include sanitized activity summary for the report date when present")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -33,15 +33,27 @@ func cmdBrainSleep(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	res, err := brain.RunSleep(cfg, brain.SleepOpts{
-		Sphere:   brain.Sphere(*sphere),
-		Budget:   *budget,
-		Backend:  *backend,
-		Model:    *model,
-		DryRun:   *dryRun,
-		Activity: *activity,
-	})
-	if err != nil {
+	var res *brain.SleepResult
+	run := func() error {
+		var runErr error
+		res, runErr = brain.RunSleep(cfg, brain.SleepOpts{
+			Sphere:  brain.Sphere(*sphere),
+			Budget:  *budget,
+			Backend: *backend,
+			Model:   *model,
+			DryRun:  *dryRun,
+		})
+		return runErr
+	}
+	if *dryRun {
+		if err := run(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		return printBrainJSON(res)
+	}
+	commitMsg := fmt.Sprintf("brain sleep: %s %s", brain.Sphere(*sphere), time.Now().Format("2006-01-02"))
+	if err := applyIntegrityGate(cfg, brain.Sphere(*sphere), false, commitMsg, run); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}

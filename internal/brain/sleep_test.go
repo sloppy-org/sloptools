@@ -103,6 +103,97 @@ func TestRunSleepWritesReportWithoutCodex(t *testing.T) {
 	}
 }
 
+func TestRunSleepIncludesGitContextFromPreviousSleepCommit(t *testing.T) {
+	cfg, _ := newSleepVault(t)
+	vault, ok := cfg.Vault(SphereWork)
+	if !ok {
+		t.Fatalf("work vault missing")
+	}
+	brainRoot := vault.BrainRoot()
+	gitInit(t, brainRoot, time.Date(2026, 5, 1, 10, 0, 0, 0, time.UTC))
+	gitAddCommit(t, brainRoot, "seed topics", time.Date(2026, 5, 1, 10, 5, 0, 0, time.UTC))
+	reportDir := filepath.Join(brainRoot, SleepReportSubdir)
+	if err := os.MkdirAll(reportDir, 0o755); err != nil {
+		t.Fatalf("mkdir report dir: %v", err)
+	}
+	previousReport := filepath.Join(reportDir, "2026-05-05.md")
+	if err := os.WriteFile(previousReport, []byte("# Previous sleep\n\nRemember KINEQ.\n"), 0o644); err != nil {
+		t.Fatalf("write previous report: %v", err)
+	}
+	gitAddCommit(t, brainRoot, "brain sleep: work 2026-05-05", time.Date(2026, 5, 5, 23, 0, 0, 0, time.UTC))
+	topic := filepath.Join(brainRoot, "topics", "regular-0.md")
+	f, err := os.OpenFile(topic, os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatalf("open topic: %v", err)
+	}
+	if _, err := f.WriteString("\nFresh note.\n"); err != nil {
+		t.Fatalf("append topic: %v", err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatalf("close topic: %v", err)
+	}
+	gitAddCommit(t, brainRoot, "brain gtd update: topics/regular-0.md", time.Date(2026, 5, 6, 9, 0, 0, 0, time.UTC))
+
+	res, err := RunSleep(cfg, SleepOpts{
+		Sphere:  SphereWork,
+		Budget:  4,
+		Backend: SleepBackendNone,
+		Now:     time.Date(2026, 5, 6, 23, 30, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("RunSleep: %v", err)
+	}
+	if !res.GitContextUsed {
+		t.Fatalf("GitContextUsed=false, want true")
+	}
+	data, err := os.ReadFile(res.ReportPath)
+	if err != nil {
+		t.Fatalf("read report: %v", err)
+	}
+	body := string(data)
+	for _, want := range []string{
+		"## Recent git context",
+		"Subject: brain sleep: work 2026-05-05",
+		"Remember KINEQ.",
+		"Subject: brain gtd update: topics/regular-0.md",
+		"Fresh note.",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("sleep report missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestRunSleepUsesDistinctReportPathForSecondSleepOnSameDay(t *testing.T) {
+	cfg, root := newSleepVault(t)
+	now := time.Date(2026, 5, 6, 23, 30, 0, 0, time.UTC)
+	first, err := RunSleep(cfg, SleepOpts{
+		Sphere:  SphereWork,
+		Budget:  4,
+		Backend: SleepBackendNone,
+		Now:     now,
+	})
+	if err != nil {
+		t.Fatalf("first RunSleep: %v", err)
+	}
+	second, err := RunSleep(cfg, SleepOpts{
+		Sphere:  SphereWork,
+		Budget:  4,
+		Backend: SleepBackendNone,
+		Now:     now,
+	})
+	if err != nil {
+		t.Fatalf("second RunSleep: %v", err)
+	}
+	if first.ReportPath == second.ReportPath {
+		t.Fatalf("ReportPath reused: %s", first.ReportPath)
+	}
+	wantSecond := filepath.Join(root, "brain", SleepReportSubdir, "2026-05-06-233000.md")
+	if second.ReportPath != wantSecond {
+		t.Fatalf("second ReportPath=%q, want %q", second.ReportPath, wantSecond)
+	}
+}
+
 func TestRunSleepCodexBackendInvokesRunner(t *testing.T) {
 	cfg, root := newSleepVault(t)
 	now := time.Date(2026, 5, 6, 23, 30, 0, 0, time.UTC)

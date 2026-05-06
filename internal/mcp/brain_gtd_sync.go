@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sloppy-org/sloptools/internal/brain"
 	braingtd "github.com/sloppy-org/sloptools/internal/brain/gtd"
 	"github.com/sloppy-org/sloptools/internal/email"
 	"github.com/sloppy-org/sloptools/internal/groupware"
@@ -23,20 +24,17 @@ type gtdSyncAction struct {
 	Action   string `json:"action"`
 	DryRun   bool   `json:"dry_run,omitempty"`
 }
-
 type gtdSyncDrift struct {
 	Path    string `json:"path"`
 	Binding string `json:"binding"`
 	Local   string `json:"local"`
 	Remote  string `json:"remote"`
 }
-
 type gtdSyncError struct {
 	Path    string `json:"path"`
 	Binding string `json:"binding"`
 	Error   string `json:"error"`
 }
-
 type gtdSyncState struct {
 	Status, ClosedAt, FollowUp string
 }
@@ -52,6 +50,10 @@ func (s *Server) brainGTDSync(args map[string]interface{}) (map[string]interface
 	}
 	periodic := boolArg(args, "periodic")
 	dryRun := boolArg(args, "dry_run")
+	cfg, sphere, err := s.brainMutationTarget(args)
+	if err != nil {
+		return nil, err
+	}
 	var actions []gtdSyncAction
 	var drifts []gtdSyncDrift
 	var syncErrs []gtdSyncError
@@ -63,7 +65,7 @@ func (s *Server) brainGTDSync(args map[string]interface{}) (map[string]interface
 				continue
 			}
 			if periodic {
-				changed, action, drift, err := s.periodicSyncBinding(note, binding, dryRun)
+				changed, action, drift, err := s.periodicSyncBinding(cfg, sphere, note, binding, dryRun)
 				if action.Binding != "" {
 					actions = append(actions, action)
 				}
@@ -114,12 +116,15 @@ func (s *Server) brainGTDSync(args map[string]interface{}) (map[string]interface
 		gtdSyncAffectedRefs(strArg(args, "sphere"), actions)...,
 	), nil
 }
-
 func (s *Server) brainGTDSetStatus(args map[string]interface{}) (map[string]interface{}, error) {
 	if strings.TrimSpace(strArg(args, "path")) == "" && strings.TrimSpace(strArg(args, "commitment_id")) == "" {
 		return nil, errors.New("path or commitment_id is required")
 	}
 	notes, err := s.loadSyncNotes(args)
+	if err != nil {
+		return nil, err
+	}
+	cfg, sphere, err := s.brainMutationTarget(args)
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +149,9 @@ func (s *Server) brainGTDSetStatus(args map[string]interface{}) (map[string]inte
 		commitment.LocalOverlay.ClosedVia = closedVia
 	}
 	note.Entry.Commitment = commitment
-	if err := writeDedupNotes(note); err != nil {
+	if err := brain.WithGitCommit(cfg, sphere, "brain gtd set-status: "+note.Entry.Path, func() error {
+		return writeDedupNotes(note)
+	}); err != nil {
 		return nil, err
 	}
 	syncArgs := copyArgs(args)
@@ -165,7 +172,6 @@ func (s *Server) brainGTDSetStatus(args map[string]interface{}) (map[string]inte
 		brainCommitmentAffectedRef(strArg(args, "sphere"), note.Entry.Path),
 	), nil
 }
-
 func (s *Server) loadSyncNotes(args map[string]interface{}) ([]dedupNote, error) {
 	notes, _, err := s.loadDedupNotes(args)
 	if err != nil {
@@ -185,7 +191,6 @@ func (s *Server) loadSyncNotes(args map[string]interface{}) ([]dedupNote, error)
 	}
 	return nil, fmt.Errorf("commitment %q not found", path)
 }
-
 func (s *Server) pushClosedBinding(note dedupNote, binding braingtd.SourceBinding, args map[string]interface{}, dryRun bool) (bool, gtdSyncAction, error) {
 	action := syncAction(note, binding, "close_upstream", dryRun)
 	if dryRun {
@@ -204,7 +209,16 @@ func (s *Server) pushClosedBinding(note dedupNote, binding braingtd.SourceBindin
 	}
 	switch provider {
 	case "meetings":
-		return true, action, closeMeetingBinding(note, binding)
+		cfg, err := brain.LoadConfig(s.brainConfigArg(args))
+		if err != nil {
+			return false, gtdSyncAction{}, err
+		}
+		sphere := brain.Sphere(strArg(args, "sphere"))
+		msg := "brain gtd sync meeting: " + note.Entry.Path
+		err = brain.WithGitCommit(cfg, sphere, msg, func() error {
+			return closeMeetingBinding(note, binding)
+		})
+		return true, action, err
 	case "mail":
 		return true, action, s.closeMailBinding(note, binding, args)
 	case "todoist":
@@ -217,8 +231,7 @@ func (s *Server) pushClosedBinding(note dedupNote, binding braingtd.SourceBindin
 		return false, action, fmt.Errorf("unsupported writeable binding provider %q", binding.Provider)
 	}
 }
-
-func (s *Server) periodicSyncBinding(note dedupNote, binding braingtd.SourceBinding, dryRun bool) (bool, gtdSyncAction, gtdSyncDrift, error) {
+func (s *Server) periodicSyncBinding(cfg *brain.Config, sphere brain.Sphere, note dedupNote, binding braingtd.SourceBinding, dryRun bool) (bool, gtdSyncAction, gtdSyncDrift, error) {
 	if gtdSyncProvider(binding.Provider) == "manual" {
 		return false, gtdSyncAction{}, gtdSyncDrift{}, nil
 	}
@@ -239,7 +252,10 @@ func (s *Server) periodicSyncBinding(note dedupNote, binding braingtd.SourceBind
 				commitment.LocalOverlay.ClosedAt = syncClosedAt(state)
 			}
 			note.Entry.Commitment = commitment
-			if err := writeDedupNotes(note); err != nil {
+			msg := "brain gtd sync local: " + note.Entry.Path
+			if err := brain.WithGitCommit(cfg, sphere, msg, func() error {
+				return writeDedupNotes(note)
+			}); err != nil {
 				return false, action, gtdSyncDrift{}, err
 			}
 		}
@@ -250,7 +266,6 @@ func (s *Server) periodicSyncBinding(note dedupNote, binding braingtd.SourceBind
 		return false, gtdSyncAction{}, gtdSyncDrift{}, nil
 	}
 }
-
 func (s *Server) readBindingState(note dedupNote, binding braingtd.SourceBinding) (gtdSyncState, error) {
 	switch gtdSyncProvider(binding.Provider) {
 	case "manual":
@@ -269,7 +284,6 @@ func (s *Server) readBindingState(note dedupNote, binding braingtd.SourceBinding
 		return gtdSyncState{}, fmt.Errorf("periodic read is not implemented for provider %q", binding.Provider)
 	}
 }
-
 func closeMeetingBinding(note dedupNote, binding braingtd.SourceBinding) error {
 	path, err := resolveBindingFile(note, binding)
 	if err != nil {
@@ -290,7 +304,6 @@ func closeMeetingBinding(note dedupNote, binding braingtd.SourceBinding) error {
 	lines[index] = strings.Replace(lines[index], "[ ]", "[x]", 1)
 	return os.WriteFile(path, []byte(strings.Join(lines, "")), 0o644)
 }
-
 func readMeetingBindingState(note dedupNote, binding braingtd.SourceBinding) (gtdSyncState, error) {
 	path, err := resolveBindingFile(note, binding)
 	if err != nil {
@@ -314,7 +327,6 @@ func readMeetingBindingState(note dedupNote, binding braingtd.SourceBinding) (gt
 	}
 	return gtdSyncState{}, fmt.Errorf("matching meeting line has no checkbox")
 }
-
 func resolveBindingFile(note dedupNote, binding braingtd.SourceBinding) (string, error) {
 	raw := strings.TrimSpace(binding.Location.Path)
 	if raw == "" {
@@ -355,7 +367,6 @@ func matchingCheckboxLine(lines []string, binding braingtd.SourceBinding) (int, 
 	}
 	return -1, fmt.Errorf("matching meeting checkbox not found for %q", binding.StableID())
 }
-
 func (s *Server) closeMailBinding(note dedupNote, binding braingtd.SourceBinding, args map[string]interface{}) error {
 	account, provider, err := s.mailProviderForSync(note, binding, args)
 	if err != nil {
@@ -376,7 +387,6 @@ func (s *Server) closeMailBinding(note dedupNote, binding braingtd.SourceBinding
 	_, err = applyMailActionGeneric(context.Background(), account, provider, action, []string{messageID}, strArg(args, "mail_folder"), strArg(args, "mail_label"), nil, time.Time{})
 	return err
 }
-
 func (s *Server) readMailBindingState(note dedupNote, binding braingtd.SourceBinding) (gtdSyncState, error) {
 	account, provider, err := s.mailProviderForSync(note, binding, nil)
 	if err != nil {
@@ -393,7 +403,6 @@ func (s *Server) readMailBindingState(note dedupNote, binding braingtd.SourceBin
 	derived := mailMessageToGTDStatus(message, mailAccountWaitingFolder(account))
 	return gtdSyncState{Status: derived.Status, FollowUp: derived.FollowUp}, nil
 }
-
 func (s *Server) closeTodoistBinding(note dedupNote, binding braingtd.SourceBinding, args map[string]interface{}) error {
 	_, provider, err := s.tasksProviderForSync(note, store.ExternalProviderTodoist)
 	if err != nil {
@@ -413,7 +422,6 @@ func (s *Server) closeTodoistBinding(note dedupNote, binding braingtd.SourceBind
 	}
 	return completer.CompleteTask(context.Background(), listID, taskID)
 }
-
 func (s *Server) readTodoistBindingState(note dedupNote, binding braingtd.SourceBinding) (gtdSyncState, error) {
 	_, provider, err := s.tasksProviderForSync(note, store.ExternalProviderTodoist)
 	if err != nil {
@@ -430,7 +438,6 @@ func (s *Server) readTodoistBindingState(note dedupNote, binding braingtd.Source
 	}
 	return gtdSyncState{Status: "open"}, nil
 }
-
 func (s *Server) mailProviderForSync(note dedupNote, binding braingtd.SourceBinding, args map[string]interface{}) (store.ExternalAccount, email.EmailProvider, error) {
 	st, err := s.requireStore()
 	if err != nil {
@@ -470,7 +477,6 @@ func (s *Server) mailProviderForSync(note dedupNote, binding braingtd.SourceBind
 	}
 	return account, provider, nil
 }
-
 func (s *Server) tasksProviderForSync(note dedupNote, providerName string) (store.ExternalAccount, tasks.Provider, error) {
 	st, err := s.requireStore()
 	if err != nil {

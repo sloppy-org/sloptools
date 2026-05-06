@@ -470,30 +470,3 @@ Ignore this.
 		}
 	}
 }
-
-func writeMCPBrainConfig(t *testing.T, root string) string {
-	t.Helper()
-	path := filepath.Join(root, "vaults.toml")
-	body := `[[vault]]
-sphere = "work"
-root = "` + filepath.ToSlash(filepath.Join(root, "work")) + `"
-brain = "brain"
-
-[[vault]]
-sphere = "private"
-root = "` + filepath.ToSlash(filepath.Join(root, "private")) + `"
-brain = "brain"
-`
-	writeMCPBrainFile(t, path, body)
-	return path
-}
-
-func writeMCPBrainFile(t *testing.T, path, content string) {
-	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatalf("write: %v", err)
-	}
-}

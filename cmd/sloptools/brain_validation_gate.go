@@ -13,33 +13,36 @@ import (
 // new validation issues. On success it auto-commits and pushes the brain
 // repo with the supplied commitMessage, which is how every apply leaves a
 // reviewable audit trail in git history. Apply paths run with the gate
-// enabled by default; the caller may pass disable=true (e.g. when already
-// wrapped at a higher level) to skip the post-pass and the auto-commit.
+// enabled by default; the caller may pass disable=true to skip integrity
+// validation while still committing the edit.
 func applyIntegrityGate(cfg *brain.Config, sphere brain.Sphere, disable bool, commitMessage string, fn func() error) error {
-	if disable {
-		return fn()
-	}
-	before, err := brain.IntegrityScan(cfg, sphere)
-	if err != nil {
-		return fmt.Errorf("integrity scan (before): %w", err)
-	}
-	if err := fn(); err != nil {
-		return err
-	}
-	after, err := brain.IntegrityScan(cfg, sphere)
-	if err != nil {
-		return fmt.Errorf("integrity scan (after): %w", err)
-	}
-	reg := brain.CompareIntegrity(before, after)
-	if reg.IsRegression() {
-		emitIntegrityRegression(reg)
-		return fmt.Errorf("integrity gate: apply introduced %d new broken link(s), %d new issue(s)",
-			reg.NewBrokenLinks, reg.NewIssues)
+	run := func() error {
+		if disable {
+			return fn()
+		}
+		before, err := brain.IntegrityScan(cfg, sphere)
+		if err != nil {
+			return fmt.Errorf("integrity scan (before): %w", err)
+		}
+		if err := fn(); err != nil {
+			return err
+		}
+		after, err := brain.IntegrityScan(cfg, sphere)
+		if err != nil {
+			return fmt.Errorf("integrity scan (after): %w", err)
+		}
+		reg := brain.CompareIntegrity(before, after)
+		if reg.IsRegression() {
+			emitIntegrityRegression(reg)
+			return fmt.Errorf("integrity gate: apply introduced %d new broken link(s), %d new issue(s)",
+				reg.NewBrokenLinks, reg.NewIssues)
+		}
+		return nil
 	}
 	if commitMessage != "" {
-		brainAutoCommit(cfg, sphere, commitMessage)
+		return brain.WithGitCommit(cfg, sphere, commitMessage, run)
 	}
-	return nil
+	return run()
 }
 
 func emitIntegrityRegression(reg brain.IntegrityRegression) {
@@ -58,4 +61,28 @@ func emitIntegrityRegression(reg brain.IntegrityRegression) {
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, "(failed to emit integrity regression details)")
 	}
+}
+
+func commitBrainMutation(cfg *brain.Config, sphere brain.Sphere, message string) int {
+	if err := brainAutoCommit(cfg, sphere, message); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	return 0
+}
+
+func prepareBrainMutation(cfg *brain.Config, sphere brain.Sphere) int {
+	if err := brain.PrepareBrainGit(cfg, sphere); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	return 0
+}
+
+func rollbackBrainMutation(cfg *brain.Config, sphere brain.Sphere) {
+	vault, ok := cfg.Vault(sphere)
+	if !ok {
+		return
+	}
+	_ = brain.RollbackBrainGit(vault.BrainRoot())
 }

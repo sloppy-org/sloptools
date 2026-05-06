@@ -39,7 +39,6 @@ type SleepOpts struct {
 	Backend   string
 	Model     string
 	DryRun    bool
-	Activity  bool
 	Now       time.Time
 	CodexExec CodexExecFn
 }
@@ -58,8 +57,8 @@ type SleepResult struct {
 	Report           *DreamReport `json:"report"`
 	ReportPath       string       `json:"report_path,omitempty"`
 	CodexUsed        bool         `json:"codex_used"`
-	ActivityPath     string       `json:"activity_path,omitempty"`
-	ActivityUsed     bool         `json:"activity_used"`
+	GitContextUsed   bool         `json:"git_context_used"`
+	GitContextScope  string       `json:"git_context_scope,omitempty"`
 }
 
 // RunSleep orchestrates the brain sleep cycle:
@@ -106,22 +105,9 @@ func RunSleep(cfg *Config, opts SleepOpts) (*SleepResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("dream report: %w", err)
 	}
+	attachDreamGitContext(report, vault, opts.Now)
 
-	date := opts.Now.Format("2006-01-02")
-	activityPacket := ""
-	activityPath := ""
-	if opts.Activity {
-		markdown, path, err := ReadActivitySummary(cfg, opts.Sphere, date)
-		activityPath = path
-		if err != nil && !os.IsNotExist(err) {
-			return nil, fmt.Errorf("read activity summary: %w", err)
-		}
-		if err == nil {
-			activityPacket = RenderActivitySleepPacket(markdown)
-		}
-	}
-
-	packet := renderSleepPacket(report, plan, cold, vault.Sphere, opts.Now, activityPacket)
+	packet := renderSleepPacket(report, plan, cold, vault.Sphere, opts.Now, report.GitContext)
 
 	// Apply prune-links BEFORE the codex pass. Codex may rewrite notes
 	// (e.g. promote prose mentions to wikilinks) and any such edit
@@ -158,7 +144,7 @@ func RunSleep(cfg *Config, opts SleepOpts) (*SleepResult, error) {
 		codexUsed = true
 	}
 
-	reportPath := filepath.Join(vault.BrainRoot(), SleepReportSubdir, opts.Now.Format("2006-01-02")+".md")
+	reportPath := sleepReportPath(vault, opts.Now)
 	if !opts.DryRun {
 		if err := os.MkdirAll(filepath.Dir(reportPath), 0o755); err != nil {
 			return nil, fmt.Errorf("mkdir report dir: %w", err)
@@ -182,8 +168,8 @@ func RunSleep(cfg *Config, opts SleepOpts) (*SleepResult, error) {
 		Report:           report,
 		ReportPath:       reportPath,
 		CodexUsed:        codexUsed,
-		ActivityPath:     activityPath,
-		ActivityUsed:     activityPacket != "",
+		GitContextUsed:   report.GitContextUsed,
+		GitContextScope:  report.GitContextScope,
 	}
 	if backend == SleepBackendCodex {
 		res.Model = model
@@ -193,14 +179,14 @@ func RunSleep(cfg *Config, opts SleepOpts) (*SleepResult, error) {
 
 // renderSleepPacket builds the deterministic Markdown packet that we hand
 // to Codex (or write verbatim when backend=none).
-func renderSleepPacket(report *DreamReport, plan *MovePlan, cold []ColdLink, sphere Sphere, now time.Time, activityPacket string) string {
+func renderSleepPacket(report *DreamReport, plan *MovePlan, cold []ColdLink, sphere Sphere, now time.Time, gitPacket string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Brain sleep report — %s — %s\n\n", sphere, now.Format("2006-01-02"))
 	fmt.Fprintf(&b, "Generated: %s\n\n", now.UTC().Format(time.RFC3339))
-	if strings.TrimSpace(activityPacket) != "" {
-		fmt.Fprintln(&b, "## Activity focus")
+	if strings.TrimSpace(gitPacket) != "" {
+		fmt.Fprintln(&b, "## Recent git context")
 		fmt.Fprintln(&b)
-		fmt.Fprintln(&b, activityPacket)
+		fmt.Fprintln(&b, gitPacket)
 		fmt.Fprintln(&b)
 	}
 	fmt.Fprintf(&b, "## Picked topics (%d)\n\n", len(report.Topics))
@@ -241,6 +227,22 @@ func renderSleepPacket(report *DreamReport, plan *MovePlan, cold []ColdLink, sph
 		fmt.Fprintln(&b, "_(none)_")
 	}
 	return b.String()
+}
+
+func sleepReportPath(vault Vault, now time.Time) string {
+	dir := filepath.Join(vault.BrainRoot(), SleepReportSubdir)
+	datePath := filepath.Join(dir, now.Format("2006-01-02")+".md")
+	if _, err := os.Stat(datePath); os.IsNotExist(err) {
+		return datePath
+	}
+	stamp := now.Format("2006-01-02-150405")
+	path := filepath.Join(dir, stamp+".md")
+	for i := 2; ; i++ {
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			return path
+		}
+		path = filepath.Join(dir, fmt.Sprintf("%s-%02d.md", stamp, i))
+	}
 }
 
 // defaultCodexExec runs `codex exec --model <model> -C <vault-root>` with

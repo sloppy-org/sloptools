@@ -175,6 +175,7 @@ func writeMailCommitmentConfigs(t *testing.T) (string, string) {
 	if err := os.MkdirAll(filepath.Join(root, "vault", "brain", "people"), 0o755); err != nil {
 		t.Fatalf("MkdirAll: %v", err)
 	}
+	initMCPBrainGit(t, filepath.Join(root, "vault", "brain"), filepath.Join(root, "vault-brain.git"))
 	projectConfig := filepath.Join(root, "projects.toml")
 	if err := os.WriteFile(projectConfig, []byte(`
 [[project]]
@@ -433,6 +434,7 @@ func setupMailLabelVaultRoot(t *testing.T, sphere string, projects []string) (st
 		if err := os.MkdirAll(filepath.Join(root, s, "brain", "projects"), 0o755); err != nil {
 			t.Fatalf("MkdirAll: %v", err)
 		}
+		initMCPBrainGit(t, filepath.Join(root, s, "brain"), filepath.Join(root, s+"-brain.git"))
 		if err := os.MkdirAll(filepath.Join(root, s, "brain", "commitments", "mail"), 0o755); err != nil {
 			t.Fatalf("MkdirAll: %v", err)
 		}
@@ -442,16 +444,15 @@ func setupMailLabelVaultRoot(t *testing.T, sphere string, projects []string) (st
 				if err := os.WriteFile(path, []byte("---\nkind: project\n---\n"), 0o644); err != nil {
 					t.Fatalf("WriteFile project: %v", err)
 				}
+				commitMCPBrainFileIfTracked(t, path)
 			}
 		}
 	}
 	return root, filepath.Join(root, sphere)
 }
-
 func writeMailLabelCommitment(t *testing.T, vaultRoot, rel, messageID, status string) {
 	writeMailLabelCommitmentWithLabels(t, vaultRoot, rel, messageID, status, nil, "")
 }
-
 func writeMailLabelCommitmentWithLabels(t *testing.T, vaultRoot, rel, messageID, status string, labels []string, project string) {
 	t.Helper()
 	path := filepath.Join(vaultRoot, filepath.FromSlash(rel))
@@ -472,6 +473,7 @@ func writeMailLabelCommitmentWithLabels(t *testing.T, vaultRoot, rel, messageID,
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
+	commitMCPBrainFileIfTracked(t, path)
 }
 
 func affectedHas(refs []affectedRef, domain, kind, id, path string) bool {

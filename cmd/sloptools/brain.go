@@ -49,8 +49,6 @@ func cmdBrain(args []string) int {
 		return cmdBrainDream(args[1:])
 	case "archive":
 		return cmdBrainArchive(args[1:])
-	case "activity":
-		return cmdBrainActivity(args[1:])
 	case "sleep":
 		return cmdBrainSleep(args[1:])
 	case "help", "-h", "--help":
@@ -64,7 +62,7 @@ func cmdBrain(args []string) int {
 }
 
 func printBrainHelp() {
-	fmt.Println("sloptools brain <search|backlinks|gtd|people|folder|entities|glossary|attention|links|vault|ingest|move|cleanup-dead-dirs|consolidate|dream|archive|activity|sleep> [flags]")
+	fmt.Println("sloptools brain <search|backlinks|gtd|people|folder|entities|glossary|attention|links|vault|ingest|move|cleanup-dead-dirs|consolidate|dream|archive|sleep> [flags]")
 	fmt.Println()
 	fmt.Println("search flags:")
 	fmt.Println("  --config PATH   vault config path (default ~/.config/sloptools/vaults.toml)")
@@ -122,15 +120,6 @@ func printBrainHelp() {
 	fmt.Println("  --backend NAME  codex (default) or none")
 	fmt.Println("  --model NAME    codex model (default gpt-5.5)")
 	fmt.Println("  --dry-run       skip LLM, do not apply prune-links, do not write report file")
-	fmt.Println("  --activity      include sanitized reports/activity/YYYY-MM-DD.md when present")
-	fmt.Println()
-	fmt.Println("activity flags:")
-	fmt.Println("  subcommands: log show")
-	fmt.Println("  --sphere NAME   vault sphere: work or private")
-	fmt.Println("  --date DATE     YYYY-MM-DD, defaults to today")
-	fmt.Println("  --message TEXT  activity log message")
-	fmt.Println("  --link PATH     brain note link; may be repeated")
-	fmt.Println("  --commit        run integrity gate and auto-commit")
 }
 
 func cmdBrainSearch(args []string) int {

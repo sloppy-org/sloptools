@@ -83,11 +83,14 @@ type MergePlan struct {
 
 // DreamReport is the Phase 7 free-association evidence packet.
 type DreamReport struct {
-	Sphere     Sphere           `json:"sphere"`
-	Topics     []string         `json:"topics"`
-	CrossLinks []LinkSuggestion `json:"cross_links"`
-	Cold       []ColdLink       `json:"cold"`
-	Generated  string           `json:"generated_at"`
+	Sphere          Sphere           `json:"sphere"`
+	Topics          []string         `json:"topics"`
+	CrossLinks      []LinkSuggestion `json:"cross_links"`
+	Cold            []ColdLink       `json:"cold"`
+	GitContext      string           `json:"git_context,omitempty"`
+	GitContextScope string           `json:"git_context_scope,omitempty"`
+	GitContextUsed  bool             `json:"git_context_used"`
+	Generated       string           `json:"generated_at"`
 }
 
 // LinkSuggestion proposes a missing wikilink between two notes that mention

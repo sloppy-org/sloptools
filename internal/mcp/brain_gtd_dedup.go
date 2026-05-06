@@ -50,9 +50,6 @@ func WriteQuickMeetingCommitment(brainConfigPath, sphere, outcome, transcript, a
 	if err != nil {
 		return "", err
 	}
-	if err := os.MkdirAll(filepath.Dir(target.Path), 0o755); err != nil {
-		return "", err
-	}
 	binding := braingtd.SourceBinding{
 		Provider:  meetingsProvider,
 		Ref:       slug + "#" + id,
@@ -63,12 +60,17 @@ func WriteQuickMeetingCommitment(brainConfigPath, sphere, outcome, transcript, a
 	if err := validateRenderedBrainGTD(rendered); err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(target.Path, []byte(rendered), 0o644); err != nil {
+	err = brain.WithGitCommit(cfg, brain.Sphere(sphere), "brain gtd quick-meeting: "+target.Rel, func() error {
+		if err := os.MkdirAll(filepath.Dir(target.Path), 0o755); err != nil {
+			return err
+		}
+		return os.WriteFile(target.Path, []byte(rendered), 0o644)
+	})
+	if err != nil {
 		return "", err
 	}
 	return target.Rel, nil
 }
-
 func renderQuickMeetingCommitment(sphere, outcome, transcript, audioBase string, binding braingtd.SourceBinding) string {
 	locationLine := ""
 	if locationPath := strings.TrimSpace(binding.Location.Path); locationPath != "" {
@@ -109,7 +111,6 @@ Quick voice memo: %s.
 	)
 	return strings.TrimSpace(body) + "\n"
 }
-
 func transcriptForEvidence(transcript string) string {
 	collapsed := strings.Join(strings.Fields(transcript), " ")
 	if len(collapsed) > 600 {
@@ -117,7 +118,6 @@ func transcriptForEvidence(transcript string) string {
 	}
 	return collapsed
 }
-
 func slugifyAudioBase(name string) string {
 	stem := strings.TrimSuffix(name, filepath.Ext(name))
 	cleaned := slugify(stem)
@@ -126,7 +126,6 @@ func slugifyAudioBase(name string) string {
 	}
 	return cleaned
 }
-
 func quickMemoID(audioBase, transcript string) string {
 	sum := sha1.Sum([]byte(audioBase + "\x00" + transcript))
 	return hex.EncodeToString(sum[:])[:meetings.IDLength]
@@ -146,9 +145,12 @@ func (s *Server) brainGTDDedupScan(args map[string]interface{}) (map[string]inte
 	result := braingtd.Scan(dedupEntries(notes), opts)
 	return map[string]interface{}{"sphere": strArg(args, "sphere"), "dedup": result}, nil
 }
-
 func (s *Server) brainGTDDedupReviewApply(args map[string]interface{}) (map[string]interface{}, error) {
 	notes, opts, err := s.loadDedupNotes(args)
+	if err != nil {
+		return nil, err
+	}
+	cfg, sphere, err := s.brainMutationTarget(args)
 	if err != nil {
 		return nil, err
 	}
@@ -163,7 +165,7 @@ func (s *Server) brainGTDDedupReviewApply(args map[string]interface{}) (map[stri
 	}
 	switch decision {
 	case "merge":
-		return applyDedupMerge(pair, args, id)
+		return applyDedupMerge(cfg, sphere, pair, args, id)
 	case "keep_separate":
 		braingtd.MarkNotDuplicate(&pair[0].Entry, &pair[1].Entry, id)
 	case "defer":
@@ -171,12 +173,14 @@ func (s *Server) brainGTDDedupReviewApply(args map[string]interface{}) (map[stri
 	default:
 		return nil, fmt.Errorf("unsupported dedup decision %q", decision)
 	}
-	if err := writeDedupNotes(pair[:]...); err != nil {
+	msg := "brain gtd dedup: " + decision
+	if err := brain.WithGitCommit(cfg, sphere, msg, func() error {
+		return writeDedupNotes(pair[:]...)
+	}); err != nil {
 		return nil, err
 	}
 	return map[string]interface{}{"id": id, "decision": decision, "paths": []string{pair[0].Entry.Path, pair[1].Entry.Path}}, nil
 }
-
 func (s *Server) brainGTDDedupHistory(args map[string]interface{}) (map[string]interface{}, error) {
 	notes, _, err := s.loadDedupNotes(args)
 	if err != nil {
@@ -192,9 +196,12 @@ func (s *Server) brainGTDDedupHistory(args map[string]interface{}) (map[string]i
 	}
 	return map[string]interface{}{"sphere": strArg(args, "sphere"), "history": history, "count": len(history)}, nil
 }
-
 func (s *Server) brainGTDBind(args map[string]interface{}) (map[string]interface{}, error) {
 	notes, _, err := s.loadDedupNotes(args)
+	if err != nil {
+		return nil, err
+	}
+	cfg, sphere, err := s.brainMutationTarget(args)
 	if err != nil {
 		return nil, err
 	}
@@ -247,7 +254,9 @@ func (s *Server) brainGTDBind(args map[string]interface{}) (map[string]interface
 		winner.Entry.Commitment.Outcome = strings.TrimSpace(outcome)
 	}
 	changed[winner.Entry.Path] = winner
-	if err := writeDedupNotes(mapValues(changed)...); err != nil {
+	if err := brain.WithGitCommit(cfg, sphere, "brain gtd bind: "+winner.Entry.Path, func() error {
+		return writeDedupNotes(mapValues(changed)...)
+	}); err != nil {
 		return nil, err
 	}
 	return map[string]interface{}{
@@ -257,7 +266,6 @@ func (s *Server) brainGTDBind(args map[string]interface{}) (map[string]interface
 		"binding_count": len(winner.Entry.Commitment.SourceBindings),
 	}, nil
 }
-
 func (s *Server) loadDedupNotes(args map[string]interface{}) ([]dedupNote, braingtd.ScanOptions, error) {
 	cfg, err := brain.LoadConfig(s.brainConfigArg(args))
 	if err != nil {
@@ -278,7 +286,17 @@ func (s *Server) loadDedupNotes(args map[string]interface{}) ([]dedupNote, brain
 	notes, err := readDedupNotes(vault)
 	return notes, opts, err
 }
-
+func (s *Server) brainMutationTarget(args map[string]interface{}) (*brain.Config, brain.Sphere, error) {
+	cfg, err := brain.LoadConfig(s.brainConfigArg(args))
+	if err != nil {
+		return nil, "", err
+	}
+	sphere := brain.Sphere(strings.TrimSpace(strArg(args, "sphere")))
+	if sphere == "" {
+		return nil, "", errors.New("sphere is required")
+	}
+	return cfg, sphere, nil
+}
 func dedupScanOptions(args map[string]interface{}) (braingtd.ScanOptions, error) {
 	cfg, err := braingtd.LoadDedupConfig(strArg(args, "dedup_config"))
 	if err != nil {
@@ -329,7 +347,6 @@ func readDedupNotes(vault brain.Vault) ([]dedupNote, error) {
 	})
 	return notes, err
 }
-
 func dedupNotesByPath(notes []dedupNote) map[string]dedupNote {
 	out := make(map[string]dedupNote, len(notes))
 	for _, note := range notes {
@@ -337,7 +354,6 @@ func dedupNotesByPath(notes []dedupNote) map[string]dedupNote {
 	}
 	return out
 }
-
 func dedupEntries(notes []dedupNote) []braingtd.CommitmentEntry {
 	entries := make([]braingtd.CommitmentEntry, 0, len(notes))
 	for _, note := range notes {
@@ -345,7 +361,6 @@ func dedupEntries(notes []dedupNote) []braingtd.CommitmentEntry {
 	}
 	return entries
 }
-
 func candidatePair(notes []dedupNote, opts braingtd.ScanOptions, id string) ([2]dedupNote, error) {
 	result := braingtd.Scan(dedupEntries(notes), opts)
 	byPath := dedupNotesByPath(notes)
@@ -356,11 +371,9 @@ func candidatePair(notes []dedupNote, opts braingtd.ScanOptions, id string) ([2]
 	}
 	return [2]dedupNote{}, fmt.Errorf("dedup candidate %q not found", id)
 }
-
 func sameBindOutcome(a, b braingtd.Commitment) bool {
 	return bindOutcome(a) != "" && bindOutcome(a) == bindOutcome(b)
 }
-
 func bindOutcome(commitment braingtd.Commitment) string {
 	value := strings.TrimSpace(commitment.Outcome)
 	if value == "" {
@@ -368,7 +381,6 @@ func bindOutcome(commitment braingtd.Commitment) string {
 	}
 	return strings.ToLower(strings.Join(strings.Fields(value), " "))
 }
-
 func sourceBindingsArg(args map[string]interface{}, key string) ([]braingtd.SourceBinding, error) {
 	raw, ok := args[key]
 	if !ok {
@@ -397,7 +409,6 @@ func sourceBindingsArg(args map[string]interface{}, key string) ([]braingtd.Sour
 	}
 	return bindings, nil
 }
-
 func containsPath(paths []string, want string) bool {
 	for _, path := range paths {
 		if path == want {
@@ -406,7 +417,6 @@ func containsPath(paths []string, want string) bool {
 	}
 	return false
 }
-
 func mapValues(values map[string]dedupNote) []dedupNote {
 	out := make([]dedupNote, 0, len(values))
 	for _, value := range values {
@@ -414,8 +424,7 @@ func mapValues(values map[string]dedupNote) []dedupNote {
 	}
 	return out
 }
-
-func applyDedupMerge(pair [2]dedupNote, args map[string]interface{}, id string) (map[string]interface{}, error) {
+func applyDedupMerge(cfg *brain.Config, sphere brain.Sphere, pair [2]dedupNote, args map[string]interface{}, id string) (map[string]interface{}, error) {
 	winnerPath := strings.TrimSpace(strArg(args, "winner_path"))
 	if winnerPath == "" {
 		winnerPath = pair[0].Entry.Path
@@ -425,12 +434,13 @@ func applyDedupMerge(pair [2]dedupNote, args map[string]interface{}, id string) 
 		return nil, err
 	}
 	braingtd.ApplyMerge(&winner.Entry, &loser.Entry, id, strArg(args, "outcome"), "")
-	if err := writeDedupNotes(*winner, *loser); err != nil {
+	if err := brain.WithGitCommit(cfg, sphere, "brain gtd dedup merge: "+winner.Entry.Path, func() error {
+		return writeDedupNotes(*winner, *loser)
+	}); err != nil {
 		return nil, err
 	}
 	return map[string]interface{}{"id": id, "decision": "merge", "winner_path": winner.Entry.Path, "merged_path": loser.Entry.Path}, nil
 }
-
 func orderedMergePair(pair [2]dedupNote, winnerPath string) (*dedupNote, *dedupNote, error) {
 	if pair[0].Entry.Path == winnerPath {
 		return &pair[0], &pair[1], nil
@@ -440,7 +450,6 @@ func orderedMergePair(pair [2]dedupNote, winnerPath string) (*dedupNote, *dedupN
 	}
 	return nil, nil, fmt.Errorf("winner_path %q is not in candidate", winnerPath)
 }
-
 func writeDedupNotes(notes ...dedupNote) error {
 	for _, note := range notes {
 		if strings.TrimSpace(note.Entry.Commitment.Outcome) != "" {
@@ -464,7 +473,6 @@ func writeDedupNotes(notes ...dedupNote) error {
 	}
 	return nil
 }
-
 func floatArg(args map[string]interface{}, key string) float64 {
 	switch v := args[key].(type) {
 	case float64:

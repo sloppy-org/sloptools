@@ -145,6 +145,9 @@ func runCleanupApply(cfg *brain.Config, sphere brain.Sphere, confirm string, max
 		fmt.Fprintf(os.Stderr, "candidate digest changed since scan: have %s, got %s\n", digest, confirm)
 		return 1
 	}
+	if status := prepareBrainMutation(cfg, sphere); status != 0 {
+		return status
+	}
 	var before brain.IntegrityReport
 	if !skipGate {
 		before, err = brain.IntegrityScan(cfg, sphere)
@@ -208,17 +211,24 @@ func runCleanupApply(cfg *brain.Config, sphere brain.Sphere, confirm string, max
 	if !skipGate && applied > 0 {
 		after, scanErr := brain.IntegrityScan(cfg, sphere)
 		if scanErr != nil {
+			rollbackBrainMutation(cfg, sphere)
 			fmt.Fprintf(os.Stderr, "integrity scan (after): %v\n", scanErr)
 			return 1
 		}
 		reg := brain.CompareIntegrity(before, after)
 		if reg.IsRegression() {
+			rollbackBrainMutation(cfg, sphere)
 			emitIntegrityRegression(reg)
 			fmt.Fprintf(os.Stderr, "integrity gate: cleanup introduced %d new broken link(s), %d new issue(s)\n",
 				reg.NewBrokenLinks, reg.NewIssues)
 			return 1
 		}
-		brainAutoCommit(cfg, sphere, fmt.Sprintf("brain cleanup-dead-dirs: %d dir(s) removed", applied))
+	}
+	if applied > 0 {
+		if err := brainAutoCommit(cfg, sphere, fmt.Sprintf("brain cleanup-dead-dirs: %d dir(s) removed", applied)); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
 	}
 	if failed > 0 {
 		return 1

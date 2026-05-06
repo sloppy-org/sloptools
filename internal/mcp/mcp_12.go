@@ -205,7 +205,10 @@ func (s *Server) brainGTDWrite(args map[string]interface{}) (map[string]interfac
 		if err := validateRenderedBrainGTD(rendered); err != nil {
 			return nil, err
 		}
-		if err := os.WriteFile(resolved.Path, []byte(rendered), 0o644); err != nil {
+		msg := "brain gtd write: " + resolved.Rel
+		if err := brain.WithGitCommit(cfg, brain.Sphere(sphere), msg, func() error {
+			return os.WriteFile(resolved.Path, []byte(rendered), 0o644)
+		}); err != nil {
 			return nil, err
 		}
 		return withAffected(
@@ -226,10 +229,13 @@ func (s *Server) brainGTDWrite(args map[string]interface{}) (map[string]interfac
 	if err := validateRenderedBrainGTD(rendered); err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(filepath.Dir(resolved.Path), 0o755); err != nil {
-		return nil, err
-	}
-	if err := os.WriteFile(resolved.Path, []byte(rendered), 0o644); err != nil {
+	msg := "brain gtd write: " + resolved.Rel
+	if err := brain.WithGitCommit(cfg, brain.Sphere(sphere), msg, func() error {
+		if err := os.MkdirAll(filepath.Dir(resolved.Path), 0o755); err != nil {
+			return err
+		}
+		return os.WriteFile(resolved.Path, []byte(rendered), 0o644)
+	}); err != nil {
 		return nil, err
 	}
 	return withAffected(

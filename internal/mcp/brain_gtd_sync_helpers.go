@@ -417,27 +417,25 @@ func (s *Server) brainGTDReviewBatch(args map[string]interface{}) (map[string]in
 	}
 	return map[string]interface{}{"sphere": sphere, "q": query, "path": resolved.Rel, "count": len(items), "updated": true}, nil
 }
-
-// writeRenderedGTDNote validates the rendered markdown and writes it to the
-// resolved sphere/path. Callers should already have produced the markdown
-// via the appropriate braincatalog renderer.
 func writeRenderedGTDNote(cfg *brain.Config, sphere brain.Sphere, path, rendered string) (brain.ResolvedPath, error) {
 	resolved, err := brain.ResolveNotePath(cfg, sphere, path)
 	if err != nil {
 		return resolved, err
 	}
-	if err := os.MkdirAll(filepath.Dir(resolved.Path), 0o755); err != nil {
-		return resolved, err
-	}
 	if err := validateRenderedBrainNote(rendered); err != nil {
 		return resolved, err
 	}
-	if err := os.WriteFile(resolved.Path, []byte(rendered), 0o644); err != nil {
+	msg := "brain gtd render: " + resolved.Rel
+	if err := brain.WithGitCommit(cfg, sphere, msg, func() error {
+		if err := os.MkdirAll(filepath.Dir(resolved.Path), 0o755); err != nil {
+			return err
+		}
+		return os.WriteFile(resolved.Path, []byte(rendered), 0o644)
+	}); err != nil {
 		return resolved, err
 	}
 	return resolved, nil
 }
-
 func (s *Server) brainGTDIngest(args map[string]interface{}) (map[string]interface{}, error) {
 	cfg, err := brain.LoadConfig(s.brainConfigArg(args))
 	if err != nil {
@@ -466,29 +464,36 @@ func (s *Server) brainGTDIngest(args map[string]interface{}) (map[string]interfa
 		return nil, errors.New("paths are required")
 	}
 	created := make([]string, 0)
-	for _, rawPath := range paths {
-		resolved, data, err := brain.ReadNoteFile(cfg, brain.Sphere(sphere), rawPath)
-		if err != nil {
-			return nil, err
-		}
-		for i, task := range braincatalog.ExtractIngestTasks(source, string(data)) {
-			out := filepath.ToSlash(filepath.Join("brain", "gtd", "ingest", slugify(filepath.Base(resolved.Rel))+"-"+fmt.Sprintf("%02d", i+1)+".md"))
-			target, err := brain.ResolveNotePath(cfg, brain.Sphere(sphere), out)
+	msg := fmt.Sprintf("brain gtd ingest: %s %d source note(s)", source, len(paths))
+	err = brain.WithGitCommit(cfg, brain.Sphere(sphere), msg, func() error {
+		for _, rawPath := range paths {
+			resolved, data, err := brain.ReadNoteFile(cfg, brain.Sphere(sphere), rawPath)
 			if err != nil {
-				return nil, err
+				return err
 			}
-			if err := os.MkdirAll(filepath.Dir(target.Path), 0o755); err != nil {
-				return nil, err
+			for i, task := range braincatalog.ExtractIngestTasks(source, string(data)) {
+				out := filepath.ToSlash(filepath.Join("brain", "gtd", "ingest", slugify(filepath.Base(resolved.Rel))+"-"+fmt.Sprintf("%02d", i+1)+".md"))
+				target, err := brain.ResolveNotePath(cfg, brain.Sphere(sphere), out)
+				if err != nil {
+					return err
+				}
+				rendered := renderIngestCommitment(sphere, source, resolved.Rel, task)
+				if err := validateRenderedBrainGTD(rendered); err != nil {
+					return err
+				}
+				if err := os.MkdirAll(filepath.Dir(target.Path), 0o755); err != nil {
+					return err
+				}
+				if err := os.WriteFile(target.Path, []byte(rendered), 0o644); err != nil {
+					return err
+				}
+				created = append(created, target.Rel)
 			}
-			rendered := renderIngestCommitment(sphere, source, resolved.Rel, task)
-			if err := validateRenderedBrainGTD(rendered); err != nil {
-				return nil, err
-			}
-			if err := os.WriteFile(target.Path, []byte(rendered), 0o644); err != nil {
-				return nil, err
-			}
-			created = append(created, target.Rel)
 		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return map[string]interface{}{"sphere": sphere, "source": source, "count": len(created), "paths": created, "updated": len(created) > 0}, nil
 }

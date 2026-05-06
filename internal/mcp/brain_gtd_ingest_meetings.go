@@ -118,10 +118,17 @@ func ingestMeetingsPaths(cfg *brain.Config, sphere string, paths []string, confi
 		candidates: candidates,
 		now:        time.Now().UTC().Format(time.RFC3339),
 	}
-	for _, rel := range resolved {
-		if err := ctx.processNote(&summary, rel); err != nil {
-			return summary, err
+	message := fmt.Sprintf("brain gtd ingest: meetings %d note(s)", len(resolved))
+	err = brain.WithGitCommit(cfg, brain.Sphere(sphere), message, func() error {
+		for _, rel := range resolved {
+			if err := ctx.processNote(&summary, rel); err != nil {
+				return err
+			}
 		}
+		return nil
+	})
+	if err != nil {
+		return summary, err
 	}
 	return summary, nil
 }

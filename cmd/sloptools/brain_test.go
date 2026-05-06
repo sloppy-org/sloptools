@@ -441,6 +441,8 @@ root = "` + filepath.ToSlash(filepath.Join(root, "private")) + `"
 brain = "brain"
 `
 	writeBrainCLIFile(t, path, body)
+	initBrainCLIGit(t, filepath.Join(root, "work", "brain"), filepath.Join(root, "work-brain.git"))
+	initBrainCLIGit(t, filepath.Join(root, "private", "brain"), filepath.Join(root, "private-brain.git"))
 	return path
 }
 
@@ -452,4 +454,5 @@ func writeBrainCLIFile(t *testing.T, path, content string) {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
 	}
+	commitBrainCLIFileIfTracked(t, path)
 }

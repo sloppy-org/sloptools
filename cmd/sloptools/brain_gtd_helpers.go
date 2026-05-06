@@ -48,38 +48,41 @@ func cmdBrainGTDIngest(args []string) int {
 		return 2
 	}
 	created := make([]string, 0)
-	for _, rawPath := range paths {
-		resolved, data, err := brain.ReadNoteFile(cfg, brain.Sphere(*sphere), rawPath)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			return 1
-		}
-		tasks := braincatalog.ExtractIngestTasks(*source, string(data))
-		if len(tasks) == 0 {
-			continue
-		}
-		for i, task := range tasks {
-			output := filepath.ToSlash(filepath.Join("brain", "gtd", "ingest", slugify(filepath.Base(resolved.Rel))+"-"+fmt.Sprintf("%02d", i+1)+".md"))
-			target, err := brain.ResolveNotePath(cfg, brain.Sphere(*sphere), output)
+	msg := fmt.Sprintf("brain gtd ingest: %s", strings.TrimSpace(*source))
+	err = brain.WithGitCommit(cfg, brain.Sphere(*sphere), msg, func() error {
+		for _, rawPath := range paths {
+			resolved, data, err := brain.ReadNoteFile(cfg, brain.Sphere(*sphere), rawPath)
 			if err != nil {
-				fmt.Fprintln(os.Stderr, err)
-				return 1
+				return err
 			}
-			if err := os.MkdirAll(filepath.Dir(target.Path), 0o755); err != nil {
-				fmt.Fprintln(os.Stderr, err)
-				return 1
+			tasks := braincatalog.ExtractIngestTasks(*source, string(data))
+			if len(tasks) == 0 {
+				continue
 			}
-			rendered := renderIngestCommitmentCLI(*sphere, *source, resolved.Rel, task)
-			if err := validateRenderedBrainGTD(rendered); err != nil {
-				fmt.Fprintln(os.Stderr, err)
-				return 1
+			for i, task := range tasks {
+				output := filepath.ToSlash(filepath.Join("brain", "gtd", "ingest", slugify(filepath.Base(resolved.Rel))+"-"+fmt.Sprintf("%02d", i+1)+".md"))
+				target, err := brain.ResolveNotePath(cfg, brain.Sphere(*sphere), output)
+				if err != nil {
+					return err
+				}
+				if err := os.MkdirAll(filepath.Dir(target.Path), 0o755); err != nil {
+					return err
+				}
+				rendered := renderIngestCommitmentCLI(*sphere, *source, resolved.Rel, task)
+				if err := validateRenderedBrainGTD(rendered); err != nil {
+					return err
+				}
+				if err := os.WriteFile(target.Path, []byte(rendered), 0o644); err != nil {
+					return err
+				}
+				created = append(created, target.Rel)
 			}
-			if err := os.WriteFile(target.Path, []byte(rendered), 0o644); err != nil {
-				fmt.Fprintln(os.Stderr, err)
-				return 1
-			}
-			created = append(created, target.Rel)
 		}
+		return nil
+	})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
 	}
 	return printBrainJSON(map[string]interface{}{"sphere": *sphere, "source": *source, "count": len(created), "paths": created, "updated": len(created) > 0})
 }

@@ -95,6 +95,7 @@ func DreamReportRun(cfg *Config, sphere Sphere, budget int) (*DreamReport, error
 		report.Topics = append(report.Topics, note.rel)
 	}
 
+	attachDreamGitContext(report, vault, time.Now())
 	report.CrossLinks = collectCrossLinkSuggestions(picked, pool)
 	report.Cold = collectColdLinks(picked, byRel, time.Now())
 	if report.CrossLinks == nil {
@@ -104,6 +105,16 @@ func DreamReportRun(cfg *Config, sphere Sphere, budget int) (*DreamReport, error
 		report.Cold = []ColdLink{}
 	}
 	return report, nil
+}
+
+func attachDreamGitContext(report *DreamReport, vault Vault, now time.Time) {
+	if report == nil {
+		return
+	}
+	gitPacket := buildSleepGitPacket(vault, now)
+	report.GitContext = gitPacket.Markdown
+	report.GitContextScope = gitPacket.Scope
+	report.GitContextUsed = gitPacket.Used
 }
 
 // DreamPruneLinksScan walks every brain note in the sphere and emits a

@@ -139,7 +139,15 @@ func (s *Server) brainPeopleRender(args map[string]interface{}) (map[string]inte
 	if err := validateRenderedBrainNote(rendered); err != nil {
 		return nil, err
 	}
-	if err := os.WriteFile(person.Path, []byte(rendered), 0o644); err != nil {
+	cfg, err := brain.LoadConfig(s.brainConfigArg(args))
+	if err != nil {
+		return nil, err
+	}
+	sphere := brain.Sphere(strArg(args, "sphere"))
+	msg := "brain people render: " + person.Rel
+	if err := brain.WithGitCommit(cfg, sphere, msg, func() error {
+		return os.WriteFile(person.Path, []byte(rendered), 0o644)
+	}); err != nil {
 		return nil, err
 	}
 	return map[string]interface{}{"sphere": strArg(args, "sphere"), "person": person.Name, "person_path": person.Rel, "changed": true}, nil
@@ -158,7 +166,17 @@ func (s *Server) brainPeopleMonthlyIndex(args map[string]interface{}) (map[strin
 	if !ok {
 		return nil, fmt.Errorf("unknown vault %q", sphere)
 	}
-	res, err := people.WriteMonthlyIndexes(vault.BrainRoot(), boolArg(args, "dry_run"))
+	dryRun := boolArg(args, "dry_run")
+	var res people.Result
+	if dryRun {
+		res, err = people.WriteMonthlyIndexes(vault.BrainRoot(), true)
+	} else {
+		err = brain.WithGitCommit(cfg, brain.Sphere(sphere), "brain people monthly-index", func() error {
+			var writeErr error
+			res, writeErr = people.WriteMonthlyIndexes(vault.BrainRoot(), false)
+			return writeErr
+		})
+	}
 	if err != nil {
 		return nil, err
 	}

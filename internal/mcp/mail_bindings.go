@@ -120,8 +120,14 @@ func (s *Server) walkMailBindings(ctx context.Context, account store.ExternalAcc
 		pending = append(pending, note)
 	}
 	sort.Slice(pending, func(i, j int) bool { return pending[i].Resolved.Path < pending[j].Resolved.Path })
-	if err := writeCommitmentNotes(pending...); err != nil {
-		return refs, err
+	bySphere := map[brain.Sphere][]dedupNote{}
+	for _, note := range pending {
+		bySphere[note.Resolved.Sphere] = append(bySphere[note.Resolved.Sphere], note)
+	}
+	for sphere, notes := range bySphere {
+		if err := writeCommitmentNotes(brainCfg, sphere, notes...); err != nil {
+			return refs, err
+		}
 	}
 	return refs, nil
 }
@@ -129,26 +135,28 @@ func (s *Server) walkMailBindings(ctx context.Context, account store.ExternalAcc
 // writeCommitmentNotes persists every commitment field (status, follow-up,
 // labels, project) so mail-derived classification flows survive a write
 // cycle. writeDedupNotes is dedup-scoped and only rewrites a subset.
-func writeCommitmentNotes(notes ...dedupNote) error {
-	for _, note := range notes {
-		if err := writeCommitmentFrontMatter(note.Note, note.Entry.Commitment); err != nil {
-			return err
+func writeCommitmentNotes(cfg *brain.Config, sphere brain.Sphere, notes ...dedupNote) error {
+	return brain.WithGitCommit(cfg, sphere, fmt.Sprintf("brain mail bindings: %d commitment(s)", len(notes)), func() error {
+		for _, note := range notes {
+			if err := writeCommitmentFrontMatter(note.Note, note.Entry.Commitment); err != nil {
+				return err
+			}
+			if err := braingtd.ApplyCommitment(note.Note, note.Entry.Commitment); err != nil {
+				return err
+			}
+			rendered, err := note.Note.Render()
+			if err != nil {
+				return err
+			}
+			if err := validateRenderedBrainGTD(rendered); err != nil {
+				return err
+			}
+			if err := os.WriteFile(note.Resolved.Path, []byte(rendered), 0o644); err != nil {
+				return err
+			}
 		}
-		if err := braingtd.ApplyCommitment(note.Note, note.Entry.Commitment); err != nil {
-			return err
-		}
-		rendered, err := note.Note.Render()
-		if err != nil {
-			return err
-		}
-		if err := validateRenderedBrainGTD(rendered); err != nil {
-			return err
-		}
-		if err := os.WriteFile(note.Resolved.Path, []byte(rendered), 0o644); err != nil {
-			return err
-		}
-	}
-	return nil
+		return nil
+	})
 }
 
 // mailFetchPostMutationState pulls the freshest metadata for each message

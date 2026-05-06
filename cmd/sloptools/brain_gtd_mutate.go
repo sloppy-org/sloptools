@@ -154,7 +154,9 @@ func cmdBrainGTDWrite(args []string) int {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
 		}
-		if err := os.WriteFile(resolved.Path, []byte(rendered), 0o644); err != nil {
+		if err := brain.WithGitCommit(cfg, brain.Sphere(*sphere), "brain gtd write: "+resolved.Rel, func() error {
+			return os.WriteFile(resolved.Path, []byte(rendered), 0o644)
+		}); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
 		}
@@ -175,11 +177,12 @@ func cmdBrainGTDWrite(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	if err := os.MkdirAll(filepath.Dir(resolved.Path), 0o755); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
-	}
-	if err := os.WriteFile(resolved.Path, []byte(rendered), 0o644); err != nil {
+	if err := brain.WithGitCommit(cfg, brain.Sphere(*sphere), "brain gtd write: "+resolved.Rel, func() error {
+		if err := os.MkdirAll(filepath.Dir(resolved.Path), 0o755); err != nil {
+			return err
+		}
+		return os.WriteFile(resolved.Path, []byte(rendered), 0o644)
+	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
@@ -223,16 +226,17 @@ func cmdBrainGTDOrganize(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	if err := os.MkdirAll(filepath.Dir(resolved.Path), 0o755); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
-	}
 	rendered := braincatalog.BuildGTDIndexMarkdown(items, *sphere)
 	if err := validateRenderedBrainNote(rendered); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	if err := os.WriteFile(resolved.Path, []byte(rendered), 0o644); err != nil {
+	if err := brain.WithGitCommit(cfg, brain.Sphere(*sphere), "brain gtd organize: "+resolved.Rel, func() error {
+		if err := os.MkdirAll(filepath.Dir(resolved.Path), 0o755); err != nil {
+			return err
+		}
+		return os.WriteFile(resolved.Path, []byte(rendered), 0o644)
+	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
@@ -257,43 +261,47 @@ func cmdBrainGTDResurface(args []string) int {
 		return 1
 	}
 	changed := make([]string, 0)
-	if strings.TrimSpace(*path) != "" {
-		if resurfaceOneCommitment(cfg, brain.Sphere(*sphere), strings.TrimSpace(*path)) {
-			changed = append(changed, strings.TrimSpace(*path))
-		}
-	} else {
-		if err := brain.WalkVaultNotes(cfg, brain.Sphere(*sphere), func(snapshot brain.NoteSnapshot) error {
-			if snapshot.Kind != "commitment" {
-				return nil
+	err = brain.WithGitCommit(cfg, brain.Sphere(*sphere), "brain gtd resurface", func() error {
+		if strings.TrimSpace(*path) != "" {
+			if resurfaceOneCommitment(cfg, brain.Sphere(*sphere), strings.TrimSpace(*path)) {
+				changed = append(changed, strings.TrimSpace(*path))
 			}
-			commitment, note, diags := braingtd.ParseCommitmentMarkdown(snapshot.Body)
-			if len(diags) != 0 {
-				return nil
-			}
-			if !resurfaceCommitment(commitment, time.Now().UTC()) {
-				return nil
-			}
-			if err := braingtd.ApplyCommitment(note, *commitment); err != nil {
-				return err
-			}
-			rendered, err := note.Render()
-			if err != nil {
-				return err
-			}
-			if err := validateRenderedBrainGTD(rendered); err != nil {
-				return err
-			}
-			if err := os.WriteFile(snapshot.Source.Path, []byte(rendered), 0o644); err != nil {
-				return err
-			}
-			changed = append(changed, snapshot.Source.Rel)
 			return nil
-		}); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			return 1
 		}
+		return brain.WalkVaultNotes(cfg, brain.Sphere(*sphere), func(snapshot brain.NoteSnapshot) error {
+			return resurfaceSnapshot(snapshot, &changed)
+		})
+	})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
 	}
 	return printBrainJSON(map[string]interface{}{"sphere": *sphere, "count": len(changed), "paths": changed, "updated": len(changed) > 0})
+}
+
+func resurfaceSnapshot(snapshot brain.NoteSnapshot, changed *[]string) error {
+	if snapshot.Kind != "commitment" {
+		return nil
+	}
+	commitment, note, diags := braingtd.ParseCommitmentMarkdown(snapshot.Body)
+	if len(diags) != 0 || !resurfaceCommitment(commitment, time.Now().UTC()) {
+		return nil
+	}
+	if err := braingtd.ApplyCommitment(note, *commitment); err != nil {
+		return err
+	}
+	rendered, err := note.Render()
+	if err != nil {
+		return err
+	}
+	if err := validateRenderedBrainGTD(rendered); err != nil {
+		return err
+	}
+	if err := os.WriteFile(snapshot.Source.Path, []byte(rendered), 0o644); err != nil {
+		return err
+	}
+	*changed = append(*changed, snapshot.Source.Rel)
+	return nil
 }
 
 func cmdBrainGTDDashboard(args []string) int {
@@ -338,16 +346,17 @@ func cmdBrainGTDDashboard(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	if err := os.MkdirAll(filepath.Dir(resolved.Path), 0o755); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
-	}
 	rendered := braincatalog.BuildGTDDashboardMarkdown(items, *sphere, *name, gtdfocus.DashboardWIPRows(items, *sphere, tracksCfg, time.Now().UTC()))
 	if err := validateRenderedBrainNote(rendered); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	if err := os.WriteFile(resolved.Path, []byte(rendered), 0o644); err != nil {
+	if err := brain.WithGitCommit(cfg, brain.Sphere(*sphere), "brain gtd dashboard: "+resolved.Rel, func() error {
+		if err := os.MkdirAll(filepath.Dir(resolved.Path), 0o755); err != nil {
+			return err
+		}
+		return os.WriteFile(resolved.Path, []byte(rendered), 0o644)
+	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
@@ -396,16 +405,17 @@ func cmdBrainGTDReviewBatch(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	if err := os.MkdirAll(filepath.Dir(resolved.Path), 0o755); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
-	}
 	rendered := braincatalog.BuildGTDReviewBatchMarkdown(items, *sphere, queryText)
 	if err := validateRenderedBrainNote(rendered); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	if err := os.WriteFile(resolved.Path, []byte(rendered), 0o644); err != nil {
+	if err := brain.WithGitCommit(cfg, brain.Sphere(*sphere), "brain gtd review-batch: "+resolved.Rel, func() error {
+		if err := os.MkdirAll(filepath.Dir(resolved.Path), 0o755); err != nil {
+			return err
+		}
+		return os.WriteFile(resolved.Path, []byte(rendered), 0o644)
+	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}

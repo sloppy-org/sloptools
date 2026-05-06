@@ -411,7 +411,9 @@ func cmdBrainGTDUpdate(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	if err := os.WriteFile(resolved.Path, []byte(rendered), 0o644); err != nil {
+	if err := brain.WithGitCommit(cfg, brain.Sphere(*sphere), "brain gtd update: "+resolved.Rel, func() error {
+		return os.WriteFile(resolved.Path, []byte(rendered), 0o644)
+	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}

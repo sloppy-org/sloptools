@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -30,6 +31,96 @@ func writeMeetingsSourcesWithNextcloud(t *testing.T, root, meetingsRoot, baseURL
 		t.Fatalf("write sources: %v", err)
 	}
 	return path
+}
+
+func writeMCPBrainConfig(t *testing.T, root string) string {
+	t.Helper()
+	path := filepath.Join(root, "vaults.toml")
+	body := `[[vault]]
+sphere = "work"
+root = "` + filepath.ToSlash(filepath.Join(root, "work")) + `"
+brain = "brain"
+
+[[vault]]
+sphere = "private"
+root = "` + filepath.ToSlash(filepath.Join(root, "private")) + `"
+brain = "brain"
+`
+	writeMCPBrainFile(t, path, body)
+	initMCPBrainGit(t, filepath.Join(root, "work", "brain"), filepath.Join(root, "work-brain.git"))
+	initMCPBrainGit(t, filepath.Join(root, "private", "brain"), filepath.Join(root, "private-brain.git"))
+	return path
+}
+
+func writeMCPBrainFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	commitMCPBrainFileIfTracked(t, path)
+}
+
+func initMCPBrainGit(t *testing.T, workTree, remote string) {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	if err := os.MkdirAll(workTree, 0o755); err != nil {
+		t.Fatalf("mkdir git worktree: %v", err)
+	}
+	runMCPGit(t, "", "init", "--bare", remote)
+	runMCPGit(t, "", "init", "-q", "-b", "main", workTree)
+	runMCPGit(t, workTree, "config", "user.email", "test@example.invalid")
+	runMCPGit(t, workTree, "config", "user.name", "sloptools test")
+	runMCPGit(t, workTree, "commit", "-q", "--allow-empty", "-m", "init")
+	runMCPGit(t, workTree, "remote", "add", "origin", remote)
+	runMCPGit(t, workTree, "push", "-q", "-u", "origin", "main")
+}
+
+func commitMCPBrainFileIfTracked(t *testing.T, path string) {
+	t.Helper()
+	dir := filepath.Dir(path)
+	cmd := exec.Command("git", "-C", dir, "rev-parse", "--show-toplevel")
+	out, err := cmd.Output()
+	if err != nil {
+		return
+	}
+	root := strings.TrimSpace(string(out))
+	if root == "" {
+		return
+	}
+	runMCPGit(t, root, "add", path)
+	status := outputMCPGit(t, root, "diff", "--cached", "--name-only")
+	if strings.TrimSpace(status) == "" {
+		return
+	}
+	runMCPGit(t, root, "commit", "-q", "-m", "test fixture")
+	runMCPGit(t, root, "push", "-q")
+}
+
+func runMCPGit(t *testing.T, workTree string, args ...string) {
+	t.Helper()
+	cmdArgs := args
+	if workTree != "" {
+		cmdArgs = append([]string{"-C", workTree}, args...)
+	}
+	cmd := exec.Command("git", cmdArgs...)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", cmdArgs, err, strings.TrimSpace(string(out)))
+	}
+}
+
+func outputMCPGit(t *testing.T, workTree string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", workTree}, args...)...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, strings.TrimSpace(string(out)))
+	}
+	return string(out)
 }
 
 type fakeNextcloudShareClient struct {

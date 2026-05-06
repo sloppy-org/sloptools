@@ -52,9 +52,20 @@ func cmdBrainPeopleMonthlyIndex(args []string) int {
 		fmt.Fprintf(os.Stderr, "unknown vault %q\n", *sphere)
 		return 1
 	}
-	res, err := brainpeople.WriteMonthlyIndexes(vault.BrainRoot(), *dryRun)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+	var res brainpeople.Result
+	run := func() error {
+		var err error
+		res, err = brainpeople.WriteMonthlyIndexes(vault.BrainRoot(), *dryRun)
+		return err
+	}
+	var runErr error
+	if *dryRun {
+		runErr = run()
+	} else {
+		runErr = brain.WithGitCommit(cfg, brain.Sphere(*sphere), "brain people monthly-index", run)
+	}
+	if runErr != nil {
+		fmt.Fprintln(os.Stderr, runErr)
 		return 1
 	}
 	return printBrainJSON(map[string]interface{}{
