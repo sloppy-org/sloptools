@@ -227,6 +227,35 @@ Exports a calendar event as an RFC5545 iCalendar payload. Required: `account_id`
 
 Queries free/busy windows for participants. Required: `account_id`. Optional: `participants` (list of email addresses), `start`, `until`. Google Calendar uses freeBusy.query; EWS uses FreeBusyRequest; ICS returns `capability_unsupported`.
 
+## Inbox tools
+
+Inbox tools are the two-phase capture backend. They list and classify source
+items first, then acknowledge the source only after a canonical target exists.
+
+### `inbox.source_list`
+
+Lists configured capture sources and pending counts. Google Tasks INBOX and
+bare files directly inside vault `INBOX` folders are active. Subdirectories of
+file INBOX folders are ignored unless explicitly targeted by a future source.
+
+### `inbox.item_list`
+
+Lists items in one capture source without mutating them. For file inboxes this
+returns only regular files directly inside `INBOX`; directories and nested files
+are skipped.
+
+### `inbox.item_plan`
+
+Classifies one source item and returns a proposed sphere, kind, target, source
+binding, and acknowledge action. It does not mutate the source.
+
+### `inbox.item_ack`
+
+Acknowledges one source item after the caller supplies a validated
+`target_ref`. Google Tasks items are completed. File inbox items require a
+vault-relative `target_path` outside `INBOX`; the tool moves the file there and
+refuses to overwrite existing files.
+
 ## Tasks tools
 
 ### `task_list_list`

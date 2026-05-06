@@ -173,6 +173,8 @@ func (s *Server) callContactTool(_, name string, args map[string]interface{}) to
 
 func (s *Server) callAuxTool(_, name string, args map[string]interface{}) toolDispatchResult {
 	switch name {
+	case "inbox.source_list", "inbox.item_list", "inbox.item_plan", "inbox.item_ack":
+		return handledTool(s.dispatchInbox(name, args))
 	case "task_list_list", "task_list_create", "task_list_delete", "task_list", "task_get", "task_create", "task_update", "task_complete", "task_delete":
 		return handledTool(s.dispatchTasks(name, args))
 	case "evernote_notebook_list", "evernote_note_search", "evernote_note_get":

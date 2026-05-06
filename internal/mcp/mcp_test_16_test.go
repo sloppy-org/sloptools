@@ -11,6 +11,9 @@ import (
 	"testing"
 
 	"github.com/sloppy-org/sloptools/internal/meetings"
+	"github.com/sloppy-org/sloptools/internal/providerdata"
+	"github.com/sloppy-org/sloptools/internal/store"
+	"github.com/sloppy-org/sloptools/internal/tasks"
 )
 
 func writeMeetingsSourcesWithNextcloud(t *testing.T, root, meetingsRoot, baseURL, localSyncDir string) string {
@@ -121,6 +124,93 @@ func outputMCPGit(t *testing.T, workTree string, args ...string) string {
 		t.Fatalf("git %v: %v\n%s", args, err, strings.TrimSpace(string(out)))
 	}
 	return string(out)
+}
+
+func TestInboxSourceListIncludesGoogleTasksInboxAndBareFileSource(t *testing.T) {
+	tmp := t.TempDir()
+	configPath := writeMCPBrainConfig(t, tmp)
+	writeMCPBrainFile(t, filepath.Join(tmp, "private", "INBOX", "receipt.pdf"), "pdf")
+	if err := os.MkdirAll(filepath.Join(tmp, "private", "INBOX", "special"), 0o755); err != nil {
+		t.Fatalf("mkdir special: %v", err)
+	}
+	writeMCPBrainFile(t, filepath.Join(tmp, "private", "INBOX", "special", "ignored.txt"), "ignored")
+	s, st, _ := newDomainServerForTest(t)
+	s.brainConfigPath = configPath
+	account, err := st.CreateExternalAccount(store.SpherePrivate, store.ExternalProviderGoogleCalendar, "Google", map[string]any{})
+	if err != nil {
+		t.Fatalf("CreateExternalAccount: %v", err)
+	}
+	provider := &fakeTasksProvider{name: "google_tasks", taskLists: []providerdata.TaskList{{ID: "inbox", Name: "INBOX", Primary: true}}, tasksByList: map[string][]providerdata.TaskItem{"inbox": {{ID: "milk", ListID: "inbox", Title: "Milch"}, {ID: "done", ListID: "inbox", Title: "Alt", Completed: true}}}}
+	s.newTasksProvider = func(_ context.Context, got store.ExternalAccount) (tasks.Provider, error) {
+		if got.ID != account.ID {
+			t.Fatalf("account = %d, want %d", got.ID, account.ID)
+		}
+		return provider, nil
+	}
+	got, err := s.callTool("inbox.source_list", map[string]interface{}{"sphere": "private"})
+	if err != nil {
+		t.Fatalf("inbox.source_list: %v", err)
+	}
+	sources := got["sources"].([]map[string]interface{})
+	if got["count"] != 2 || sources[0]["pending_count"] != 1 || sources[1]["pending_count"] != 1 {
+		t.Fatalf("sources = %#v", got)
+	}
+	if sources[1]["id"] != "file:private:INBOX" || sources[1]["mode"] != "active" {
+		t.Fatalf("file source = %#v", sources[1])
+	}
+}
+
+func TestInboxPlansAndAcknowledgesTaskAndFile(t *testing.T) {
+	tmp := t.TempDir()
+	configPath := writeMCPBrainConfig(t, tmp)
+	writeMCPBrainFile(t, filepath.Join(tmp, "private", "INBOX", "receipt.pdf"), "pdf")
+	s, st, _ := newDomainServerForTest(t)
+	s.brainConfigPath = configPath
+	account, err := st.CreateExternalAccount(store.SpherePrivate, store.ExternalProviderGoogleCalendar, "Google", map[string]any{})
+	if err != nil {
+		t.Fatalf("CreateExternalAccount: %v", err)
+	}
+	provider := &fakeTasksProvider{name: "google_tasks", hasCompleter: true, taskLists: []providerdata.TaskList{{ID: "inbox", Name: "INBOX", Primary: true}}, tasksByList: map[string][]providerdata.TaskItem{"inbox": {{ID: "milk", ListID: "inbox", Title: "Milch"}}}, getTaskByID: map[string]providerdata.TaskItem{"milk": {ID: "milk", ListID: "inbox", Title: "Milch"}}}
+	s.newTasksProvider = func(_ context.Context, got store.ExternalAccount) (tasks.Provider, error) {
+		if got.ID != account.ID {
+			t.Fatalf("account = %d, want %d", got.ID, account.ID)
+		}
+		return provider, nil
+	}
+	planned, err := s.callTool("inbox.item_plan", map[string]interface{}{"source_id": "google_tasks:private:1:inbox", "id": "milk"})
+	if err != nil {
+		t.Fatalf("task inbox.item_plan: %v", err)
+	}
+	plan := planned["plan"].(map[string]interface{})
+	if plan["kind"] != "shopping" || plan["language"] != "de" {
+		t.Fatalf("task plan = %#v", plan)
+	}
+	if _, err := s.callTool("inbox.item_ack", map[string]interface{}{"source_id": "google_tasks:private:1:inbox", "id": "milk"}); err == nil {
+		t.Fatal("task ack without target_ref should fail")
+	}
+	if _, err := s.callTool("inbox.item_ack", map[string]interface{}{"source_id": "google_tasks:private:1:inbox", "id": "milk", "target_ref": "brain:private:shopping"}); err != nil {
+		t.Fatalf("task inbox.item_ack: %v", err)
+	}
+	if provider.completeCalls != 1 {
+		t.Fatalf("completeCalls = %d, want 1", provider.completeCalls)
+	}
+	filePlan, err := s.callTool("inbox.item_plan", map[string]interface{}{"source_id": "file:private:INBOX", "id": "receipt.pdf"})
+	if err != nil {
+		t.Fatalf("file inbox.item_plan: %v", err)
+	}
+	if filePlan["plan"].(map[string]interface{})["kind"] != "scan_or_document" {
+		t.Fatalf("file plan = %#v", filePlan)
+	}
+	acked, err := s.callTool("inbox.item_ack", map[string]interface{}{"source_id": "file:private:INBOX", "id": "receipt.pdf", "target_ref": "file:private:Documents/receipt.pdf", "target_path": "Documents/receipt.pdf"})
+	if err != nil {
+		t.Fatalf("file inbox.item_ack: %v", err)
+	}
+	if acked["target_path"] != "Documents/receipt.pdf" {
+		t.Fatalf("file ack = %#v", acked)
+	}
+	if _, err := os.Stat(filepath.Join(tmp, "private", "Documents", "receipt.pdf")); err != nil {
+		t.Fatalf("moved file missing: %v", err)
+	}
 }
 
 type fakeNextcloudShareClient struct {

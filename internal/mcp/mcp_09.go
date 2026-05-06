@@ -11,6 +11,7 @@ import (
 
 	"github.com/sloppy-org/sloptools/internal/contacts"
 	"github.com/sloppy-org/sloptools/internal/groupware"
+	inboxpkg "github.com/sloppy-org/sloptools/internal/mcp/inbox"
 	"github.com/sloppy-org/sloptools/internal/providerdata"
 	"github.com/sloppy-org/sloptools/internal/store"
 )
@@ -340,4 +341,13 @@ func parseContactBirthday(raw string) (time.Time, error) {
 		}
 	}
 	return time.Time{}, fmt.Errorf("birthday %q must be RFC3339 or YYYY-MM-DD", raw)
+}
+
+func (s *Server) dispatchInbox(method string, args map[string]interface{}) (map[string]interface{}, error) {
+	st, err := s.requireStore()
+	if err != nil {
+		return nil, err
+	}
+	handler := inboxpkg.Handler{Store: st, BrainConfigPath: s.brainConfigArg(args), TaskProvider: s.tasksProviderForAccount}
+	return handler.Dispatch(method, args)
 }
