@@ -14,8 +14,15 @@ import (
 const SleepBackendCodex = "codex"
 
 // SleepBackendNone skips the LLM step entirely; the rendered Markdown
-// from the dream report is written verbatim.
+// sleep packet is written verbatim.
 const SleepBackendNone = "none"
+
+// SleepAutonomyFull lets Codex edit the brain directly. Git history is the
+// rollback layer.
+const SleepAutonomyFull = "full"
+
+// SleepAutonomyPlanOnly keeps Codex in read-only mode and writes its report.
+const SleepAutonomyPlanOnly = "plan-only"
 
 // SleepDefaultModel is the Codex model used when --model is not given.
 // Matches the brain-ingest phase 4 convention; see
@@ -25,22 +32,40 @@ const SleepDefaultModel = "gpt-5.5"
 // SleepDefaultBudget is the picker budget used when budget <= 0.
 const SleepDefaultBudget = 20
 
+// SleepDefaultNREMBudget is the maximum consolidation rows included in the
+// NREM replay packet when the caller does not specify a budget.
+const SleepDefaultNREMBudget = 60
+
+// SleepDefaultAutonomy is intentionally autonomous. The brain repo's git
+// history is the review and rollback layer.
+const SleepDefaultAutonomy = SleepAutonomyFull
+
 // SleepReportSubdir is the directory below brain root where the daily
 // sleep report is persisted.
 const SleepReportSubdir = "reports/sleep"
 
+// SleepCodexRequest describes the Codex execution we want. Tests inject a fake.
+type SleepCodexRequest struct {
+	Model     string
+	VaultRoot string // brain git root used as Codex working directory
+	Packet    string
+	Autonomy  string
+}
+
 // CodexExecFn shells out to the Codex CLI. Tests inject a fake.
-type CodexExecFn func(ctx context.Context, model, vaultRoot, packet string) ([]byte, error)
+type CodexExecFn func(ctx context.Context, req SleepCodexRequest) ([]byte, error)
 
 // SleepOpts is the input to RunSleep.
 type SleepOpts struct {
-	Sphere    Sphere
-	Budget    int
-	Backend   string
-	Model     string
-	DryRun    bool
-	Now       time.Time
-	CodexExec CodexExecFn
+	Sphere     Sphere
+	Budget     int
+	NREMBudget int
+	Backend    string
+	Model      string
+	Autonomy   string
+	DryRun     bool
+	Now        time.Time
+	CodexExec  CodexExecFn
 }
 
 // SleepResult is the orchestrator's structured outcome.
@@ -49,11 +74,14 @@ type SleepResult struct {
 	Date             string       `json:"date"`
 	Backend          string       `json:"backend"`
 	Model            string       `json:"model,omitempty"`
+	Autonomy         string       `json:"autonomy"`
 	DryRun           bool         `json:"dry_run"`
 	PruneDigest      string       `json:"prune_digest"`
 	PruneCount       int          `json:"prune_count"`
 	PruneApplied     bool         `json:"prune_applied"`
 	PruneEditedPaths []string     `json:"prune_edited_paths,omitempty"`
+	NREMCount        int          `json:"nrem_count"`
+	RecentCount      int          `json:"recent_count"`
 	Report           *DreamReport `json:"report"`
 	ReportPath       string       `json:"report_path,omitempty"`
 	CodexUsed        bool         `json:"codex_used"`
@@ -61,37 +89,92 @@ type SleepResult struct {
 	GitContextScope  string       `json:"git_context_scope,omitempty"`
 }
 
+type preparedSleepCycle struct {
+	vault  Vault
+	cold   []ColdLink
+	plan   *MovePlan
+	report *DreamReport
+	nrem   []ConsolidateRow
+	recent []string
+	packet string
+}
+
+type sleepPruneOutcome struct {
+	applied     bool
+	editedPaths []string
+}
+
 // RunSleep orchestrates the brain sleep cycle:
-//  1. dream prune-links scan + plan,
-//  2. dream report,
-//  3. render the Markdown packet,
-//  4. optional Codex pass over the packet,
-//  5. write the daily report under <brain>/reports/sleep/<date>.md,
-//  6. apply prune-link rewrites unless dry-run.
+//  1. gather recent git memory,
+//  2. build NREM consolidation candidates,
+//  3. build REM dream candidates,
+//  4. apply mechanical cold-link pruning,
+//  5. let Codex autonomously rewire the vault unless dry-run/backend=none,
+//  6. write a sleep report under <brain>/reports/sleep/<date>.md.
 func RunSleep(cfg *Config, opts SleepOpts) (*SleepResult, error) {
+	backend, model, autonomy, err := normalizeSleepOpts(&opts)
+	if err != nil {
+		return nil, err
+	}
+	prep, err := prepareSleepCycle(cfg, opts, autonomy)
+	if err != nil {
+		return nil, err
+	}
+	prune, err := applySleepPrune(cfg, opts, prep)
+	if err != nil {
+		return nil, err
+	}
+	finalMarkdown, codexUsed, err := runSleepCodex(opts, backend, model, autonomy, prep)
+	if err != nil {
+		return nil, err
+	}
+	reportPath, err := writeSleepReport(prep.vault, opts.Now, opts.DryRun, finalMarkdown)
+	if err != nil {
+		return nil, err
+	}
+	return newSleepResult(opts, backend, model, autonomy, prep, prune, reportPath, codexUsed), nil
+}
+
+func normalizeSleepOpts(opts *SleepOpts) (string, string, string, error) {
 	if opts.Now.IsZero() {
 		opts.Now = time.Now()
 	}
 	if opts.Budget <= 0 {
 		opts.Budget = SleepDefaultBudget
 	}
+	if opts.NREMBudget <= 0 {
+		opts.NREMBudget = SleepDefaultNREMBudget
+	}
 	backend := strings.TrimSpace(strings.ToLower(opts.Backend))
 	if backend == "" {
 		backend = SleepBackendCodex
 	}
 	if backend != SleepBackendCodex && backend != SleepBackendNone {
-		return nil, fmt.Errorf("unknown sleep backend: %s", opts.Backend)
+		return "", "", "", fmt.Errorf("unknown sleep backend: %s", opts.Backend)
+	}
+	autonomy := strings.TrimSpace(strings.ToLower(opts.Autonomy))
+	if autonomy == "" {
+		autonomy = SleepDefaultAutonomy
+	}
+	if autonomy != SleepAutonomyFull && autonomy != SleepAutonomyPlanOnly {
+		return "", "", "", fmt.Errorf("unknown sleep autonomy: %s", opts.Autonomy)
 	}
 	model := strings.TrimSpace(opts.Model)
-	if backend == SleepBackendCodex && model == "" {
+	if backend == SleepBackendCodex && !opts.DryRun {
+		if model == "" {
+			model = SleepDefaultModel
+		}
+	} else if backend == SleepBackendCodex && model == "" {
 		model = SleepDefaultModel
 	}
+	return backend, model, autonomy, nil
+}
 
+func prepareSleepCycle(cfg *Config, opts SleepOpts, autonomy string) (*preparedSleepCycle, error) {
 	vault, err := cfgVault(cfg, opts.Sphere)
 	if err != nil {
 		return nil, err
 	}
-
 	cold, err := DreamPruneLinksScan(cfg, opts.Sphere)
 	if err != nil {
 		return nil, fmt.Errorf("prune scan: %w", err)
@@ -100,133 +183,103 @@ func RunSleep(cfg *Config, opts SleepOpts) (*SleepResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("prune plan: %w", err)
 	}
-
 	report, err := DreamReportRun(cfg, opts.Sphere, opts.Budget)
 	if err != nil {
 		return nil, fmt.Errorf("dream report: %w", err)
 	}
 	attachDreamGitContext(report, vault, opts.Now)
-
-	packet := renderSleepPacket(report, plan, cold, vault.Sphere, opts.Now, report.GitContext)
-
-	// Apply prune-links BEFORE the codex pass. Codex may rewrite notes
-	// (e.g. promote prose mentions to wikilinks) and any such edit
-	// invalidates the prune-plan digest. Pruning first means codex sees
-	// the already-pruned vault and any wikilink work it does is additive.
-	pruneApplied := false
-	var pruneEditedPaths []string
-	if !opts.DryRun && len(cold) > 0 {
-		summary, err := DreamPruneLinksApply(cfg, opts.Sphere, plan.Digest)
-		if err != nil {
-			return nil, fmt.Errorf("prune apply: %w", err)
-		}
-		pruneApplied = true
-		pruneEditedPaths = summary.EditedPaths
+	nrem, err := ConsolidatePlan(cfg, opts.Sphere)
+	if err != nil {
+		return nil, fmt.Errorf("nrem consolidate plan: %w", err)
 	}
+	recent := recentBrainMemory(vault, opts.Now)
+	nrem = prioritizeSleepNREM(nrem, recent, opts.NREMBudget)
+	packet := renderSleepPacket(SleepPacket{
+		Report:      report,
+		PrunePlan:   plan,
+		Cold:        cold,
+		NREM:        nrem,
+		RecentPaths: recent,
+		Sphere:      vault.Sphere,
+		Autonomy:    autonomy,
+		Now:         opts.Now,
+		GitPacket:   report.GitContext,
+	})
+	return &preparedSleepCycle{vault, cold, plan, report, nrem, recent, packet}, nil
+}
 
-	finalMarkdown := packet
-	codexUsed := false
-	if backend == SleepBackendCodex && !opts.DryRun {
-		execFn := opts.CodexExec
-		if execFn == nil {
-			execFn = defaultCodexExec
-		}
-		ctx := context.Background()
-		out, err := execFn(ctx, model, vault.Root, packet)
-		if err != nil {
-			return nil, fmt.Errorf("codex exec: %w", err)
-		}
-		trimmed := strings.TrimRight(string(out), "\n")
-		if trimmed == "" {
-			return nil, fmt.Errorf("codex returned empty output")
-		}
-		finalMarkdown = trimmed + "\n"
-		codexUsed = true
+func applySleepPrune(cfg *Config, opts SleepOpts, prep *preparedSleepCycle) (sleepPruneOutcome, error) {
+	if opts.DryRun || len(prep.cold) == 0 {
+		return sleepPruneOutcome{}, nil
 	}
-
-	reportPath := sleepReportPath(vault, opts.Now)
-	if !opts.DryRun {
-		if err := os.MkdirAll(filepath.Dir(reportPath), 0o755); err != nil {
-			return nil, fmt.Errorf("mkdir report dir: %w", err)
-		}
-		if err := os.WriteFile(reportPath, []byte(finalMarkdown), 0o644); err != nil {
-			return nil, fmt.Errorf("write report: %w", err)
-		}
-	} else {
-		reportPath = ""
+	summary, err := DreamPruneLinksApply(cfg, opts.Sphere, prep.plan.Digest)
+	if err != nil {
+		return sleepPruneOutcome{}, fmt.Errorf("prune apply: %w", err)
 	}
+	return sleepPruneOutcome{applied: true, editedPaths: summary.EditedPaths}, nil
+}
 
+func runSleepCodex(opts SleepOpts, backend, model, autonomy string, prep *preparedSleepCycle) (string, bool, error) {
+	if backend != SleepBackendCodex || opts.DryRun {
+		return prep.packet, false, nil
+	}
+	execFn := opts.CodexExec
+	if execFn == nil {
+		execFn = defaultCodexExec
+	}
+	out, err := execFn(context.Background(), SleepCodexRequest{
+		Model:     model,
+		VaultRoot: prep.vault.BrainRoot(),
+		Packet:    prep.packet,
+		Autonomy:  autonomy,
+	})
+	if err != nil {
+		return "", false, fmt.Errorf("codex exec: %w", err)
+	}
+	trimmed := strings.TrimRight(string(out), "\n")
+	if trimmed == "" {
+		return "", false, fmt.Errorf("codex returned empty output")
+	}
+	return trimmed + "\n", true, nil
+}
+
+func writeSleepReport(vault Vault, now time.Time, dryRun bool, markdown string) (string, error) {
+	if dryRun {
+		return "", nil
+	}
+	reportPath := sleepReportPath(vault, now)
+	if err := os.MkdirAll(filepath.Dir(reportPath), 0o755); err != nil {
+		return "", fmt.Errorf("mkdir report dir: %w", err)
+	}
+	if err := os.WriteFile(reportPath, []byte(markdown), 0o644); err != nil {
+		return "", fmt.Errorf("write report: %w", err)
+	}
+	return reportPath, nil
+}
+
+func newSleepResult(opts SleepOpts, backend, model, autonomy string, prep *preparedSleepCycle, prune sleepPruneOutcome, reportPath string, codexUsed bool) *SleepResult {
 	res := &SleepResult{
 		Sphere:           opts.Sphere,
 		Date:             opts.Now.Format("2006-01-02"),
 		Backend:          backend,
+		Autonomy:         autonomy,
 		DryRun:           opts.DryRun,
-		PruneDigest:      plan.Digest,
-		PruneCount:       len(cold),
-		PruneApplied:     pruneApplied,
-		PruneEditedPaths: pruneEditedPaths,
-		Report:           report,
+		PruneDigest:      prep.plan.Digest,
+		PruneCount:       len(prep.cold),
+		PruneApplied:     prune.applied,
+		PruneEditedPaths: prune.editedPaths,
+		NREMCount:        len(prep.nrem),
+		RecentCount:      len(prep.recent),
+		Report:           prep.report,
 		ReportPath:       reportPath,
 		CodexUsed:        codexUsed,
-		GitContextUsed:   report.GitContextUsed,
-		GitContextScope:  report.GitContextScope,
+		GitContextUsed:   prep.report.GitContextUsed,
+		GitContextScope:  prep.report.GitContextScope,
 	}
 	if backend == SleepBackendCodex {
 		res.Model = model
 	}
-	return res, nil
-}
-
-// renderSleepPacket builds the deterministic Markdown packet that we hand
-// to Codex (or write verbatim when backend=none).
-func renderSleepPacket(report *DreamReport, plan *MovePlan, cold []ColdLink, sphere Sphere, now time.Time, gitPacket string) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "# Brain sleep report — %s — %s\n\n", sphere, now.Format("2006-01-02"))
-	fmt.Fprintf(&b, "Generated: %s\n\n", now.UTC().Format(time.RFC3339))
-	if strings.TrimSpace(gitPacket) != "" {
-		fmt.Fprintln(&b, "## Recent git context")
-		fmt.Fprintln(&b)
-		fmt.Fprintln(&b, gitPacket)
-		fmt.Fprintln(&b)
-	}
-	fmt.Fprintf(&b, "## Picked topics (%d)\n\n", len(report.Topics))
-	if len(report.Topics) == 0 {
-		fmt.Fprintln(&b, "_(none)_")
-		fmt.Fprintln(&b)
-	} else {
-		for _, t := range report.Topics {
-			fmt.Fprintf(&b, "- %s\n", t)
-		}
-		fmt.Fprintln(&b)
-	}
-	fmt.Fprintln(&b, "## Cold-link prune scan")
-	fmt.Fprintln(&b)
-	fmt.Fprintf(&b, "- count: %d\n", len(cold))
-	fmt.Fprintf(&b, "- digest: %s\n\n", plan.Digest)
-	if len(cold) > 0 {
-		fmt.Fprintln(&b, "| Source | Target | Last touch (days) |")
-		fmt.Fprintln(&b, "|--------|--------|-------------------|")
-		for _, c := range cold {
-			fmt.Fprintf(&b, "| %s | %s | %d |\n", c.Source, c.Target, c.LastTouchDays)
-		}
-		fmt.Fprintln(&b)
-	}
-	fmt.Fprintf(&b, "## Cross-link suggestions (%d)\n\n", len(report.CrossLinks))
-	for _, s := range report.CrossLinks {
-		fmt.Fprintf(&b, "- %s -> %s — %s\n", s.From, s.To, s.Reason)
-	}
-	if len(report.CrossLinks) == 0 {
-		fmt.Fprintln(&b, "_(none)_")
-	}
-	fmt.Fprintln(&b)
-	fmt.Fprintf(&b, "## Cold targets reached from picked notes (%d)\n\n", len(report.Cold))
-	for _, c := range report.Cold {
-		fmt.Fprintf(&b, "- %s -> %s (%d days)\n", c.Source, c.Target, c.LastTouchDays)
-	}
-	if len(report.Cold) == 0 {
-		fmt.Fprintln(&b, "_(none)_")
-	}
-	return b.String()
+	return res
 }
 
 func sleepReportPath(vault Vault, now time.Time) string {
@@ -254,7 +307,10 @@ func sleepReportPath(vault Vault, now time.Time) string {
 // `--skip-git-repo-check` lets the call succeed even when the working
 // directory is not on codex's trusted-dir list (Nextcloud-synced vaults
 // usually are not).
-func defaultCodexExec(ctx context.Context, model, vaultRoot, packet string) ([]byte, error) {
+//
+// `--ask-for-approval never` keeps the sleep run non-interactive. Git history
+// is the rollback layer.
+func defaultCodexExec(ctx context.Context, req SleepCodexRequest) ([]byte, error) {
 	tmp, err := os.CreateTemp("", "sloptools-sleep-codex-*.md")
 	if err != nil {
 		return nil, fmt.Errorf("temp file: %w", err)
@@ -263,14 +319,8 @@ func defaultCodexExec(ctx context.Context, model, vaultRoot, packet string) ([]b
 	_ = tmp.Close()
 	defer os.Remove(tmpPath)
 
-	cmd := exec.CommandContext(ctx, "codex", "exec",
-		"--skip-git-repo-check",
-		"--model", model,
-		"-C", vaultRoot,
-		"--output-last-message", tmpPath,
-		"-",
-	)
-	cmd.Stdin = strings.NewReader(packet)
+	cmd := exec.CommandContext(ctx, "codex", codexExecArgs(req, tmpPath)...)
+	cmd.Stdin = strings.NewReader(req.Packet)
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -281,4 +331,24 @@ func defaultCodexExec(ctx context.Context, model, vaultRoot, packet string) ([]b
 		return nil, fmt.Errorf("codex output: %w", err)
 	}
 	return body, nil
+}
+
+func codexExecArgs(req SleepCodexRequest, outputPath string) []string {
+	return []string{
+		"--ask-for-approval", "never",
+		"exec",
+		"--skip-git-repo-check",
+		"--sandbox", codexSleepSandbox(req.Autonomy),
+		"--model", req.Model,
+		"-C", req.VaultRoot,
+		"--output-last-message", outputPath,
+		"-",
+	}
+}
+
+func codexSleepSandbox(autonomy string) string {
+	if autonomy == SleepAutonomyPlanOnly {
+		return "read-only"
+	}
+	return "workspace-write"
 }

@@ -17,7 +17,9 @@ func cmdBrainSleep(args []string) int {
 	fs := flag.NewFlagSet("brain sleep", flag.ContinueOnError)
 	configPath := fs.String("config", "", "vault config path")
 	sphere := fs.String("sphere", "", "vault sphere: work or private")
-	budget := fs.Int("budget", brain.SleepDefaultBudget, "notes to dream over")
+	budget := fs.Int("budget", brain.SleepDefaultBudget, "REM notes to dream over")
+	nremBudget := fs.Int("nrem-budget", brain.SleepDefaultNREMBudget, "NREM consolidation rows to replay")
+	autonomy := fs.String("autonomy", brain.SleepDefaultAutonomy, "full or plan-only")
 	backend := fs.String("backend", brain.SleepBackendCodex, "codex or none")
 	model := fs.String("model", brain.SleepDefaultModel, "codex model (e.g. gpt-5.5)")
 	dryRun := fs.Bool("dry-run", false, "skip LLM, do not apply prune-links, do not write report file")
@@ -37,11 +39,13 @@ func cmdBrainSleep(args []string) int {
 	run := func() error {
 		var runErr error
 		res, runErr = brain.RunSleep(cfg, brain.SleepOpts{
-			Sphere:  brain.Sphere(*sphere),
-			Budget:  *budget,
-			Backend: *backend,
-			Model:   *model,
-			DryRun:  *dryRun,
+			Sphere:     brain.Sphere(*sphere),
+			Budget:     *budget,
+			NREMBudget: *nremBudget,
+			Backend:    *backend,
+			Model:      *model,
+			Autonomy:   *autonomy,
+			DryRun:     *dryRun,
 		})
 		return runErr
 	}
@@ -53,7 +57,8 @@ func cmdBrainSleep(args []string) int {
 		return printBrainJSON(res)
 	}
 	commitMsg := fmt.Sprintf("brain sleep: %s %s", brain.Sphere(*sphere), time.Now().Format("2006-01-02"))
-	if err := applyIntegrityGate(cfg, brain.Sphere(*sphere), false, commitMsg, run); err != nil {
+	const skipIntegrityGate = true
+	if err := applyIntegrityGate(cfg, brain.Sphere(*sphere), skipIntegrityGate, commitMsg, run); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
