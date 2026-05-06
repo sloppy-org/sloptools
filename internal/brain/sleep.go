@@ -36,6 +36,10 @@ const SleepDefaultBudget = 20
 // NREM replay packet when the caller does not specify a budget.
 const SleepDefaultNREMBudget = 60
 
+// SleepDefaultCoverageBudget bounds the folder coverage prepass in each
+// sleep cycle.
+const SleepDefaultCoverageBudget = 40
+
 // SleepDefaultAutonomy is intentionally autonomous. The brain repo's git
 // history is the review and rollback layer.
 const SleepDefaultAutonomy = SleepAutonomyFull
@@ -57,46 +61,49 @@ type CodexExecFn func(ctx context.Context, req SleepCodexRequest) ([]byte, error
 
 // SleepOpts is the input to RunSleep.
 type SleepOpts struct {
-	Sphere     Sphere
-	Budget     int
-	NREMBudget int
-	Backend    string
-	Model      string
-	Autonomy   string
-	DryRun     bool
-	Now        time.Time
-	CodexExec  CodexExecFn
+	Sphere         Sphere
+	Budget         int
+	NREMBudget     int
+	CoverageBudget int
+	Backend        string
+	Model          string
+	Autonomy       string
+	DryRun         bool
+	Now            time.Time
+	CodexExec      CodexExecFn
 }
 
 // SleepResult is the orchestrator's structured outcome.
 type SleepResult struct {
-	Sphere           Sphere       `json:"sphere"`
-	Date             string       `json:"date"`
-	Backend          string       `json:"backend"`
-	Model            string       `json:"model,omitempty"`
-	Autonomy         string       `json:"autonomy"`
-	DryRun           bool         `json:"dry_run"`
-	PruneDigest      string       `json:"prune_digest"`
-	PruneCount       int          `json:"prune_count"`
-	PruneApplied     bool         `json:"prune_applied"`
-	PruneEditedPaths []string     `json:"prune_edited_paths,omitempty"`
-	NREMCount        int          `json:"nrem_count"`
-	RecentCount      int          `json:"recent_count"`
-	Report           *DreamReport `json:"report"`
-	ReportPath       string       `json:"report_path,omitempty"`
-	CodexUsed        bool         `json:"codex_used"`
-	GitContextUsed   bool         `json:"git_context_used"`
-	GitContextScope  string       `json:"git_context_scope,omitempty"`
+	Sphere           Sphere                `json:"sphere"`
+	Date             string                `json:"date"`
+	Backend          string                `json:"backend"`
+	Model            string                `json:"model,omitempty"`
+	Autonomy         string                `json:"autonomy"`
+	DryRun           bool                  `json:"dry_run"`
+	PruneDigest      string                `json:"prune_digest"`
+	PruneCount       int                   `json:"prune_count"`
+	PruneApplied     bool                  `json:"prune_applied"`
+	PruneEditedPaths []string              `json:"prune_edited_paths,omitempty"`
+	NREMCount        int                   `json:"nrem_count"`
+	RecentCount      int                   `json:"recent_count"`
+	Coverage         FolderCoverageSummary `json:"coverage"`
+	Report           *DreamReport          `json:"report"`
+	ReportPath       string                `json:"report_path,omitempty"`
+	CodexUsed        bool                  `json:"codex_used"`
+	GitContextUsed   bool                  `json:"git_context_used"`
+	GitContextScope  string                `json:"git_context_scope,omitempty"`
 }
 
 type preparedSleepCycle struct {
-	vault  Vault
-	cold   []ColdLink
-	plan   *MovePlan
-	report *DreamReport
-	nrem   []ConsolidateRow
-	recent []string
-	packet string
+	vault    Vault
+	cold     []ColdLink
+	plan     *MovePlan
+	report   *DreamReport
+	nrem     []ConsolidateRow
+	recent   []string
+	coverage FolderCoverageSummary
+	packet   string
 }
 
 type sleepPruneOutcome struct {
@@ -145,6 +152,9 @@ func normalizeSleepOpts(opts *SleepOpts) (string, string, string, error) {
 	if opts.NREMBudget <= 0 {
 		opts.NREMBudget = SleepDefaultNREMBudget
 	}
+	if opts.CoverageBudget <= 0 {
+		opts.CoverageBudget = SleepDefaultCoverageBudget
+	}
 	backend := strings.TrimSpace(strings.ToLower(opts.Backend))
 	if backend == "" {
 		backend = SleepBackendCodex
@@ -175,6 +185,12 @@ func prepareSleepCycle(cfg *Config, opts SleepOpts, autonomy string) (*preparedS
 	if err != nil {
 		return nil, err
 	}
+	coverage, err := SyncFolderCoverage(cfg, opts.Sphere, FolderCoverageOpts{
+		Limit: opts.CoverageBudget, DryRun: opts.DryRun, Now: opts.Now,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("folder coverage: %w", err)
+	}
 	cold, err := DreamPruneLinksScan(cfg, opts.Sphere)
 	if err != nil {
 		return nil, fmt.Errorf("prune scan: %w", err)
@@ -193,6 +209,7 @@ func prepareSleepCycle(cfg *Config, opts SleepOpts, autonomy string) (*preparedS
 		return nil, fmt.Errorf("nrem consolidate plan: %w", err)
 	}
 	recent := recentBrainMemory(vault, opts.Now)
+	recent = mergeRecentPaths(recent, coverageNotePaths(coverage))
 	nrem = prioritizeSleepNREM(nrem, recent, opts.NREMBudget)
 	packet := renderSleepPacket(SleepPacket{
 		Report:      report,
@@ -200,12 +217,13 @@ func prepareSleepCycle(cfg *Config, opts SleepOpts, autonomy string) (*preparedS
 		Cold:        cold,
 		NREM:        nrem,
 		RecentPaths: recent,
+		Coverage:    coverage,
 		Sphere:      vault.Sphere,
 		Autonomy:    autonomy,
 		Now:         opts.Now,
 		GitPacket:   report.GitContext,
 	})
-	return &preparedSleepCycle{vault, cold, plan, report, nrem, recent, packet}, nil
+	return &preparedSleepCycle{vault, cold, plan, report, nrem, recent, coverage, packet}, nil
 }
 
 func applySleepPrune(cfg *Config, opts SleepOpts, prep *preparedSleepCycle) (sleepPruneOutcome, error) {
@@ -270,6 +288,7 @@ func newSleepResult(opts SleepOpts, backend, model, autonomy string, prep *prepa
 		PruneEditedPaths: prune.editedPaths,
 		NREMCount:        len(prep.nrem),
 		RecentCount:      len(prep.recent),
+		Coverage:         prep.coverage,
 		Report:           prep.report,
 		ReportPath:       reportPath,
 		CodexUsed:        codexUsed,

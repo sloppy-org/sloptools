@@ -234,6 +234,7 @@ func TestRunSleepCodexBackendInvokesRunner(t *testing.T) {
 	}
 	for _, want := range []string{
 		"Autonomy: full",
+		"## Folder Coverage Prepass",
 		"## NREM Recent-Prioritized Consolidation Candidates",
 		"## REM Picked Topics",
 		"Run an autonomous brain sleep cycle",

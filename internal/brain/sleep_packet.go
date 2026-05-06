@@ -15,6 +15,7 @@ type SleepPacket struct {
 	Cold        []ColdLink
 	NREM        []ConsolidateRow
 	RecentPaths []string
+	Coverage    FolderCoverageSummary
 	Sphere      Sphere
 	Autonomy    string
 	Now         time.Time
@@ -46,6 +47,29 @@ func prioritizeSleepNREM(rows []ConsolidateRow, recent []string, limit int) []Co
 		return picked[i].Path < picked[j].Path
 	})
 	return limitConsolidateRows(picked, limit)
+}
+
+func mergeRecentPaths(paths []string, extra []string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(paths)+len(extra))
+	for _, path := range append(append([]string(nil), paths...), extra...) {
+		path = filepath.ToSlash(strings.TrimSpace(path))
+		if path == "" || seen[path] {
+			continue
+		}
+		seen[path] = true
+		out = append(out, path)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func coverageNotePaths(summary FolderCoverageSummary) []string {
+	paths := make([]string, 0, len(summary.Items))
+	for _, item := range summary.Items {
+		paths = append(paths, item.NotePath)
+	}
+	return paths
 }
 
 func recentPathSet(paths []string) map[string]bool {
@@ -104,6 +128,7 @@ func renderSleepPacket(packet SleepPacket) string {
 	fmt.Fprintf(&b, "Generated: %s\n", packet.Now.UTC().Format(time.RFC3339))
 	fmt.Fprintf(&b, "Autonomy: %s\n\n", packet.Autonomy)
 	writeSleepMission(&b, packet.Autonomy, packet.Sphere)
+	writeCoverageSection(&b, packet.Coverage)
 	writeRecentSection(&b, packet.RecentPaths, packet.GitPacket)
 	writeNREMSection(&b, packet.NREM)
 	writeREMSection(&b, report)
@@ -125,6 +150,24 @@ func writeSleepMission(b *strings.Builder, autonomy string, sphere Sphere) {
 	fmt.Fprintln(b, "REM means associative graph rewiring: missing semantic links, aliases, contradictions, unsupported claims, stale links, and abstractions across nearby notes.")
 	if autonomy == SleepAutonomyFull {
 		fmt.Fprintln(b, "You may create, edit, merge, retire, delete, and relink brain notes. Git history is the rollback layer; keep each change evidence-backed and local to the packet.")
+	}
+	fmt.Fprintln(b)
+}
+
+func writeCoverageSection(b *strings.Builder, coverage FolderCoverageSummary) {
+	fmt.Fprintf(b, "## Folder Coverage Prepass (%d)\n\n", coverage.Planned)
+	if coverage.Planned == 0 {
+		fmt.Fprintln(b, "_No new or missing source folders detected._")
+		fmt.Fprintln(b)
+		return
+	}
+	fmt.Fprintf(b, "- created folder notes: %d\n", coverage.Created)
+	fmt.Fprintf(b, "- marked missing source folders: %d\n\n", coverage.MarkedMissing)
+	fmt.Fprintln(b, "| Action | Source Folder | Folder Note | Reason |")
+	fmt.Fprintln(b, "|--------|---------------|-------------|--------|")
+	for _, item := range coverage.Items {
+		fmt.Fprintf(b, "| %s | %s | %s | %s |\n",
+			mdCell(item.Action), mdCell(item.SourceFolder), mdCell(item.NotePath), mdCell(item.Reason))
 	}
 	fmt.Fprintln(b)
 }

@@ -19,6 +19,7 @@ func cmdBrainSleep(args []string) int {
 	sphere := fs.String("sphere", "", "vault sphere: work or private")
 	budget := fs.Int("budget", brain.SleepDefaultBudget, "REM notes to dream over")
 	nremBudget := fs.Int("nrem-budget", brain.SleepDefaultNREMBudget, "NREM consolidation rows to replay")
+	coverageBudget := fs.Int("coverage-budget", brain.SleepDefaultCoverageBudget, "folder coverage changes before NREM")
 	autonomy := fs.String("autonomy", brain.SleepDefaultAutonomy, "full or plan-only")
 	backend := fs.String("backend", brain.SleepBackendCodex, "codex or none")
 	model := fs.String("model", brain.SleepDefaultModel, "codex model (e.g. gpt-5.5)")
@@ -39,13 +40,14 @@ func cmdBrainSleep(args []string) int {
 	run := func() error {
 		var runErr error
 		res, runErr = brain.RunSleep(cfg, brain.SleepOpts{
-			Sphere:     brain.Sphere(*sphere),
-			Budget:     *budget,
-			NREMBudget: *nremBudget,
-			Backend:    *backend,
-			Model:      *model,
-			Autonomy:   *autonomy,
-			DryRun:     *dryRun,
+			Sphere:         brain.Sphere(*sphere),
+			Budget:         *budget,
+			NREMBudget:     *nremBudget,
+			CoverageBudget: *coverageBudget,
+			Backend:        *backend,
+			Model:          *model,
+			Autonomy:       *autonomy,
+			DryRun:         *dryRun,
 		})
 		return runErr
 	}
