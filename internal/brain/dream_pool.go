@@ -40,6 +40,8 @@ func walkBrainNotes(vault Vault, accept func(rel string) bool) ([]*dreamNote, ma
 		excludeSet[filepath.Clean(exclude)] = true
 	}
 
+	gitTouch, _ := gitFileTouchMap(brainRoot)
+
 	var ordered []*dreamNote
 	byRel := map[string]*dreamNote{}
 	err := filepath.WalkDir(brainRoot, func(path string, d fs.DirEntry, walkErr error) error {
@@ -87,6 +89,9 @@ func walkBrainNotes(vault Vault, accept func(rel string) bool) ([]*dreamNote, ma
 		}
 		if HasTODOMarkers(note.body) {
 			return nil
+		}
+		if t, ok := gitTouch[brainRelSlash]; ok {
+			note.gitTouch = t
 		}
 		ordered = append(ordered, note)
 		byRel[brainRelSlash] = note

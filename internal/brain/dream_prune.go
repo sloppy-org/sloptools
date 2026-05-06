@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -12,6 +13,7 @@ type DreamPruneApplySummary struct {
 	Sphere      Sphere     `json:"sphere"`
 	Applied     int        `json:"applied"`
 	FilesEdited int        `json:"files_edited"`
+	EditedPaths []string   `json:"edited_paths"`
 	Digest      string     `json:"digest"`
 	Cold        []ColdLink `json:"cold"`
 }
@@ -81,14 +83,22 @@ func DreamPruneLinksApply(cfg *Config, sphere Sphere, confirm string) (*DreamPru
 	if err := applyEdits(cfg, plan.Edits); err != nil {
 		return nil, err
 	}
-	files := map[string]struct{}{}
+	seen := map[string]struct{}{}
+	editedPaths := []string{}
 	for _, edit := range plan.Edits {
-		files[string(edit.Sphere)+"\x00"+edit.Path] = struct{}{}
+		key := string(edit.Sphere) + "\x00" + edit.Path
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		editedPaths = append(editedPaths, edit.Path)
 	}
+	sort.Strings(editedPaths)
 	return &DreamPruneApplySummary{
 		Sphere:      plan.Sphere,
 		Applied:     len(plan.Edits),
-		FilesEdited: len(files),
+		FilesEdited: len(editedPaths),
+		EditedPaths: editedPaths,
 		Digest:      plan.Digest,
 		Cold:        cold,
 	}, nil

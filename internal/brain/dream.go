@@ -12,6 +12,13 @@ import (
 // "cold" for dreaming and prune-links.
 const dreamColdThreshold = 365 * 24 * time.Hour
 
+// dreamRepoAgeFloor guards prune-link scans against false positives in a
+// freshly-initialised brain repo. Filesystem mtimes survive the initial
+// import, so notes with old original mtimes look "cold" even though the
+// repo just started tracking them; we refuse to declare anything cold
+// until the repo itself is at least this old. Mirrors dreamColdThreshold.
+const dreamRepoAgeFloor = dreamColdThreshold
+
 // dreamDefaultBudget is the default note count for DreamReportRun when
 // callers pass budget <= 0.
 const dreamDefaultBudget = 10
@@ -50,6 +57,7 @@ type dreamNote struct {
 	cadence     string
 	lastSeen    string
 	mtime       time.Time
+	gitTouch    time.Time // most recent commit on HEAD touching this file (zero if untracked)
 	body        string
 	wikilinks   []dreamWikilink
 }
@@ -101,10 +109,20 @@ func DreamReportRun(cfg *Config, sphere Sphere, budget int) (*DreamReport, error
 // DreamPruneLinksScan walks every brain note in the sphere and emits a
 // ColdLink for each wikilink whose target is cold and is not protected by
 // strategic=true or focus=core.
+//
+// Safety floor: when the brain git repo's oldest reachable commit is
+// younger than dreamRepoAgeFloor, the scan returns an empty cold list.
+// In a freshly-initialised repo, filesystem mtimes survive from before
+// the import, so without this floor every note with an old original
+// mtime would falsely be called cold and its inbound wikilinks would be
+// pruned in bulk.
 func DreamPruneLinksScan(cfg *Config, sphere Sphere) ([]ColdLink, error) {
 	vault, err := cfgVault(cfg, sphere)
 	if err != nil {
 		return nil, err
+	}
+	if age, ok := gitRepoAge(vault.BrainRoot()); ok && age < dreamRepoAgeFloor {
+		return []ColdLink{}, nil
 	}
 	allNotes, byRel, err := loadAllBrainNotes(vault)
 	if err != nil {
@@ -183,13 +201,24 @@ func collectColdLinks(picked []*dreamNote, byRel map[string]*dreamNote, now time
 	return out
 }
 
+// lastTouchTime is the most recent of: frontmatter last_seen, filesystem
+// mtime, and git's last-touch commit time. Taking the maximum prevents a
+// freshly committed note (whose mtime predates the import) from looking
+// cold just because its on-disk timestamp is old.
 func lastTouchTime(note *dreamNote) time.Time {
+	best := time.Time{}
 	if note.lastSeen != "" {
-		if t, err := parseLastSeen(note.lastSeen); err == nil {
-			return t
+		if t, err := parseLastSeen(note.lastSeen); err == nil && t.After(best) {
+			best = t
 		}
 	}
-	return note.mtime
+	if note.mtime.After(best) {
+		best = note.mtime
+	}
+	if note.gitTouch.After(best) {
+		best = note.gitTouch
+	}
+	return best
 }
 
 func parseLastSeen(raw string) (time.Time, error) {

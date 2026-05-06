@@ -46,19 +46,20 @@ type SleepOpts struct {
 
 // SleepResult is the orchestrator's structured outcome.
 type SleepResult struct {
-	Sphere       Sphere       `json:"sphere"`
-	Date         string       `json:"date"`
-	Backend      string       `json:"backend"`
-	Model        string       `json:"model,omitempty"`
-	DryRun       bool         `json:"dry_run"`
-	PruneDigest  string       `json:"prune_digest"`
-	PruneCount   int          `json:"prune_count"`
-	PruneApplied bool         `json:"prune_applied"`
-	Report       *DreamReport `json:"report"`
-	ReportPath   string       `json:"report_path,omitempty"`
-	CodexUsed    bool         `json:"codex_used"`
-	ActivityPath string       `json:"activity_path,omitempty"`
-	ActivityUsed bool         `json:"activity_used"`
+	Sphere           Sphere       `json:"sphere"`
+	Date             string       `json:"date"`
+	Backend          string       `json:"backend"`
+	Model            string       `json:"model,omitempty"`
+	DryRun           bool         `json:"dry_run"`
+	PruneDigest      string       `json:"prune_digest"`
+	PruneCount       int          `json:"prune_count"`
+	PruneApplied     bool         `json:"prune_applied"`
+	PruneEditedPaths []string     `json:"prune_edited_paths,omitempty"`
+	Report           *DreamReport `json:"report"`
+	ReportPath       string       `json:"report_path,omitempty"`
+	CodexUsed        bool         `json:"codex_used"`
+	ActivityPath     string       `json:"activity_path,omitempty"`
+	ActivityUsed     bool         `json:"activity_used"`
 }
 
 // RunSleep orchestrates the brain sleep cycle:
@@ -127,11 +128,14 @@ func RunSleep(cfg *Config, opts SleepOpts) (*SleepResult, error) {
 	// invalidates the prune-plan digest. Pruning first means codex sees
 	// the already-pruned vault and any wikilink work it does is additive.
 	pruneApplied := false
+	var pruneEditedPaths []string
 	if !opts.DryRun && len(cold) > 0 {
-		if _, err := DreamPruneLinksApply(cfg, opts.Sphere, plan.Digest); err != nil {
+		summary, err := DreamPruneLinksApply(cfg, opts.Sphere, plan.Digest)
+		if err != nil {
 			return nil, fmt.Errorf("prune apply: %w", err)
 		}
 		pruneApplied = true
+		pruneEditedPaths = summary.EditedPaths
 	}
 
 	finalMarkdown := packet
@@ -167,18 +171,19 @@ func RunSleep(cfg *Config, opts SleepOpts) (*SleepResult, error) {
 	}
 
 	res := &SleepResult{
-		Sphere:       opts.Sphere,
-		Date:         opts.Now.Format("2006-01-02"),
-		Backend:      backend,
-		DryRun:       opts.DryRun,
-		PruneDigest:  plan.Digest,
-		PruneCount:   len(cold),
-		PruneApplied: pruneApplied,
-		Report:       report,
-		ReportPath:   reportPath,
-		CodexUsed:    codexUsed,
-		ActivityPath: activityPath,
-		ActivityUsed: activityPacket != "",
+		Sphere:           opts.Sphere,
+		Date:             opts.Now.Format("2006-01-02"),
+		Backend:          backend,
+		DryRun:           opts.DryRun,
+		PruneDigest:      plan.Digest,
+		PruneCount:       len(cold),
+		PruneApplied:     pruneApplied,
+		PruneEditedPaths: pruneEditedPaths,
+		Report:           report,
+		ReportPath:       reportPath,
+		CodexUsed:        codexUsed,
+		ActivityPath:     activityPath,
+		ActivityUsed:     activityPacket != "",
 	}
 	if backend == SleepBackendCodex {
 		res.Model = model
