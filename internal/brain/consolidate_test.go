@@ -198,6 +198,48 @@ func TestConsolidatePlanSortOrder(t *testing.T) {
 	}
 }
 
+func TestConsolidatePlanArchiveRowsHonorSphere(t *testing.T) {
+	cfg := testConfig(t)
+	work := cfg.mustVault(t, SphereWork)
+	priv := cfg.mustVault(t, SpherePrivate)
+	// brain/ must exist in both vaults for ConsolidatePlan to walk them.
+	writeFile(t, filepath.Join(work.Root, "brain", "topics", "anchor.md"), "---\nkind: topic\nfocus: active\n---\n# anchor\n")
+	writeFile(t, filepath.Join(priv.Root, "brain", "topics", "anchor.md"), "---\nkind: topic\nfocus: active\n---\n# anchor\n")
+	// The brain-ingest archive profile lives under each vault root. Stage one
+	// per vault with a row that scores high enough to surface (>= 50 files,
+	// vendored-style hint via .dll extensions).
+	header := "vault\tsphere\tpath\tdepth\tdirect_dirs\tdirect_files\tdescendant_dirs\tdescendant_files\tprocessable_dirs\tprocessable_files\textensions\n"
+	workRow := "nextcloud\twork\tproj/vendor/zlib\t3\t0\t120\t0\t0\t14\t120\t.dll:7\n"
+	privRow := "dropbox\tprivate\tapp/vendor/lib\t3\t0\t120\t0\t0\t14\t120\t.dll:7\n"
+	writeFile(t, filepath.Join(work.Root, "tools", "brain-ingest", "data", "folder", "tree_profile_fast.tsv"), header+workRow+privRow)
+	writeFile(t, filepath.Join(priv.Root, "tools", "brain-ingest", "data", "folder", "tree_profile_fast.tsv"), header+workRow+privRow)
+
+	rows, err := ConsolidatePlan(cfg, SphereWork)
+	if err != nil {
+		t.Fatalf("ConsolidatePlan(work): %v", err)
+	}
+	for _, row := range rows {
+		if row.Outcome != OutcomeArchive {
+			continue
+		}
+		if strings.HasPrefix(row.Path, "app/") {
+			t.Fatalf("private archive row leaked into work plan: %+v", row)
+		}
+	}
+	rows, err = ConsolidatePlan(cfg, SpherePrivate)
+	if err != nil {
+		t.Fatalf("ConsolidatePlan(private): %v", err)
+	}
+	for _, row := range rows {
+		if row.Outcome != OutcomeArchive {
+			continue
+		}
+		if strings.HasPrefix(row.Path, "proj/") {
+			t.Fatalf("work archive row leaked into private plan: %+v", row)
+		}
+	}
+}
+
 func TestConsolidatePlanExcludesPersonal(t *testing.T) {
 	cfg := testConfig(t)
 	old := time.Now().AddDate(-2, 0, 0)

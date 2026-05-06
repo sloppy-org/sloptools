@@ -261,8 +261,24 @@ func classifyBackupName(name string) (string, string) {
 	return "", ""
 }
 
+// vcsMarkerNames lists directory and file names whose presence anywhere inside
+// a subtree means the subtree hosts a checkout, sandbox, or repository. Such
+// subtrees must never be flagged "empty" even if their tracked files are
+// hidden behind metadata directories.
+var vcsMarkerNames = map[string]bool{
+	".git":  true,
+	".hg":   true,
+	".svn":  true,
+	".bzr":  true,
+	".jj":   true,
+	".fslckout": true,
+}
+
 // subtreeHasNoFiles reports whether the subtree rooted at root contains zero
-// non-directory entries. Empty subdirectories do not count as "files".
+// non-directory entries and no VCS marker. Empty subdirectories do not count
+// as "files", but a `.git`/`.hg`/`.svn`/etc. anywhere in the tree forces the
+// answer to false: a checkout is meaningful state even when its tip is empty,
+// and `rmdir` would fail on it anyway.
 func subtreeHasNoFiles(root string) (bool, error) {
 	empty := true
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
@@ -271,6 +287,10 @@ func subtreeHasNoFiles(root string) (bool, error) {
 		}
 		if path == root {
 			return nil
+		}
+		if vcsMarkerNames[entry.Name()] {
+			empty = false
+			return filepath.SkipAll
 		}
 		if !entry.IsDir() {
 			empty = false

@@ -71,6 +71,7 @@ func cmdBrainDreamPruneLinks(args []string) int {
 	sphere := fs.String("sphere", "", "vault sphere")
 	mode := fs.String("mode", "scan", "scan or apply")
 	confirm := fs.String("confirm", "", "digest from a fresh scan; required for --mode apply")
+	skipGate := fs.Bool("no-validate-after", false, "skip the post-apply integrity gate")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -86,7 +87,7 @@ func cmdBrainDreamPruneLinks(args []string) int {
 			fmt.Fprintln(os.Stderr, "--confirm is required for --mode apply")
 			return 2
 		}
-		return runDreamPruneLinksApply(*configPath, *sphere, *confirm)
+		return runDreamPruneLinksApply(*configPath, *sphere, *confirm, *skipGate)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown --mode: %s\n", *mode)
 		return 2
@@ -117,14 +118,18 @@ func runDreamPruneLinksScan(configPath, sphere string) int {
 	})
 }
 
-func runDreamPruneLinksApply(configPath, sphere, confirm string) int {
+func runDreamPruneLinksApply(configPath, sphere, confirm string, skipGate bool) int {
 	cfg, err := brain.LoadConfig(configPath)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	summary, err := brain.DreamPruneLinksApply(cfg, brain.Sphere(sphere), confirm)
-	if err != nil {
+	var summary interface{}
+	if err := applyIntegrityGate(cfg, brain.Sphere(sphere), skipGate, func() error {
+		out, applyErr := brain.DreamPruneLinksApply(cfg, brain.Sphere(sphere), confirm)
+		summary = out
+		return applyErr
+	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}

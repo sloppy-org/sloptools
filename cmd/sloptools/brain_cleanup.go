@@ -26,6 +26,7 @@ func cmdBrainCleanupDeadDirs(args []string) int {
 	includeLinked := fs.Bool("include-linked", false, "apply candidates with confidence=medium too")
 	reasons := fs.String("reasons", "", "comma-separated reason filter (svn,pycache,node-modules,empty,old-with-live-sibling,bak-with-live-sibling)")
 	excludePrefixes := fs.String("exclude-prefix", "", "comma-separated path prefixes to exclude")
+	skipGate := fs.Bool("no-validate-after", false, "skip the post-apply integrity gate")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -44,7 +45,7 @@ func cmdBrainCleanupDeadDirs(args []string) int {
 	case "", "scan":
 		return runCleanupScan(cfg, brain.Sphere(*sphere), reasonSet, excludeList)
 	case "apply":
-		return runCleanupApply(cfg, brain.Sphere(*sphere), strings.TrimSpace(*confirm), *maxApply, *includeLinked, reasonSet, excludeList)
+		return runCleanupApply(cfg, brain.Sphere(*sphere), strings.TrimSpace(*confirm), *maxApply, *includeLinked, reasonSet, excludeList, *skipGate)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown mode: %s\n", *mode)
 		return 2
@@ -124,7 +125,7 @@ func runCleanupScan(cfg *brain.Config, sphere brain.Sphere, reasonSet map[string
 	})
 }
 
-func runCleanupApply(cfg *brain.Config, sphere brain.Sphere, confirm string, maxApply int, includeLinked bool, reasonSet map[string]bool, excludePrefixes []string) int {
+func runCleanupApply(cfg *brain.Config, sphere brain.Sphere, confirm string, maxApply int, includeLinked bool, reasonSet map[string]bool, excludePrefixes []string, skipGate bool) int {
 	if confirm == "" {
 		fmt.Fprintln(os.Stderr, "--confirm is required for --mode apply")
 		return 2
@@ -143,6 +144,14 @@ func runCleanupApply(cfg *brain.Config, sphere brain.Sphere, confirm string, max
 	if digest != confirm {
 		fmt.Fprintf(os.Stderr, "candidate digest changed since scan: have %s, got %s\n", digest, confirm)
 		return 1
+	}
+	var before brain.IntegrityReport
+	if !skipGate {
+		before, err = brain.IntegrityScan(cfg, sphere)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "integrity scan (before): %v\n", err)
+			return 1
+		}
 	}
 	encoder := json.NewEncoder(os.Stdout)
 	applied, skipped, failed := 0, 0, 0
@@ -195,6 +204,20 @@ func runCleanupApply(cfg *brain.Config, sphere brain.Sphere, confirm string, max
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
+	}
+	if !skipGate && applied > 0 {
+		after, scanErr := brain.IntegrityScan(cfg, sphere)
+		if scanErr != nil {
+			fmt.Fprintf(os.Stderr, "integrity scan (after): %v\n", scanErr)
+			return 1
+		}
+		reg := brain.CompareIntegrity(before, after)
+		if reg.IsRegression() {
+			emitIntegrityRegression(reg)
+			fmt.Fprintf(os.Stderr, "integrity gate: cleanup introduced %d new broken link(s), %d new issue(s)\n",
+				reg.NewBrokenLinks, reg.NewIssues)
+			return 1
+		}
 	}
 	if failed > 0 {
 		return 1

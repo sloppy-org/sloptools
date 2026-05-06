@@ -18,6 +18,7 @@ func cmdBrainMove(args []string) int {
 	dryRun := fs.Bool("dry-run", false, "print the move plan without applying")
 	apply := fs.Bool("apply", false, "apply the move (requires --confirm)")
 	confirm := fs.String("confirm", "", "plan digest from a prior --dry-run")
+	skipGate := fs.Bool("no-validate-after", false, "skip the post-apply integrity gate (bulk runners only)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -50,7 +51,9 @@ func cmdBrainMove(args []string) int {
 	if !*apply {
 		return printBrainJSON(plan)
 	}
-	if err := brain.ApplyMove(cfg, plan, *confirm); err != nil {
+	if err := applyIntegrityGate(cfg, brain.Sphere(*sphere), *skipGate, func() error {
+		return brain.ApplyMove(cfg, plan, *confirm)
+	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}

@@ -212,6 +212,30 @@ func TestCleanupDeadDirsScanFlagsEmptyAtDepthButNotTopLevel(t *testing.T) {
 	}
 }
 
+func TestCleanupDeadDirsScanTreatsGitCheckoutAsNonEmpty(t *testing.T) {
+	cfg, work := cleanupVault(t)
+	// Live siblings so the walker reaches code/.
+	writeIn(t, work, "brain/index.md", "---\nkind: note\n---\n")
+	writeIn(t, work, "code/active/main.go", "package main")
+	// Sandbox checkout: only metadata, no tracked working files yet. The
+	// pre-fix empty-detector flagged this as `empty` and apply rmdir then
+	// failed because .git/HEAD was actually present.
+	mkdirIn(t, work, "code/checkout/.git/refs/heads")
+	writeIn(t, work, "code/checkout/.git/HEAD", "ref: refs/heads/main\n")
+	mkdirIn(t, work, "code/hg-checkout/.hg/store")
+	writeIn(t, work, "code/hg-checkout/.hg/hgrc", "[paths]\n")
+
+	got, err := CleanupDeadDirsScan(cfg, SphereWork)
+	if err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	for _, c := range got {
+		if c.Path == "code/checkout" || c.Path == "code/hg-checkout" {
+			t.Fatalf("VCS checkout flagged as %s: %+v", c.Reason, c)
+		}
+	}
+}
+
 func TestCleanupDeadDirsScanSkipsPersonalSubtree(t *testing.T) {
 	cfg, work := cleanupVault(t)
 	mkdirIn(t, work, "personal/secrets/.svn")

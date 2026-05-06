@@ -603,16 +603,40 @@ func archiveRows(cfg *Config, sphere Sphere) []ConsolidateRow {
 	return rows
 }
 
+// archiveVaultFilter maps a brain sphere to the `vault` column value used in
+// the brain-ingest profile TSV. Empty string means no filter, which would
+// bleed cross-sphere rows; we only return that for unknown spheres.
+func archiveVaultFilter(sphere Sphere) string {
+	switch sphere {
+	case SphereWork:
+		return "nextcloud"
+	case SpherePrivate:
+		return "dropbox"
+	}
+	return ""
+}
+
 func loadArchiveCandidates(cfg *Config, sphere Sphere) []ArchiveCandidate {
 	root := archiveProfileRoot(cfg, sphere)
 	if root == "" {
 		return nil
 	}
-	rows, err := ArchiveCandidates(root, "", 0)
+	filter := archiveVaultFilter(sphere)
+	if filter == "" {
+		return nil
+	}
+	rows, err := ArchiveCandidates(root, filter, 0)
 	if err != nil {
 		return nil
 	}
-	return rows
+	out := rows[:0]
+	for _, row := range rows {
+		if row.Vault != filter {
+			continue
+		}
+		out = append(out, row)
+	}
+	return out
 }
 
 func archiveProfileRoot(cfg *Config, sphere Sphere) string {

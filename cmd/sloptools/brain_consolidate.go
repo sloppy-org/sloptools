@@ -107,6 +107,7 @@ func cmdBrainConsolidateApply(args []string) int {
 	dryRun := fs.Bool("dry-run", false, "print merge plan without applying")
 	apply := fs.Bool("apply", false, "apply merge after manual conflict resolution")
 	confirm := fs.String("confirm", "", "digest from dry-run plan")
+	skipGate := fs.Bool("no-validate-after", false, "skip the post-apply integrity gate")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -139,7 +140,9 @@ func cmdBrainConsolidateApply(args []string) int {
 		fmt.Fprintln(os.Stderr, "--confirm is required for --apply")
 		return 2
 	}
-	if err := applyConsolidateMerge(cfg, brain.Sphere(*sphere), plan, *confirm); err != nil {
+	if err := applyIntegrityGate(cfg, brain.Sphere(*sphere), *skipGate, func() error {
+		return applyConsolidateMerge(cfg, brain.Sphere(*sphere), plan, *confirm)
+	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
@@ -183,6 +186,7 @@ func cmdBrainConsolidatePruneStubs(args []string) int {
 	configPath := fs.String("config", "", "vault config path")
 	sphere := fs.String("sphere", "", "vault sphere")
 	apply := fs.Bool("apply", false, "delete stale stubs (default is dry-run)")
+	skipGate := fs.Bool("no-validate-after", false, "skip the post-apply integrity gate")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -203,8 +207,12 @@ func cmdBrainConsolidatePruneStubs(args []string) int {
 	if !*apply {
 		return printBrainJSON(map[string]interface{}{"sphere": *sphere, "stubs": stubs, "count": len(stubs)})
 	}
-	deleted, err := pruneRetiredStubs(cfg, brain.Sphere(*sphere), stubs)
-	if err != nil {
+	var deleted []string
+	if err := applyIntegrityGate(cfg, brain.Sphere(*sphere), *skipGate, func() error {
+		out, pruneErr := pruneRetiredStubs(cfg, brain.Sphere(*sphere), stubs)
+		deleted = out
+		return pruneErr
+	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
