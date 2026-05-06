@@ -7,7 +7,9 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/sloppy-org/sloptools/internal/brain"
 )
@@ -155,6 +157,19 @@ func runCleanupApply(cfg *brain.Config, sphere brain.Sphere, confirm string, max
 			emitApplyEvent(encoder, candidate, "skipped", "max reached")
 			continue
 		}
+		// Fast path: scan already verified zero inbound links across both
+		// vaults. PlanMove's cross-vault scan would do nothing useful and
+		// costs several seconds per call. Delete directly and log.
+		if candidate.Inbound == 0 {
+			if err := fastDeleteCandidate(cfg, candidate); err != nil {
+				failed++
+				emitApplyEvent(encoder, candidate, "error", err.Error())
+				continue
+			}
+			applied++
+			emitApplyEvent(encoder, candidate, "ok", "")
+			continue
+		}
 		plan, err := brain.PlanMove(cfg, candidate.Sphere, candidate.Path, cleanupDeleteTarget)
 		if err != nil {
 			failed++
@@ -185,6 +200,46 @@ func runCleanupApply(cfg *brain.Config, sphere brain.Sphere, confirm string, max
 		return 1
 	}
 	return 0
+}
+
+// fastDeleteCandidate removes a dead directory whose scan-time inbound count
+// was zero. Defends in depth: refuses paths inside personal/ and refuses
+// protected brain areas (commitments/gtd/glossary).
+func fastDeleteCandidate(cfg *brain.Config, candidate brain.DeadDirCandidate) error {
+	rel := filepath.ToSlash(filepath.Clean(candidate.Path))
+	if rel == "personal" || strings.HasPrefix(rel, "personal/") {
+		return fmt.Errorf("refusing path inside personal/: %s", rel)
+	}
+	if brain.IsProtectedPath(rel) {
+		return fmt.Errorf("refusing protected brain path: %s", rel)
+	}
+	vault, ok := cfg.Vault(candidate.Sphere)
+	if !ok {
+		return fmt.Errorf("unknown vault sphere: %s", candidate.Sphere)
+	}
+	abs := filepath.Join(vault.Root, filepath.FromSlash(rel))
+	if err := os.RemoveAll(abs); err != nil {
+		return fmt.Errorf("remove %q: %w", rel, err)
+	}
+	return appendCleanupArchivalLog(vault.Root, rel, candidate.Reason)
+}
+
+func appendCleanupArchivalLog(vaultRoot, rel, reason string) error {
+	logPath := filepath.Join(vaultRoot, "brain", "generated", "archival-log.md")
+	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
+		return fmt.Errorf("ensure log dir: %w", err)
+	}
+	line := fmt.Sprintf("%s  delete  %s  (cleanup-dead-dirs: %s)\n",
+		time.Now().UTC().Format("2006-01-02"), rel, reason)
+	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return fmt.Errorf("open archival log: %w", err)
+	}
+	defer f.Close()
+	if _, err := f.WriteString(line); err != nil {
+		return fmt.Errorf("write archival log: %w", err)
+	}
+	return nil
 }
 
 func cleanupApplicable(candidate brain.DeadDirCandidate, includeLinked bool) bool {
