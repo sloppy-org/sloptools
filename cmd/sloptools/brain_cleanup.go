@@ -22,9 +22,13 @@ func cmdBrainCleanupDeadDirs(args []string) int {
 	confirm := fs.String("confirm", "", "candidate-list digest required for --mode apply")
 	maxApply := fs.Int("max", 25, "maximum candidates to apply per run")
 	includeLinked := fs.Bool("include-linked", false, "apply candidates with confidence=medium too")
+	reasons := fs.String("reasons", "", "comma-separated reason filter (svn,pycache,node-modules,empty,old-with-live-sibling,bak-with-live-sibling)")
+	excludePrefixes := fs.String("exclude-prefix", "", "comma-separated path prefixes to exclude")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
+	reasonSet := parseCSVSet(*reasons)
+	excludeList := parseCSVList(*excludePrefixes)
 	if strings.TrimSpace(*sphere) == "" {
 		fmt.Fprintln(os.Stderr, "--sphere is required")
 		return 2
@@ -36,21 +40,75 @@ func cmdBrainCleanupDeadDirs(args []string) int {
 	}
 	switch strings.ToLower(strings.TrimSpace(*mode)) {
 	case "", "scan":
-		return runCleanupScan(cfg, brain.Sphere(*sphere))
+		return runCleanupScan(cfg, brain.Sphere(*sphere), reasonSet, excludeList)
 	case "apply":
-		return runCleanupApply(cfg, brain.Sphere(*sphere), strings.TrimSpace(*confirm), *maxApply, *includeLinked)
+		return runCleanupApply(cfg, brain.Sphere(*sphere), strings.TrimSpace(*confirm), *maxApply, *includeLinked, reasonSet, excludeList)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown mode: %s\n", *mode)
 		return 2
 	}
 }
 
-func runCleanupScan(cfg *brain.Config, sphere brain.Sphere) int {
-	candidates, err := brain.CleanupDeadDirsScan(cfg, sphere)
+func parseCSVSet(raw string) map[string]bool {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	out := map[string]bool{}
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			out[part] = true
+		}
+	}
+	return out
+}
+
+func parseCSVList(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	var out []string
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
+}
+
+func candidateAccepted(c brain.DeadDirCandidate, reasonSet map[string]bool, excludePrefixes []string) bool {
+	if reasonSet != nil && !reasonSet[c.Reason] {
+		return false
+	}
+	for _, prefix := range excludePrefixes {
+		if c.Path == prefix || strings.HasPrefix(c.Path, prefix+"/") {
+			return false
+		}
+	}
+	return true
+}
+
+func filterCandidates(in []brain.DeadDirCandidate, reasonSet map[string]bool, excludePrefixes []string) []brain.DeadDirCandidate {
+	if reasonSet == nil && len(excludePrefixes) == 0 {
+		return in
+	}
+	out := make([]brain.DeadDirCandidate, 0, len(in))
+	for _, c := range in {
+		if candidateAccepted(c, reasonSet, excludePrefixes) {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+func runCleanupScan(cfg *brain.Config, sphere brain.Sphere, reasonSet map[string]bool, excludePrefixes []string) int {
+	all, err := brain.CleanupDeadDirsScan(cfg, sphere)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
+	candidates := filterCandidates(all, reasonSet, excludePrefixes)
 	digest, err := candidatesDigest(candidates)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -64,16 +122,17 @@ func runCleanupScan(cfg *brain.Config, sphere brain.Sphere) int {
 	})
 }
 
-func runCleanupApply(cfg *brain.Config, sphere brain.Sphere, confirm string, maxApply int, includeLinked bool) int {
+func runCleanupApply(cfg *brain.Config, sphere brain.Sphere, confirm string, maxApply int, includeLinked bool, reasonSet map[string]bool, excludePrefixes []string) int {
 	if confirm == "" {
 		fmt.Fprintln(os.Stderr, "--confirm is required for --mode apply")
 		return 2
 	}
-	candidates, err := brain.CleanupDeadDirsScan(cfg, sphere)
+	all, err := brain.CleanupDeadDirsScan(cfg, sphere)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
+	candidates := filterCandidates(all, reasonSet, excludePrefixes)
 	digest, err := candidatesDigest(candidates)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
