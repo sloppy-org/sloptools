@@ -39,6 +39,7 @@ type SleepOpts struct {
 	Backend   string
 	Model     string
 	DryRun    bool
+	Activity  bool
 	Now       time.Time
 	CodexExec CodexExecFn
 }
@@ -56,6 +57,8 @@ type SleepResult struct {
 	Report       *DreamReport `json:"report"`
 	ReportPath   string       `json:"report_path,omitempty"`
 	CodexUsed    bool         `json:"codex_used"`
+	ActivityPath string       `json:"activity_path,omitempty"`
+	ActivityUsed bool         `json:"activity_used"`
 }
 
 // RunSleep orchestrates the brain sleep cycle:
@@ -103,7 +106,34 @@ func RunSleep(cfg *Config, opts SleepOpts) (*SleepResult, error) {
 		return nil, fmt.Errorf("dream report: %w", err)
 	}
 
-	packet := renderSleepPacket(report, plan, cold, vault.Sphere, opts.Now)
+	date := opts.Now.Format("2006-01-02")
+	activityPacket := ""
+	activityPath := ""
+	if opts.Activity {
+		markdown, path, err := ReadActivitySummary(cfg, opts.Sphere, date)
+		activityPath = path
+		if err != nil && !os.IsNotExist(err) {
+			return nil, fmt.Errorf("read activity summary: %w", err)
+		}
+		if err == nil {
+			activityPacket = RenderActivitySleepPacket(markdown)
+		}
+	}
+
+	packet := renderSleepPacket(report, plan, cold, vault.Sphere, opts.Now, activityPacket)
+
+	// Apply prune-links BEFORE the codex pass. Codex may rewrite notes
+	// (e.g. promote prose mentions to wikilinks) and any such edit
+	// invalidates the prune-plan digest. Pruning first means codex sees
+	// the already-pruned vault and any wikilink work it does is additive.
+	pruneApplied := false
+	if !opts.DryRun && len(cold) > 0 {
+		if _, err := DreamPruneLinksApply(cfg, opts.Sphere, plan.Digest); err != nil {
+			return nil, fmt.Errorf("prune apply: %w", err)
+		}
+		pruneApplied = true
+	}
+
 	finalMarkdown := packet
 	codexUsed := false
 	if backend == SleepBackendCodex && !opts.DryRun {
@@ -136,14 +166,6 @@ func RunSleep(cfg *Config, opts SleepOpts) (*SleepResult, error) {
 		reportPath = ""
 	}
 
-	pruneApplied := false
-	if !opts.DryRun && len(cold) > 0 {
-		if _, err := DreamPruneLinksApply(cfg, opts.Sphere, plan.Digest); err != nil {
-			return nil, fmt.Errorf("prune apply: %w", err)
-		}
-		pruneApplied = true
-	}
-
 	res := &SleepResult{
 		Sphere:       opts.Sphere,
 		Date:         opts.Now.Format("2006-01-02"),
@@ -155,6 +177,8 @@ func RunSleep(cfg *Config, opts SleepOpts) (*SleepResult, error) {
 		Report:       report,
 		ReportPath:   reportPath,
 		CodexUsed:    codexUsed,
+		ActivityPath: activityPath,
+		ActivityUsed: activityPacket != "",
 	}
 	if backend == SleepBackendCodex {
 		res.Model = model
@@ -164,10 +188,16 @@ func RunSleep(cfg *Config, opts SleepOpts) (*SleepResult, error) {
 
 // renderSleepPacket builds the deterministic Markdown packet that we hand
 // to Codex (or write verbatim when backend=none).
-func renderSleepPacket(report *DreamReport, plan *MovePlan, cold []ColdLink, sphere Sphere, now time.Time) string {
+func renderSleepPacket(report *DreamReport, plan *MovePlan, cold []ColdLink, sphere Sphere, now time.Time, activityPacket string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Brain sleep report — %s — %s\n\n", sphere, now.Format("2006-01-02"))
 	fmt.Fprintf(&b, "Generated: %s\n\n", now.UTC().Format(time.RFC3339))
+	if strings.TrimSpace(activityPacket) != "" {
+		fmt.Fprintln(&b, "## Activity focus")
+		fmt.Fprintln(&b)
+		fmt.Fprintln(&b, activityPacket)
+		fmt.Fprintln(&b)
+	}
 	fmt.Fprintf(&b, "## Picked topics (%d)\n\n", len(report.Topics))
 	if len(report.Topics) == 0 {
 		fmt.Fprintln(&b, "_(none)_")
@@ -209,10 +239,39 @@ func renderSleepPacket(report *DreamReport, plan *MovePlan, cold []ColdLink, sph
 }
 
 // defaultCodexExec runs `codex exec --model <model> -C <vault-root>` with
-// the packet on stdin and the LLM-rewritten Markdown on stdout.
+// the packet on stdin and reads only the final assistant message back via
+// `--output-last-message <tempfile>` (the default codex stdout mixes the
+// session metadata, replayed user/assistant turns, and a token-count
+// footer, none of which we want in the persisted sleep report).
+//
+// `--skip-git-repo-check` lets the call succeed even when the working
+// directory is not on codex's trusted-dir list (Nextcloud-synced vaults
+// usually are not).
 func defaultCodexExec(ctx context.Context, model, vaultRoot, packet string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, "codex", "exec", "--model", model, "-C", vaultRoot, "-")
+	tmp, err := os.CreateTemp("", "sloptools-sleep-codex-*.md")
+	if err != nil {
+		return nil, fmt.Errorf("temp file: %w", err)
+	}
+	tmpPath := tmp.Name()
+	_ = tmp.Close()
+	defer os.Remove(tmpPath)
+
+	cmd := exec.CommandContext(ctx, "codex", "exec",
+		"--skip-git-repo-check",
+		"--model", model,
+		"-C", vaultRoot,
+		"--output-last-message", tmpPath,
+		"-",
+	)
 	cmd.Stdin = strings.NewReader(packet)
+	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
-	return cmd.Output()
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("codex exec run: %w", err)
+	}
+	body, err := os.ReadFile(tmpPath)
+	if err != nil {
+		return nil, fmt.Errorf("codex output: %w", err)
+	}
+	return body, nil
 }
