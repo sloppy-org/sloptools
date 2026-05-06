@@ -125,7 +125,7 @@ func runDreamPruneLinksApply(configPath, sphere, confirm string, skipGate bool) 
 		return 1
 	}
 	var summary interface{}
-	if err := applyIntegrityGate(cfg, brain.Sphere(sphere), skipGate, func() error {
+	if err := applyIntegrityGate(cfg, brain.Sphere(sphere), skipGate, "brain dream prune-links", func() error {
 		out, applyErr := brain.DreamPruneLinksApply(cfg, brain.Sphere(sphere), confirm)
 		summary = out
 		return applyErr

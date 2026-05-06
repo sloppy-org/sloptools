@@ -218,6 +218,7 @@ func runCleanupApply(cfg *brain.Config, sphere brain.Sphere, confirm string, max
 				reg.NewBrokenLinks, reg.NewIssues)
 			return 1
 		}
+		brainAutoCommit(cfg, sphere, fmt.Sprintf("brain cleanup-dead-dirs: %d dir(s) removed", applied))
 	}
 	if failed > 0 {
 		return 1

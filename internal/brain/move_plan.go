@@ -563,13 +563,14 @@ func canonicalDigest(plan *MovePlan) string {
 		return inner[i].OldText < inner[j].OldText
 	})
 	payload := struct {
-		Sphere Sphere     `json:"sphere"`
-		From   string     `json:"from"`
-		To     string     `json:"to"`
-		Files  []FileMove `json:"files"`
-		Edits  []LinkEdit `json:"edits"`
-		Inner  []LinkEdit `json:"inner"`
-	}{plan.Sphere, plan.From, plan.To, files, edits, inner}
+		Sphere      Sphere     `json:"sphere"`
+		From        string     `json:"from"`
+		To          string     `json:"to"`
+		MergeTarget string     `json:"merge_target"`
+		Files       []FileMove `json:"files"`
+		Edits       []LinkEdit `json:"edits"`
+		Inner       []LinkEdit `json:"inner"`
+	}{plan.Sphere, plan.From, plan.To, plan.MergeTarget, files, edits, inner}
 	buf, err := json.Marshal(payload)
 	if err != nil {
 		return ""

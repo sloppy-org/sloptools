@@ -140,7 +140,8 @@ func cmdBrainConsolidateApply(args []string) int {
 		fmt.Fprintln(os.Stderr, "--confirm is required for --apply")
 		return 2
 	}
-	if err := applyIntegrityGate(cfg, brain.Sphere(*sphere), *skipGate, func() error {
+	commitMsg := fmt.Sprintf("brain consolidate: merged %s into %s", plan.Loser, plan.Survivor)
+	if err := applyIntegrityGate(cfg, brain.Sphere(*sphere), *skipGate, commitMsg, func() error {
 		return applyConsolidateMerge(cfg, brain.Sphere(*sphere), plan, *confirm)
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -208,7 +209,7 @@ func cmdBrainConsolidatePruneStubs(args []string) int {
 		return printBrainJSON(map[string]interface{}{"sphere": *sphere, "stubs": stubs, "count": len(stubs)})
 	}
 	var deleted []string
-	if err := applyIntegrityGate(cfg, brain.Sphere(*sphere), *skipGate, func() error {
+	if err := applyIntegrityGate(cfg, brain.Sphere(*sphere), *skipGate, "brain consolidate prune-stubs", func() error {
 		out, pruneErr := pruneRetiredStubs(cfg, brain.Sphere(*sphere), stubs)
 		deleted = out
 		return pruneErr

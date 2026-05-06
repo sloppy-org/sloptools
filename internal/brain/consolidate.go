@@ -107,20 +107,12 @@ func PrepareMerge(cfg *Config, sphere Sphere, loser, survivor string) (*MergePla
 		YAML:     mergedYAML,
 		Body:     mergedBody,
 	}
-	linkPlan, err := PlanMove(cfg, sphere, loserResolved.Rel, retiredDestination(loserResolved.Rel, time.Now()))
+	linkPlan, err := PlanMerge(cfg, sphere, loserResolved.Rel, survivorResolved.Rel)
 	if err != nil {
-		return nil, fmt.Errorf("plan retired move: %w", err)
+		return nil, fmt.Errorf("plan merge link rewrite: %w", err)
 	}
 	plan.LinkPlan = linkPlan
 	return plan, nil
-}
-
-// retiredDestination computes the brain/generated/retired/<YYYY-MM>/<rel> path.
-func retiredDestination(rel string, now time.Time) string {
-	clean := filepath.ToSlash(rel)
-	clean = strings.TrimPrefix(clean, "brain/")
-	bucket := now.Format("2006-01")
-	return filepath.ToSlash(filepath.Join("brain", "generated", "retired", bucket, clean))
 }
 
 // scanBrain walks the vault once and builds the in-memory link graph.
@@ -242,6 +234,9 @@ func rooted(path, prefix string) bool {
 }
 
 // orphanRows detects unreferenced notes per the note-retirement convention.
+// Brain history is preserved by the brain repo's git log; the proposed action
+// is a hard delete (Apply via `brain move --to /dev/null`), not a redirect
+// stub.
 func orphanRows(scan *brainScan, sphere Sphere, now time.Time) []ConsolidateRow {
 	cutoff := now.AddDate(-1, 0, 0)
 	var rows []ConsolidateRow
@@ -259,7 +254,7 @@ func orphanRows(scan *brainScan, sphere Sphere, now time.Time) []ConsolidateRow 
 			Path:      filepath.ToSlash(info.source.Rel),
 			Score:     ageDays,
 			Rationale: "orphan, focus=" + emptyDefault(info.focus, "(unset)"),
-			Proposed:  retiredDestination(info.source.Rel, now),
+			Proposed:  nullDestination,
 		})
 	}
 	return rows

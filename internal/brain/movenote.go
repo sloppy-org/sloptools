@@ -85,6 +85,62 @@ func PlanMove(cfg *Config, sphere Sphere, from, to string) (*MovePlan, error) {
 	return plan, nil
 }
 
+// PlanMerge produces a plan that deletes the loser file and rewrites every
+// inbound reference (wikilink or relative Markdown link) so it points at
+// survivor instead of being stripped. Used by `brain consolidate apply
+// --merge`. The survivor file is not moved; the caller writes merged
+// content into it before calling ApplyMove.
+//
+// The plan reports To == "/dev/null" so applyFileMoves performs a deletion;
+// MergeTarget records survivor for digest stability and so ApplyMove
+// re-derives via PlanMerge rather than PlanMove.
+func PlanMerge(cfg *Config, sphere Sphere, loser, survivor string) (*MovePlan, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("brain merge: config is nil")
+	}
+	srcVault, ok := cfg.Vault(sphere)
+	if !ok {
+		return nil, &PathError{Kind: ErrorUnknownVault, Sphere: normalizeSphere(sphere)}
+	}
+	loserRel, loserAbs, err := normalizeMoveSide(srcVault, loser, "from")
+	if err != nil {
+		return nil, err
+	}
+	survivorRel, _, err := normalizeMoveSide(srcVault, survivor, "to")
+	if err != nil {
+		return nil, err
+	}
+	if loserRel == survivorRel {
+		return nil, fmt.Errorf("brain merge: loser and survivor resolve to the same path %q", loserRel)
+	}
+	files, err := collectFileMoves(srcVault, loserRel, loserAbs, "", true)
+	if err != nil {
+		return nil, err
+	}
+	if len(files) == 0 {
+		return nil, fmt.Errorf("brain merge: loser %q is empty or missing", loserRel)
+	}
+	movedSet := makeMovedSet(files)
+	// deleting=false here triggers the redirect rewrite path:
+	// every [[loserRel]] is rewritten to [[survivorRel]] instead of being
+	// stripped to plain text.
+	edits, err := collectInboundEdits(cfg, srcVault, loserRel, survivorRel, false, movedSet)
+	if err != nil {
+		return nil, err
+	}
+	plan := &MovePlan{
+		Sphere:      srcVault.Sphere,
+		From:        filepath.ToSlash(loserRel),
+		To:          nullDestination,
+		MergeTarget: filepath.ToSlash(survivorRel),
+		Files:       files,
+		Edits:       edits,
+		Notes:       []string{"merge: redirect inbound links to " + filepath.ToSlash(survivorRel)},
+	}
+	plan.Digest = canonicalDigest(plan)
+	return plan, nil
+}
+
 // ApplyMove executes the plan after re-deriving it from disk and comparing
 // the digest. The caller must pass the digest from the dry-run as confirm.
 func ApplyMove(cfg *Config, plan *MovePlan, confirm string) error {
@@ -94,14 +150,20 @@ func ApplyMove(cfg *Config, plan *MovePlan, confirm string) error {
 	if confirm != plan.Digest {
 		return fmt.Errorf("brain move: confirm digest %q does not match plan digest %q", confirm, plan.Digest)
 	}
-	fresh, err := PlanMove(cfg, plan.Sphere, plan.From, plan.To)
+	var fresh *MovePlan
+	var err error
+	if plan.MergeTarget != "" {
+		fresh, err = PlanMerge(cfg, plan.Sphere, plan.From, plan.MergeTarget)
+	} else {
+		fresh, err = PlanMove(cfg, plan.Sphere, plan.From, plan.To)
+	}
 	if err != nil {
 		return fmt.Errorf("brain move: re-derive plan: %w", err)
 	}
 	if fresh.Digest != plan.Digest {
 		return fmt.Errorf("brain move: plan digest changed since dry-run (have %q, fresh %q)", plan.Digest, fresh.Digest)
 	}
-	if plan.To == nullDestination && strings.Join(fresh.Notes, "\n") != strings.Join(plan.Notes, "\n") {
+	if plan.To == nullDestination && plan.MergeTarget == "" && strings.Join(fresh.Notes, "\n") != strings.Join(plan.Notes, "\n") {
 		return fmt.Errorf("brain move: inbound link warnings changed since dry-run")
 	}
 	vault, ok := cfg.Vault(plan.Sphere)

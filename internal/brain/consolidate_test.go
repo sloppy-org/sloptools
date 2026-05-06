@@ -46,8 +46,8 @@ focus: parked
 	if row.Score < 365 {
 		t.Fatalf("score = %d, want >=365 days", row.Score)
 	}
-	if !strings.HasPrefix(row.Proposed, "brain/generated/retired/") {
-		t.Fatalf("proposed = %q, want retired path", row.Proposed)
+	if row.Proposed != "/dev/null" {
+		t.Fatalf("proposed = %q, want /dev/null (git history covers retention)", row.Proposed)
 	}
 }
 
@@ -304,6 +304,66 @@ Survivor summary.
 	// Aliases must be unioned uniquely without conflict markers.
 	if !strings.Contains(plan.YAML, "Loser") || !strings.Contains(plan.YAML, "Survivor") {
 		t.Fatalf("aliases not unioned: %q", plan.YAML)
+	}
+}
+
+// TestPrepareMergeRedirectsLinksToSurvivor verifies the link-plan rewrites
+// references to [[loser]] as [[survivor]] (not strips them) and that
+// applying the plan deletes the loser file. With the brain repo carrying
+// git history we no longer need a redirect-stub layer under
+// brain/generated/retired/.
+func TestPrepareMergeRedirectsLinksToSurvivor(t *testing.T) {
+	cfg := testConfig(t)
+	now := time.Now()
+	writeBrainNote(t, cfg, SphereWork, "brain/people/loser.md", `---
+kind: human
+display_name: Loser
+status: stale
+---
+# Loser
+
+## Summary
+Loser content.
+`, now)
+	writeBrainNote(t, cfg, SphereWork, "brain/people/survivor.md", `---
+kind: human
+display_name: Survivor
+status: archived
+---
+# Survivor
+
+## Summary
+Survivor content.
+`, now)
+	writeBrainNote(t, cfg, SphereWork, "brain/projects/refers.md", `---
+kind: project
+focus: parked
+---
+# Project
+See [[people/loser]] for context.
+`, now)
+
+	plan, err := PrepareMerge(cfg, SphereWork, "brain/people/loser.md", "brain/people/survivor.md")
+	if err != nil {
+		t.Fatalf("PrepareMerge: %v", err)
+	}
+	if plan.LinkPlan == nil {
+		t.Fatalf("LinkPlan missing")
+	}
+	if plan.LinkPlan.MergeTarget != "brain/people/survivor.md" {
+		t.Fatalf("MergeTarget = %q, want brain/people/survivor.md", plan.LinkPlan.MergeTarget)
+	}
+	if plan.LinkPlan.To != "/dev/null" {
+		t.Fatalf("LinkPlan.To = %q, want /dev/null", plan.LinkPlan.To)
+	}
+	if len(plan.LinkPlan.Edits) == 0 {
+		t.Fatalf("expected redirect edits in link plan; got none")
+	}
+	for _, edit := range plan.LinkPlan.Edits {
+		if !strings.Contains(edit.NewText, "[[people/survivor]]") &&
+			!strings.Contains(edit.NewText, "[[brain/people/survivor]]") {
+			t.Fatalf("edit %q does not redirect to survivor: %+v", edit.Path, edit)
+		}
 	}
 }
 

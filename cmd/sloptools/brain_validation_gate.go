@@ -10,10 +10,12 @@ import (
 
 // applyIntegrityGate snapshots brain integrity before running fn, then again
 // after, and refuses success when the after-state has new broken links or
-// new validation issues. Apply paths run with the gate enabled by default;
-// the caller may pass disable=true (e.g. when already wrapped at a higher
-// level) to skip the second pass and avoid double-walking the vault.
-func applyIntegrityGate(cfg *brain.Config, sphere brain.Sphere, disable bool, fn func() error) error {
+// new validation issues. On success it auto-commits and pushes the brain
+// repo with the supplied commitMessage, which is how every apply leaves a
+// reviewable audit trail in git history. Apply paths run with the gate
+// enabled by default; the caller may pass disable=true (e.g. when already
+// wrapped at a higher level) to skip the post-pass and the auto-commit.
+func applyIntegrityGate(cfg *brain.Config, sphere brain.Sphere, disable bool, commitMessage string, fn func() error) error {
 	if disable {
 		return fn()
 	}
@@ -33,6 +35,9 @@ func applyIntegrityGate(cfg *brain.Config, sphere brain.Sphere, disable bool, fn
 		emitIntegrityRegression(reg)
 		return fmt.Errorf("integrity gate: apply introduced %d new broken link(s), %d new issue(s)",
 			reg.NewBrokenLinks, reg.NewIssues)
+	}
+	if commitMessage != "" {
+		brainAutoCommit(cfg, sphere, commitMessage)
 	}
 	return nil
 }

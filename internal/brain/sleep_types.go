@@ -7,15 +7,21 @@ package brain
 // MovePlan describes a planned move and the link rewrites it implies across
 // every configured vault. Plan is canonicalized and digested so that an
 // apply step can refuse to run if the world changed since the dry-run.
+//
+// MergeTarget is set only by PlanMerge. When set, the plan deletes the
+// loser file (To == "/dev/null") and rewrites every inbound `[[loser]]`
+// reference to `[[survivor]]` instead of stripping the wikilink. ApplyMove
+// dispatches to PlanMerge for re-derivation when MergeTarget is non-empty.
 type MovePlan struct {
-	Sphere Sphere     `json:"sphere"`
-	From   string     `json:"from"`            // vault-relative source
-	To     string     `json:"to"`              // vault-relative dest; "/dev/null" means delete
-	Files  []FileMove `json:"files"`           // files/dirs that move
-	Edits  []LinkEdit `json:"edits"`           // wikilink/markdown rewrites in non-moved files
-	Inner  []LinkEdit `json:"inner_edits"`     // relative-link rewrites inside moved files
-	Digest string     `json:"digest"`          // sha256 over canonicalized (Files,Edits,Inner)
-	Notes  []string   `json:"notes,omitempty"` // warnings: inbound links to a delete, etc
+	Sphere      Sphere     `json:"sphere"`
+	From        string     `json:"from"`                  // vault-relative source
+	To          string     `json:"to"`                    // vault-relative dest; "/dev/null" means delete
+	MergeTarget string     `json:"merge_target,omitempty"` // consolidate redirect target (loser->survivor)
+	Files       []FileMove `json:"files"`                  // files/dirs that move
+	Edits       []LinkEdit `json:"edits"`                  // wikilink/markdown rewrites in non-moved files
+	Inner       []LinkEdit `json:"inner_edits"`            // relative-link rewrites inside moved files
+	Digest      string     `json:"digest"`                 // sha256 over canonicalized (Files,Edits,Inner)
+	Notes       []string   `json:"notes,omitempty"`        // warnings: inbound links to a delete, etc
 }
 
 // LinkEdit is a single line edit to apply.

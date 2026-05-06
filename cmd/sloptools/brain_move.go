@@ -51,7 +51,8 @@ func cmdBrainMove(args []string) int {
 	if !*apply {
 		return printBrainJSON(plan)
 	}
-	if err := applyIntegrityGate(cfg, brain.Sphere(*sphere), *skipGate, func() error {
+	commitMsg := fmt.Sprintf("brain move: %s -> %s", plan.From, plan.To)
+	if err := applyIntegrityGate(cfg, brain.Sphere(*sphere), *skipGate, commitMsg, func() error {
 		return brain.ApplyMove(cfg, plan, *confirm)
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, err)

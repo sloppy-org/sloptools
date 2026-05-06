@@ -259,13 +259,18 @@ func writeArchivalLog(vault Vault, plan *MovePlan) error {
 	}
 	action := "move"
 	switch {
+	case plan.MergeTarget != "":
+		action = "merge"
 	case plan.To == nullDestination:
 		action = "delete"
 	case strings.HasPrefix(plan.To, "archive/") || strings.Contains(plan.To, "/archive/"):
 		action = "archive"
 	}
 	dest := plan.To
-	if dest == nullDestination {
+	switch {
+	case plan.MergeTarget != "":
+		dest = "(merged into " + plan.MergeTarget + ")"
+	case dest == nullDestination:
 		dest = "(deleted)"
 	}
 	row := fmt.Sprintf("%s  %s  %s  -> %s  (digest %s)\n",
