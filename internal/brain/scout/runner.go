@@ -26,16 +26,20 @@ type RunOpts struct {
 	DryRun    bool
 }
 
-// RunReport summarises the scout pass.
+// RunReport summarises the scout pass. Candidates is the number of
+// picks fed in (deterministic picker output); Written is the number of
+// evidence reports actually produced (zero in dry-run, can be smaller
+// than Candidates when the ledger guard or backend skips a pick).
 type RunReport struct {
-	RunID       string         `json:"run_id"`
-	StartedAt   time.Time      `json:"started_at"`
-	EndedAt     time.Time      `json:"ended_at"`
-	Picked      int            `json:"picked"`
-	ReportsDir  string         `json:"reports_dir"`
-	Reports     []ReportEntry  `json:"reports"`
-	Skipped     int            `json:"skipped"`
-	Errors      []string       `json:"errors,omitempty"`
+	RunID      string        `json:"run_id"`
+	StartedAt  time.Time     `json:"started_at"`
+	EndedAt    time.Time     `json:"ended_at"`
+	Candidates int           `json:"candidates"`
+	Written    int           `json:"written"`
+	ReportsDir string        `json:"reports_dir"`
+	Reports    []ReportEntry `json:"reports"`
+	Skipped    int           `json:"skipped"`
+	Errors     []string      `json:"errors,omitempty"`
 }
 
 // ReportEntry records one entity report's outcome.
@@ -95,6 +99,7 @@ func Run(ctx context.Context, opts RunOpts) (*RunReport, error) {
 		RunID:      opts.RunID,
 		StartedAt:  opts.Now,
 		ReportsDir: dir,
+		Candidates: len(opts.Picks),
 	}
 	for _, p := range opts.Picks {
 		entry := runOnePick(ctx, opts, dir, stagePrompt, p)
@@ -102,7 +107,7 @@ func Run(ctx context.Context, opts RunOpts) (*RunReport, error) {
 			report.Skipped++
 		}
 		if entry.ReportPath != "" {
-			report.Picked++
+			report.Written++
 		}
 		report.Reports = append(report.Reports, entry)
 	}

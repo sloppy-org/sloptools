@@ -157,10 +157,11 @@ type nightReport struct {
 }
 
 type scoutSummary struct {
-	Status   string   `json:"status"`
-	Picked   int      `json:"picked"`
-	Reports  []string `json:"reports,omitempty"`
-	Notes    string   `json:"notes,omitempty"`
+	Status     string   `json:"status"`
+	Candidates int      `json:"candidates"`
+	Written    int      `json:"written"`
+	Reports    []string `json:"reports,omitempty"`
+	Notes      string   `json:"notes,omitempty"`
 }
 
 // runSweepStage runs the deterministic, zero-LLM portion of sleep:
@@ -215,8 +216,8 @@ func runScoutStage(vault brain.Vault, ldg *ledger.Ledger, router *routing.Router
 		return fmt.Errorf("scout pick: %w", err)
 	}
 	report.Scout = &scoutSummary{
-		Status: "ok",
-		Picked: len(picks),
+		Status:     "ok",
+		Candidates: len(picks),
 	}
 	if len(picks) == 0 {
 		report.Scout.Notes = "no stale entities scored"
@@ -236,7 +237,8 @@ func runScoutStage(vault brain.Vault, ldg *ledger.Ledger, router *routing.Router
 		report.Scout.Notes = err.Error()
 		return nil
 	}
-	report.Scout.Picked = res.Picked
+	report.Scout.Candidates = res.Candidates
+	report.Scout.Written = res.Written
 	for _, e := range res.Reports {
 		if e.ReportPath != "" {
 			report.Scout.Reports = append(report.Scout.Reports, e.ReportPath)
