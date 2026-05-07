@@ -102,6 +102,31 @@ func (OpencodeBackend) Run(ctx context.Context, req Request) (Response, error) {
 	}, nil
 }
 
+// opencodeAgentFrontmatter returns the YAML frontmatter prepended to
+// every brain-stage agent file. opencode requires mode: primary so the
+// agent is a top-level conversation owner, and an explicit permission
+// allow so MCP tool calls are not auto-denied — without that, the
+// global permission setting does not propagate to a custom agent and
+// MCP calls silently drop, leaving the model to confabulate sources.
+//
+// We deny `edit` and `bash` so the model cannot route its deliverable
+// through the write / edit / apply_patch tools (the `edit` key covers
+// all three per opencode docs) or shell out. With only MCP and read-
+// only tools left, the rewrite path has nowhere to go but the
+// streaming text channel — which is what parseOpencodeJSON expects.
+func opencodeAgentFrontmatter() string {
+	return strings.Join([]string{
+		"---",
+		"description: brain-night stage agent",
+		"mode: primary",
+		"permission:",
+		"  edit: deny",
+		"  bash: deny",
+		"  '*': allow",
+		"---",
+	}, "\n")
+}
+
 func writeOpencodeAgent(req Request) error {
 	dir := filepath.Join(req.Sandbox.XDGConfigHome, "opencode", "agent")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -111,22 +136,7 @@ func writeOpencodeAgent(req Request) error {
 	if err != nil {
 		return fmt.Errorf("opencode: read role prompt: %w", err)
 	}
-	// opencode requires mode: primary so the agent is a top-level
-	// conversation owner, and an explicit permission allow so MCP tool
-	// calls are not auto-denied. Without these the global `permission:
-	// allow` does not propagate to a custom agent and tool calls silently
-	// drop, leaving the model to confabulate sources. Match the user's
-	// known-working brain-evidence-scout agent shape.
-	full := strings.Join([]string{
-		"---",
-		"description: brain-night stage agent",
-		"mode: primary",
-		"permission:",
-		"  '*': allow",
-		"---",
-		"",
-		string(body),
-	}, "\n")
+	full := opencodeAgentFrontmatter() + "\n" + string(body)
 	return os.WriteFile(filepath.Join(dir, OpencodeAgentName+".md"), []byte(full), 0o600)
 }
 
@@ -185,19 +195,26 @@ func mcpForOpencode(servers MCPConfig) map[string]any {
 	return out
 }
 
-// parseOpencodeJSON extracts the assistant message and best-effort
-// token counts from opencode --format json output. The opencode
-// streaming events look like:
+// parseOpencodeJSON extracts the assistant's deliverable from opencode
+// --format json output. The model can emit the deliverable two ways:
 //
-//	{"type":"step_start", ...}
-//	{"type":"text", "part":{"type":"text", "text":"..."} ...}
-//	{"type":"step_finish", "part":{...,"tokens":{...}} ...}
+//  1. As streaming "text" parts (free-form assistant prose).
+//  2. As a "write" tool call whose part.state.input.content carries the
+//     full file body the model intended to save. opencode/qwen routes
+//     the rewrite through this tool when the prompt nudges it toward a
+//     save action; only inter-tool narration ("Now I have all the
+//     evidence...", "Here's a summary...") arrives as text events, and
+//     concatenating that narration is not the report.
 //
-// We collect every "text" part and trim a wrapping ``` fence the model
-// sometimes emits despite the prompt asking for plain Markdown.
+// When any write tool call carried content, we prefer the last such
+// content (overwrites win on disk). Otherwise we fall back to the
+// concatenated text parts. The wrapping ``` fence is stripped either
+// way. Token counts are scraped from part.tokens or top-level usage.
 func parseOpencodeJSON(raw []byte) (body string, tin, tout int64) {
 	dec := json.NewDecoder(strings.NewReader(string(raw)))
 	var pieces []string
+	var lastWrite string
+	haveWrite := false
 	for dec.More() {
 		var ev map[string]any
 		if err := dec.Decode(&ev); err != nil {
@@ -224,10 +241,51 @@ func parseOpencodeJSON(raw []byte) (body string, tin, tout int64) {
 				tout = int64(v)
 			}
 		}
+		if c, ok := opencodeWriteContent(ev); ok {
+			lastWrite = c
+			haveWrite = true
+		}
 	}
-	body = strings.Join(pieces, "")
-	body = stripFences(strings.TrimSpace(body))
+	if haveWrite {
+		body = strings.TrimSpace(lastWrite)
+	} else {
+		body = strings.TrimSpace(strings.Join(pieces, ""))
+	}
+	body = stripFences(body)
 	return body, tin, tout
+}
+
+// opencodeWriteContent returns the file body the model passed to a
+// "write" tool call, or ("", false) if the event isn't a completed
+// write with a string-typed content field. We deliberately ignore
+// "edit"/apply_patch tool inputs because their input shape is a
+// {oldString, newString} patch, not a full body, and applying patches
+// to reconstruct the on-disk file would force this parser to simulate
+// the filesystem.
+func opencodeWriteContent(ev map[string]any) (string, bool) {
+	if t, _ := ev["type"].(string); t != "tool_use" {
+		return "", false
+	}
+	part, ok := ev["part"].(map[string]any)
+	if !ok {
+		return "", false
+	}
+	if tool, _ := part["tool"].(string); tool != "write" {
+		return "", false
+	}
+	state, ok := part["state"].(map[string]any)
+	if !ok {
+		return "", false
+	}
+	input, ok := state["input"].(map[string]any)
+	if !ok {
+		return "", false
+	}
+	c, _ := input["content"].(string)
+	if c == "" {
+		return "", false
+	}
+	return c, true
 }
 
 // stripFences removes a leading ```{lang}\n and trailing \n``` if present.
