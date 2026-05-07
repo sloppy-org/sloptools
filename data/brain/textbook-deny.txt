@@ -1,0 +1,93 @@
+# Textbook deny-list for the brain night.
+#
+# Every line is one match pattern (case-insensitive substring against the
+# note slug or the note's H1 title). Lines starting with `#` are
+# comments. Empty lines are ignored.
+#
+# Rules:
+#  - A note matched by this list AND with no local anchor
+#    (no link to people/, projects/, institutions/, commitments/,
+#    folders/plasma/, or any locally-defined entity) is a pre-promote
+#    rejection: the candidate is dropped before any LLM is invoked.
+#  - A note matched by this list WITH at least one local anchor is
+#    NEVER archived. The textbook prose may be compressed to a one-line
+#    pointer; every locally-specific fact stays.
+#  - Canonical entity notes (people/, projects/, institutions/) are
+#    NEVER archived for being on this list. The list applies to topic /
+#    glossary / concept notes only.
+#
+# Scope: pure textbook concepts in plasma physics, applied math,
+# numerical methods, and computing infrastructure.
+
+# Plasma physics — equations and equilibrium
+boltzmann-equation
+vlasov-equation
+fokker-planck
+mhd
+ideal-mhd
+grad-shafranov
+plasma-frequency
+debye-length
+larmor-radius
+gyrokinetics
+gyro-orbit
+banana-orbit
+banana-regime
+neoclassical-transport
+collisional-transport
+collisionality
+
+# Plasma physics — instabilities and waves
+alfven-wave
+landau-damping
+ballooning-mode
+tearing-mode
+sawtooth
+elm
+edge-localized-mode
+
+# Numerical methods — time integration
+runge-kutta
+rk4
+adams-bashforth
+leapfrog
+verlet
+symplectic-integrator
+
+# Numerical methods — linear algebra and eigenproblems
+arnoldi-iterations
+lanczos
+gmres
+conjugate-gradient
+krylov
+
+# Numerical methods — discretization
+finite-element
+finite-difference
+finite-volume
+spectral-method
+adaptive-mesh-refinement
+amr
+
+# Hamiltonian / classical mechanics
+hamiltonian-mechanics
+lagrangian-mechanics
+canonical-transformation
+poisson-bracket
+action-angle
+
+# Computing infrastructure
+mpi
+openmp
+cuda
+docker
+kubernetes
+git
+slurm
+
+# Mathematics
+fourier-transform
+laplace-transform
+spherical-harmonics
+bessel-function
+legendre-polynomial
