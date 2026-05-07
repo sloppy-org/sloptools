@@ -41,8 +41,8 @@ func cmdBrainNight(args []string) int {
 	coverageBudget := fs.Int("coverage-budget", brain.SleepDefaultCoverageBudget, "folder coverage changes before NREM")
 	dryRun := fs.Bool("dry-run", false, "skip LLM, do not apply prune-links, do not write report file")
 	brainTOMLPath := fs.String("brain-toml", "", "override brain.toml path (default ~/.config/sloptools/brain.toml)")
-	escalateOnConflict := fs.Bool("escalate-on-conflict", false, "after each bulk-tier scout report, run free opencode self-resolve passes (--self-resolve-passes) and only then escalate to a paid medium-tier reviewer if the classifier still flags the report")
-	selfResolvePasses := fs.Int("self-resolve-passes", 1, "number of free opencode self-resolve passes between the bulk pass and a paid escalation, 0-3 (default 1, only applies with --escalate-on-conflict)")
+	escalateOnConflict := fs.Bool("escalate-on-conflict", true, "after each bulk-tier scout report, run free opencode self-resolve passes (--self-resolve-passes) and only then escalate to a paid medium-tier reviewer if the classifier still flags the report (default true; pass --escalate-on-conflict=false to skip the self-resolve and paid-escalation path)")
+	selfResolvePasses := fs.Int("self-resolve-passes", 1, "number of free opencode self-resolve passes between the bulk pass and a paid escalation, 0-3 (default 1, only applies when --escalate-on-conflict is true)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
