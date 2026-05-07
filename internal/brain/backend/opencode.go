@@ -1,9 +1,11 @@
 package backend
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -57,6 +59,8 @@ func (OpencodeBackend) Run(ctx context.Context, req Request) (Response, error) {
 	args := []string{
 		"run",
 		"--pure",
+		"--print-logs",
+		"--log-level", "WARN",
 		"--agent", OpencodeAgentName,
 		"--model", req.Model,
 		"--variant", string(req.Reasoning),
@@ -71,16 +75,18 @@ func (OpencodeBackend) Run(ctx context.Context, req Request) (Response, error) {
 	cmd.Env = req.Sandbox.Env()
 	cmd.Dir = cwd
 
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = io.MultiWriter(os.Stderr, &stderr)
+
 	start := time.Now()
-	out, err := cmd.Output()
+	err := cmd.Run()
 	wall := time.Since(start)
 	if err != nil {
-		stderr := ""
-		if ee, ok := err.(*exec.ExitError); ok {
-			stderr = string(ee.Stderr)
-		}
-		return Response{}, fmt.Errorf("opencode exec: %w; stderr=%s", err, stderr)
+		return Response{}, fmt.Errorf("opencode exec: %w; stderr=%s", err, stderr.String())
 	}
+	out := stdout.Bytes()
 	body, tin, tout := parseOpencodeJSON(out)
 	if strings.TrimSpace(body) == "" {
 		body = strings.TrimSpace(string(out))
@@ -105,9 +111,18 @@ func writeOpencodeAgent(req Request) error {
 	if err != nil {
 		return fmt.Errorf("opencode: read role prompt: %w", err)
 	}
+	// opencode requires mode: primary so the agent is a top-level
+	// conversation owner, and an explicit permission allow so MCP tool
+	// calls are not auto-denied. Without these the global `permission:
+	// allow` does not propagate to a custom agent and tool calls silently
+	// drop, leaving the model to confabulate sources. Match the user's
+	// known-working brain-evidence-scout agent shape.
 	full := strings.Join([]string{
 		"---",
 		"description: brain-night stage agent",
+		"mode: primary",
+		"permission:",
+		"  '*': allow",
 		"---",
 		"",
 		string(body),

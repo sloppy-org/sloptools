@@ -1,10 +1,12 @@
 package backend
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // Sandbox is a per-call scratch tree that isolates the child CLI from
@@ -105,12 +107,21 @@ func (sb *Sandbox) Cleanup() error {
 }
 
 // Env returns the environment overrides every backend sets when exec'ing
-// its CLI. The slice extends os.Environ().
+// its CLI. The slice extends os.Environ() and merges helpy's mcp.env so
+// HELPY_SEARXNG_BASE_URL, BW_SESSION, and similar runtime secrets reach
+// the helpy MCP child. Without this the child reports
+// "HELPY_SEARXNG_BASE_URL is not configured" and silently fails web
+// search calls.
 func (sb *Sandbox) Env() []string {
 	overrides := map[string]string{
 		"HOME":            sb.HomeDir,
 		"CODEX_HOME":      sb.CodexHome,
 		"XDG_CONFIG_HOME": sb.XDGConfigHome,
+	}
+	if realHome, err := os.UserHomeDir(); err == nil {
+		for k, v := range readDotEnv(filepath.Join(realHome, ".config", "helpy", "mcp.env")) {
+			overrides[k] = v
+		}
 	}
 	keep := os.Environ()
 	out := make([]string, 0, len(keep)+len(overrides))
@@ -132,6 +143,39 @@ func (sb *Sandbox) Env() []string {
 	return out
 }
 
+// readDotEnv parses a `KEY=VALUE` env file. Comments (`#`) and blank
+// lines are skipped; values may be unquoted, single-quoted, or
+// double-quoted. Returns an empty map on any read or parse error so a
+// missing file is not fatal.
+func readDotEnv(path string) map[string]string {
+	out := map[string]string{}
+	f, err := os.Open(path)
+	if err != nil {
+		return out
+	}
+	defer f.Close()
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		eq := strings.Index(line, "=")
+		if eq <= 0 {
+			continue
+		}
+		key := strings.TrimSpace(line[:eq])
+		val := strings.TrimSpace(line[eq+1:])
+		if len(val) >= 2 {
+			if (val[0] == '"' && val[len(val)-1] == '"') || (val[0] == '\'' && val[len(val)-1] == '\'') {
+				val = val[1 : len(val)-1]
+			}
+		}
+		out[key] = val
+	}
+	return out
+}
+
 // preserveCredentials symlinks the user's auth files into the scratch
 // HOME so OAuth and CLI sessions still work. Symlinks (not copies) keep
 // secrets outside the scratch tree.
@@ -147,6 +191,15 @@ func (sb *Sandbox) preserveCredentials() error {
 		{filepath.Join(realHome, ".codex"), filepath.Join(sb.HomeDir, ".codex-real")},
 		{filepath.Join(realHome, ".local", "share", "opencode"), filepath.Join(sb.HomeDir, ".local", "share", "opencode")},
 		{filepath.Join(realHome, ".config", "opencode", "auth.json"), filepath.Join(sb.XDGConfigHome, "opencode", "auth.json")},
+		// MCP server config dirs: sloptools needs vaults.toml + sources.toml
+		// + brain.toml; helpy needs nextcloud.json + tugonline_session.json
+		// + sap_session.json. Without these, the MCP children fail with
+		// "no such file" or "session not configured" the moment they boot.
+		{filepath.Join(realHome, ".config", "sloptools"), filepath.Join(sb.XDGConfigHome, "sloptools")},
+		{filepath.Join(realHome, ".config", "helpy"), filepath.Join(sb.XDGConfigHome, "helpy")},
+		// sloptools also looks at ~/.local/share/sloppy for store data;
+		// pass it through so brain_search and friends find the indexes.
+		{filepath.Join(realHome, ".local", "share", "sloppy"), filepath.Join(sb.HomeDir, ".local", "share", "sloppy")},
 	}
 	for _, p := range pairs {
 		if _, err := os.Stat(p.src); err != nil {
