@@ -60,6 +60,59 @@ func V2TriageFixtures() []Fixture {
 				"rejection_class": "duplicate",
 			},
 		},
+		{
+			ID: "fx-tri-adversarial-neort-vs-neutron",
+			Packet: strings.Join([]string{
+				"Candidate entity: a project note titled **NEO-RT** (capital letters, hyphenated).",
+				"",
+				"Evidence in the vault:",
+				"- Five recent meeting notes wikilink `[[projects/NEO-RT]]` (note already exists).",
+				"- Repository `code/sloppy/NEO-RT` is active; commits in the past two weeks by Christopher Albert and collaborators.",
+				"- 'Neutron transport' is a separate textbook concept; do not conflate.",
+				"",
+				"Decide promote / maybe / reject. Return the JSON verdict.",
+			}, "\n"),
+			Expected: map[string]string{
+				"verdict":         "reject",
+				"rejection_class": "duplicate",
+			},
+		},
+		{
+			ID: "fx-tri-adversarial-simple-method-vs-simple-project",
+			Packet: strings.Join([]string{
+				"Candidate entity: a topic note titled **SIMPLE method**.",
+				"",
+				"Evidence in the vault:",
+				"- The token 'SIMPLE' in the Plasma Group always means the SIMPLE orbit code (`brain/projects/SIMPLE.md`).",
+				"- The candidate's body describes Patankar's Semi-Implicit Method for Pressure-Linked Equations from Computational Fluid Dynamics, which has no anchor to Christopher Albert or his Plasma Group.",
+				"- No local references to SIMPLE-project commits, contributors, or runs.",
+				"",
+				"Decide promote / maybe / reject. Return the JSON verdict.",
+			}, "\n"),
+			Expected: map[string]string{
+				"verdict":         "reject",
+				"rejection_class": "textbook",
+			},
+		},
+		{
+			ID: "fx-tri-adversarial-kilca-promote",
+			Packet: strings.Join([]string{
+				"Candidate entity: a project note titled **KiLCA** (Kinetic Linear Code for Alfvén waves).",
+				"",
+				"Evidence in the vault:",
+				"- Two folder notes under `brain/folders/plasma/CODES/KiLCA/` reference the candidate.",
+				"- `brain/people/martin-heyn.md` is the long-term maintainer of KiLCA in the Plasma Group at TU Graz.",
+				"- A meeting note from 2026-04 schedules a KiLCA roadmap review.",
+				"",
+				"Note: 'KiLCA' looks like an acronym but is a canonical Plasma Group code, not a generic killer-app concept.",
+				"",
+				"Decide promote / maybe / reject. Return the JSON verdict.",
+			}, "\n"),
+			Expected: map[string]string{
+				"verdict":         "promote",
+				"rejection_class": "",
+			},
+		},
 	}
 }
 
@@ -212,6 +265,28 @@ func V2CompressFixtures() []Fixture {
 			}, "\n"),
 			Expected: map[string]string{
 				"expected_local_anchors": "[[projects/NEO-RT]],[[topics/1-nu-transport]],[[people/winfried-kernbichler]]",
+			},
+		},
+		{
+			ID: "fx-cp-adversarial-neutron-transport",
+			Packet: strings.Join([]string{
+				"---",
+				"title: Neutron transport",
+				"---",
+				"",
+				"# Neutron transport",
+				"",
+				"Neutron transport theory describes the migration of free neutrons in matter; the linear Boltzmann equation governs the population in phase space.",
+				"Standard reference: Bell and Glasstone, *Nuclear Reactor Theory*. Wikipedia covers the general formalism in detail.",
+				"",
+				"In our group, we use the [[projects/NEO-RT]] code with a banana-regime closure rather than full neutron transport; the historical context is in [[folders/plasma/CODES/NEO-RT]].",
+				"[[people/winfried-kernbichler]] introduced the closure scheme to the group.",
+				"",
+				"## Notes",
+				"- Cross-checked vs Bell-Glasstone in 2024.",
+			}, "\n"),
+			Expected: map[string]string{
+				"expected_local_anchors": "[[projects/NEO-RT]],[[folders/plasma/CODES/NEO-RT]],[[people/winfried-kernbichler]]",
 			},
 		},
 		{
