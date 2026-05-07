@@ -8,6 +8,11 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/sloppy-org/sloptools/internal/brain/backend"
+	"github.com/sloppy-org/sloptools/internal/brain/ledger"
+	"github.com/sloppy-org/sloptools/internal/brain/prompts"
+	"github.com/sloppy-org/sloptools/internal/brain/routing"
 )
 
 // SleepBackendCodex routes the dream review through Codex CLI.
@@ -63,6 +68,13 @@ type SleepCodexRequest struct {
 type CodexExecFn func(ctx context.Context, req SleepCodexRequest) ([]byte, error)
 
 // SleepOpts is the input to RunSleep.
+//
+// Router and Ledger are optional. When Router is non-nil, the sleep
+// judge call is routed through the Backend interface (claude/codex/
+// opencode CLIs in scratch sandboxes) instead of shelling out to codex
+// directly. Backend, Model, and Autonomy still apply, but Backend acts
+// as a hint for the legacy code path; the Router decides the concrete
+// model + reasoning. Ledger is appended to per call when set.
 type SleepOpts struct {
 	Sphere         Sphere
 	Budget         int
@@ -74,6 +86,9 @@ type SleepOpts struct {
 	DryRun         bool
 	Now            time.Time
 	CodexExec      CodexExecFn
+	Router         *routing.Router
+	Ledger         *ledger.Ledger
+	RunID          string
 }
 
 // SleepResult is the orchestrator's structured outcome.
@@ -240,9 +255,12 @@ func applySleepPrune(cfg *Config, opts SleepOpts, prep *preparedSleepCycle) (sle
 	return sleepPruneOutcome{applied: true, editedPaths: summary.EditedPaths}, nil
 }
 
-func runSleepCodex(opts SleepOpts, backend, model, autonomy string, prep *preparedSleepCycle) (string, bool, error) {
-	if backend != SleepBackendCodex || opts.DryRun {
+func runSleepCodex(opts SleepOpts, backendName, model, autonomy string, prep *preparedSleepCycle) (string, bool, error) {
+	if backendName != SleepBackendCodex || opts.DryRun {
 		return prep.packet, false, nil
+	}
+	if opts.Router != nil {
+		return runSleepWithRouter(opts, autonomy, prep)
 	}
 	execFn := opts.CodexExec
 	if execFn == nil {
@@ -262,6 +280,93 @@ func runSleepCodex(opts SleepOpts, backend, model, autonomy string, prep *prepar
 		return "", false, fmt.Errorf("codex returned empty output")
 	}
 	return trimmed + "\n", true, nil
+}
+
+// runSleepWithRouter routes the sleep-judge editorial pass through the
+// Backend interface. The router picks one of {claude, codex, opencode}
+// per the configured tier; the resulting CLI runs under a per-call
+// scratch sandbox with HOME / CODEX_HOME / XDG_CONFIG_HOME isolated and
+// MCP servers (sloppy + helpy, never slopshell) regenerated locally.
+//
+// The vault root is passed as WorkDir so the model can edit canonical
+// Markdown directly under workspace-write sandbox mode (autonomy=full)
+// or read-only (autonomy=plan-only).
+func runSleepWithRouter(opts SleepOpts, autonomy string, prep *preparedSleepCycle) (string, bool, error) {
+	pick, err := opts.Router.Pick(routing.StageSleepJudge)
+	if err != nil {
+		return "", false, fmt.Errorf("sleep route: %w", err)
+	}
+	be, err := backendForPick(pick.BackendID)
+	if err != nil {
+		return "", false, err
+	}
+	runID := opts.RunID
+	if runID == "" {
+		runID = opts.Now.UTC().Format("20060102-150405")
+	}
+	stage := "sleep-judge-" + opts.Now.UTC().Format("150405")
+	promptDir, err := os.MkdirTemp("", "sloptools-sleep-prompts-")
+	if err != nil {
+		return "", false, fmt.Errorf("sleep route: prompt dir: %w", err)
+	}
+	defer os.RemoveAll(promptDir)
+	if _, err := prompts.Extract(promptDir); err != nil {
+		return "", false, fmt.Errorf("sleep route: extract prompts: %w", err)
+	}
+	stagePrompt := filepath.Join(promptDir, "sleep-judge.md")
+	if _, err := os.Stat(stagePrompt); err != nil {
+		stagePrompt = filepath.Join(promptDir, "folder-note.md")
+	}
+	sb, err := backend.NewSandbox(runID, stage, stagePrompt, backend.DefaultMCPConfig())
+	if err != nil {
+		return "", false, fmt.Errorf("sleep route: sandbox: %w", err)
+	}
+	defer sb.Cleanup()
+	req := backend.Request{
+		Stage:            stage,
+		Packet:           prep.packet,
+		SystemPromptPath: sb.SystemPromptIn,
+		Model:            pick.Model,
+		Reasoning:        pick.Reasoning,
+		AllowEdits:       autonomy == SleepAutonomyFull,
+		Sandbox:          sb,
+		WorkDir:          prep.vault.BrainRoot(),
+	}
+	resp, err := be.Run(context.Background(), req)
+	if err != nil {
+		return "", false, fmt.Errorf("sleep route: backend run: %w", err)
+	}
+	if opts.Ledger != nil {
+		_ = opts.Ledger.Append(ledger.Entry{
+			Sphere:    string(opts.Sphere),
+			Stage:     stage,
+			Provider:  pick.Provider,
+			Backend:   pick.BackendID,
+			Model:     pick.Model,
+			TokensIn:  resp.TokensIn,
+			TokensOut: resp.TokensOut,
+			WallMS:    resp.WallMS,
+			CostHint:  resp.CostHint,
+			Extras:    map[string]string{"tier": string(pick.Tier)},
+		})
+	}
+	body := strings.TrimRight(resp.Output, "\n")
+	if body == "" {
+		return "", false, fmt.Errorf("sleep route: empty output")
+	}
+	return body + "\n", true, nil
+}
+
+func backendForPick(id string) (backend.Backend, error) {
+	switch id {
+	case "claude":
+		return backend.ClaudeBackend{}, nil
+	case "codex":
+		return backend.CodexBackend{}, nil
+	case "opencode":
+		return backend.OpencodeBackend{}, nil
+	}
+	return nil, fmt.Errorf("sleep route: unknown backend id %q", id)
 }
 
 func writeSleepReport(vault Vault, now time.Time, dryRun bool, markdown string) (string, error) {
