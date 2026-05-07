@@ -54,11 +54,14 @@ func ProviderLocal() backend.Provider     { return backend.ProviderLocal }
 func ProviderOpenAI() backend.Provider    { return backend.ProviderOpenAI }
 func ProviderAnthropic() backend.Provider { return backend.ProviderAnthropic }
 
-// Cell is one (task, fixture, model) tuple; one CLI invocation.
+// Cell is one (task, fixture, model) tuple; one CLI invocation. With
+// Options.Draws > 1, the same tuple can produce multiple cells with
+// Draw = 1..N for stochastic stability assessment.
 type Cell struct {
 	TaskID    string
 	FixtureID string
 	Model     ModelSpec
+	Draw      int
 	Output    string
 	Score     float64
 	Passes    bool
@@ -103,6 +106,12 @@ type Options struct {
 	// recommendation from the v1 manual re-grade is claude-sonnet-4-6
 	// @ medium.
 	Judge *Judge
+	// Draws is the number of stochastic replicas per (task, fixture,
+	// model) cell. 0 or 1 yields a single draw (the current default).
+	// Larger values fan out and report mean + stdev per cell. Each draw
+	// is a fresh CLI invocation; ledger guard runs per-draw so a partway
+	// saturation skips the remaining draws cleanly.
+	Draws int
 }
 
 // Run executes every (task, fixture, model) cell.
@@ -122,6 +131,9 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 	if opts.RunID == "" {
 		opts.RunID = time.Now().UTC().Format("20060102-150405")
 	}
+	if opts.Draws < 1 {
+		opts.Draws = 1
+	}
 	if err := os.MkdirAll(filepath.Join(opts.OutDir, "raw"), 0o755); err != nil {
 		return nil, fmt.Errorf("bench: mkdir: %w", err)
 	}
@@ -137,9 +149,15 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 		stagePrompt := filepath.Join(opts.PromptDir, task.PromptFile())
 		for _, f := range fixtures {
 			for _, m := range opts.Models {
-				cell := runCell(ctx, opts, task, f, stagePrompt, m)
-				res.Cells = append(res.Cells, cell)
-				_ = saveRaw(opts.OutDir, cell)
+				for d := 1; d <= opts.Draws; d++ {
+					cell := runCell(ctx, opts, task, f, stagePrompt, m)
+					cell.Draw = d
+					res.Cells = append(res.Cells, cell)
+					_ = saveRaw(opts.OutDir, cell)
+					if cell.Skipped && cell.SkipKind == "weekly_cap_exceeded" {
+						break
+					}
+				}
 			}
 		}
 	}

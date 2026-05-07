@@ -30,6 +30,7 @@ func cmdBrainBench(args []string) int {
 	postIssue := fs.Int("post-comment", 0, "post report.md as a comment on this sloptools issue")
 	llmJudge := fs.String("llm-judge", "", "judge model label (e.g. claude-sonnet-4-6 or codex/gpt-5.4-mini); empty disables LLM judge")
 	fixturesFilter := fs.String("fixtures", "", "comma-separated fixture ids to run (default all)")
+	draws := fs.Int("draws", 1, "stochastic replicas per (task, fixture, model) cell (default 1)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -108,6 +109,7 @@ func cmdBrainBench(args []string) int {
 		Ledger:    ldg,
 		Sphere:    *sphere,
 		Judge:     judge,
+		Draws:     *draws,
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
