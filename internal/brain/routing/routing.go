@@ -220,20 +220,37 @@ func (r *Router) applyOpenAIOverride(cfg StageConfig) (Choice, bool) {
 	return Choice{}, false
 }
 
-// DefaultStageConfigs returns the v0.1 stage→tier map informed by the
-// v1 bench evidence. The medium pool round-robins OpenAI gpt-5.4-mini @
-// medium with Anthropic claude-haiku-4-5 @ medium; the hard pool
-// round-robins OpenAI gpt-5.5 @ high with Anthropic claude-sonnet-4-6 @
-// medium. Bulk is always opencode/qwen3.6-35B-A3B. Fallback when all
-// paid providers are saturated is the same bulk choice.
+// DefaultStageConfigs returns the stage→tier map. Evidence and rationale:
 //
-// Per the v1 fx-neort re-grade, the medium tier on technical packets
-// has both gpt-5.4-mini @ medium and claude-haiku-4-5 @ medium at risk
-// of fabricating jargon. Stages that operate on technical packets
-// (compress, scout-derived entity-write) prefer the hard tier
-// directly. This is reflected by giving compress and entity-write the
-// hard tier; sleep-judge and triage stay medium because their packets
-// are pre-rendered Markdown with citations baked in.
+//   - folder-note (bulk): text-only synthesis from attached files; no
+//     external evidence needed; deterministic from inputs. Opencode/qwen.
+//   - scout (bulk): live web + Zotero + TUGonline + vault verification.
+//     The 2026-05-07 first nightly proved opencode/qwen with helpy +
+//     sloppy MCP produces research-grade evidence reports. Bulk only.
+//   - triage (medium): promote/maybe/reject for candidate entities.
+//     STAYS medium until live evidence confirms bulk is sufficient for
+//     this stage's structural-output requirements. The opencode-first
+//     mechanism is available via `scout --escalate-on-conflict`; once
+//     that mechanism has a week of observed nightly data, this stage
+//     should move to bulk-first with paid escalation.
+//   - sleep-judge (medium): editorial pass over a rendered sleep packet.
+//     The packet bakes in citations; the model needs taste, not retrieval.
+//     Medium paid (gpt-5.4-mini ↔ claude-haiku) is appropriate because
+//     judge edits canonical Markdown via the integrity gate.
+//   - compress (hard): shrink textbook prose while preserving local
+//     anchors. STAYS hard until the v1 fx-neort re-grade observation
+//     ("medium tier on technical packets at risk of fabricating jargon")
+//     is overturned by live evidence. Same as triage: should move to
+//     bulk-first with escalation once we have nightly data showing the
+//     classifier catches structural failures.
+//   - entity-write (hard): writes canonical entity notes. Highest stakes.
+//     Hard tier (gpt-5.5 ↔ claude-sonnet) round-robin.
+//
+// The --escalate-on-conflict flag (today on the scout stage only) is the
+// staging area for the bulk-first / paid-on-doubt pattern. After it has
+// proven itself there, the same mechanism extends to triage and compress.
+// Until then, those two stages stay paid by default — quality first,
+// cost second.
 func DefaultStageConfigs() map[Stage]StageConfig {
 	return map[Stage]StageConfig{
 		StageFolderNote:  bulkStage(StageFolderNote),

@@ -41,6 +41,7 @@ func cmdBrainNight(args []string) int {
 	coverageBudget := fs.Int("coverage-budget", brain.SleepDefaultCoverageBudget, "folder coverage changes before NREM")
 	dryRun := fs.Bool("dry-run", false, "skip LLM, do not apply prune-links, do not write report file")
 	brainTOMLPath := fs.String("brain-toml", "", "override brain.toml path (default ~/.config/sloptools/brain.toml)")
+	escalateOnConflict := fs.Bool("escalate-on-conflict", false, "after each bulk-tier scout report, run a paid medium-tier reviewer pass when the report has substantive ## Conflicting / outdated content or >1 open question")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -113,7 +114,7 @@ func cmdBrainNight(args []string) int {
 	}
 
 	if stage == "" || stage == "scout" {
-		if err := runScoutStage(vault, ldg, router, runID, *dryRun, report); err != nil {
+		if err := runScoutStage(vault, ldg, router, runID, *dryRun, *escalateOnConflict, report); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
 		}
@@ -176,6 +177,7 @@ type scoutSummary struct {
 	Status     string   `json:"status"`
 	Candidates int      `json:"candidates"`
 	Written    int      `json:"written"`
+	Escalated  int      `json:"escalated"`
 	Reports    []string `json:"reports,omitempty"`
 	Notes      string   `json:"notes,omitempty"`
 }
@@ -222,7 +224,7 @@ func runTextbookScan(vault brain.Vault, report *nightReport) error {
 // canonical Markdown; suggestions are surfaced in the report payload
 // and persisted in the per-pick evidence files for the judge stage to
 // pick up.
-func runScoutStage(vault brain.Vault, ldg *ledger.Ledger, router *routing.Router, runID string, dryRun bool, report *nightReport) error {
+func runScoutStage(vault brain.Vault, ldg *ledger.Ledger, router *routing.Router, runID string, dryRun, escalateOnConflict bool, report *nightReport) error {
 	picks, err := scout.PickEntities(scout.PickerOpts{
 		BrainRoot: vault.BrainRoot(),
 		Now:       time.Now().UTC(),
@@ -240,13 +242,14 @@ func runScoutStage(vault brain.Vault, ldg *ledger.Ledger, router *routing.Router
 		return nil
 	}
 	res, err := scout.Run(context.Background(), scout.RunOpts{
-		BrainRoot: vault.BrainRoot(),
-		Sphere:    string(vault.Sphere),
-		Picks:     picks,
-		Router:    router,
-		Ledger:    ldg,
-		RunID:     runID,
-		DryRun:    dryRun,
+		BrainRoot:          vault.BrainRoot(),
+		Sphere:             string(vault.Sphere),
+		Picks:              picks,
+		Router:             router,
+		Ledger:             ldg,
+		RunID:              runID,
+		DryRun:             dryRun,
+		EscalateOnConflict: escalateOnConflict,
 	})
 	if err != nil {
 		report.Scout.Status = "error"
@@ -255,6 +258,7 @@ func runScoutStage(vault brain.Vault, ldg *ledger.Ledger, router *routing.Router
 	}
 	report.Scout.Candidates = res.Candidates
 	report.Scout.Written = res.Written
+	report.Scout.Escalated = res.Escalated
 	for _, e := range res.Reports {
 		if e.ReportPath != "" {
 			report.Scout.Reports = append(report.Scout.Reports, e.ReportPath)
