@@ -270,9 +270,32 @@ func runScoutStage(vault brain.Vault, ldg *ledger.Ledger, router *routing.Router
 	return nil
 }
 
-// runJudgeStage runs the editorial pass via the Backend interface.
+// runJudgeStage runs the editorial pass via the Backend interface and
+// wraps it in the integrity gate so the judge's canonical-Markdown
+// edits are committed and pushed to the brain repo on success. Without
+// this wrapping the judge writes files but leaves the working tree
+// dirty, breaking the "git history is the activity log" rule from
+// CLAUDE.md.
 func runJudgeStage(cfg *brain.Config, sphere brain.Sphere, opts brain.SleepOpts, report *nightReport) error {
-	res, err := brain.RunSleep(cfg, opts)
+	if opts.DryRun {
+		res, err := brain.RunSleep(cfg, opts)
+		if err != nil {
+			return fmt.Errorf("judge: %w", err)
+		}
+		report.Judge = res
+		if res != nil {
+			report.JudgeReport = res.ReportPath
+		}
+		return nil
+	}
+	var res *brain.SleepResult
+	commitMsg := fmt.Sprintf("brain night: %s %s judge", sphere, time.Now().Format("2006-01-02"))
+	const skipIntegrityGate = true
+	err := applyIntegrityGate(cfg, sphere, skipIntegrityGate, commitMsg, func() error {
+		var runErr error
+		res, runErr = brain.RunSleep(cfg, opts)
+		return runErr
+	})
 	if err != nil {
 		return fmt.Errorf("judge: %w", err)
 	}
