@@ -147,9 +147,13 @@ func writeSleepMission(b *strings.Builder, autonomy string, sphere Sphere) {
 	}
 	fmt.Fprintf(b, "Sphere: `%s`. Keep this sphere isolated. Do not read or edit `personal/` paths. Do not mix work and private memory.\n\n", sphere)
 	fmt.Fprintln(b, "NREM means replay recent memories into stable canonical notes: people, projects, topics, institutions, glossary, and folder/topic boundaries.")
-	fmt.Fprintln(b, "REM means associative graph rewiring: missing semantic links, aliases, contradictions, unsupported claims, stale links, and abstractions across nearby notes.")
+	fmt.Fprintln(b, "REM means associative graph rewiring: missing semantic links, aliases, and stale links across nearby notes. Contradictions and high-cost abstractions are handled by separate refinement stages, not here.")
+	fmt.Fprintln(b)
+	fmt.Fprintln(b, "Scope rule. This brain stores Chris's local constellation only: specific people, projects, institutions, courses, papers, and relations Chris and the Plasma Group actually engage with. Do not create or expand canonical notes whose meaning is reachable from Wikipedia or a standard textbook with no reference to Chris or the Plasma Group.")
+	fmt.Fprintln(b, "Reject as textbook: generic plasma terms (tokamak, stellarator as a device class, ExB drift, kinetic theory, neoclassical theory, bootstrap current, gyrokinetic, Vlasov, magnetohydrodynamics), generic CS or numerics (Runge-Kutta, Newton's method, MPI, Fortran, Python, git, LAPACK), and generic mathematical concepts (Hamiltonian mechanics, Fourier transform, symplectic integrator as a class). Keep specific machines and group-internal variants (W7-X, AUG, ASDEX Upgrade discharges, our SIMPLE/NEO-RT/KNOSOS/GORILLA codes, EUROfusion D-1515000028, START2022, PiP_2024, WSD UE, Lehrinfrastruktur2026, etc.).")
+	fmt.Fprintln(b, "When in doubt: if the candidate could be looked up on Wikipedia with no mention of Chris or the Plasma Group, drop it.")
 	if autonomy == SleepAutonomyFull {
-		fmt.Fprintln(b, "You may create, edit, merge, retire, delete, and relink brain notes. Git history is the rollback layer; keep each change evidence-backed and local to the packet.")
+		fmt.Fprintln(b, "You may create, edit, merge, retire, delete, and relink brain notes. Git history is the rollback layer; keep each change evidence-backed and local to the packet. New canonical notes still must pass the scope rule above.")
 	}
 	fmt.Fprintln(b)
 }
@@ -249,8 +253,9 @@ func writeSleepReturnContract(b *strings.Builder, autonomy string) {
 	fmt.Fprintln(b, "Return a concise Markdown report with:")
 	fmt.Fprintln(b, "- NREM changes made")
 	fmt.Fprintln(b, "- REM changes made")
-	fmt.Fprintln(b, "- deleted/merged/retired notes")
-	fmt.Fprintln(b, "- unresolved contradictions or evidence gaps")
+	fmt.Fprintln(b, "- deleted/merged/retired notes (including any textbook-class notes you removed under the scope rule)")
+	fmt.Fprintln(b, "- candidates rejected as textbook / public knowledge, with the term and the rejected note path")
+	fmt.Fprintln(b, "- unresolved evidence gaps")
 	fmt.Fprintln(b, "- paths changed")
 	if autonomy == SleepAutonomyPlanOnly {
 		fmt.Fprintln(b, "- proposed edits only, because this run is plan-only")

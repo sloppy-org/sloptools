@@ -25,9 +25,12 @@ const SleepAutonomyFull = "full"
 const SleepAutonomyPlanOnly = "plan-only"
 
 // SleepDefaultModel is the Codex model used when --model is not given.
-// Matches the brain-ingest phase 4 convention; see
-// `~/Nextcloud/tools/brain-ingest/data/phase4/job_logs/phase4-rel-0004.log`.
-const SleepDefaultModel = "gpt-5.5"
+// The sleep judge edits a small rendered Markdown packet; this is an
+// editorial pass, not canonical Markdown authorship, so the cheaper
+// gpt-5.4-mini is sufficient. Canonical entity-note writes (graph apply
+// in #122) keep gpt-5.5 separately. Claude is never a default; the
+// opt-in escalation flag lives in #123.
+const SleepDefaultModel = "gpt-5.4-mini"
 
 // SleepDefaultBudget is the picker budget used when budget <= 0.
 const SleepDefaultBudget = 20

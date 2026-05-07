@@ -22,7 +22,7 @@ func cmdBrainSleep(args []string) int {
 	coverageBudget := fs.Int("coverage-budget", brain.SleepDefaultCoverageBudget, "folder coverage changes before NREM")
 	autonomy := fs.String("autonomy", brain.SleepDefaultAutonomy, "full or plan-only")
 	backend := fs.String("backend", brain.SleepBackendCodex, "codex or none")
-	model := fs.String("model", brain.SleepDefaultModel, "codex model (e.g. gpt-5.5)")
+	model := fs.String("model", brain.SleepDefaultModel, "codex model (default gpt-5.4-mini; gpt-5.5 only for canonical writes)")
 	dryRun := fs.Bool("dry-run", false, "skip LLM, do not apply prune-links, do not write report file")
 	if err := fs.Parse(args); err != nil {
 		return 2

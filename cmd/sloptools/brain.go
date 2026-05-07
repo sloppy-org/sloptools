@@ -121,7 +121,7 @@ func printBrainHelp() {
 	fmt.Println("  --coverage-budget N folder coverage changes before NREM (default 40)")
 	fmt.Println("  --autonomy NAME full (default) or plan-only")
 	fmt.Println("  --backend NAME  codex (default) or none")
-	fmt.Println("  --model NAME    codex model (default gpt-5.5)")
+	fmt.Println("  --model NAME    codex model (default gpt-5.4-mini)")
 	fmt.Println("  --dry-run       skip LLM, do not apply prune-links, do not write report file")
 }
 
