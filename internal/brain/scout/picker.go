@@ -30,6 +30,11 @@ type Pick struct {
 	Score     float64   `json:"score"`
 	Reason    string    `json:"reason"`
 	NeedsRevw bool      `json:"needs_review,omitempty"` // set when an explicit `needs_review` flag is present
+	// UncertaintyMarkers carries body-level claims that the agent should
+	// verify specifically — populated when the note body contains lines
+	// like `- needs review: ...`, or inline `(unverified)` / `(unconfirmed)`
+	// markers. Empty for canonical entity picks scored only on cadence.
+	UncertaintyMarkers []string `json:"uncertainty_markers,omitempty"`
 }
 
 // PickerOpts configures the picker.
@@ -55,7 +60,7 @@ func PickEntities(opts PickerOpts) ([]Pick, error) {
 	}
 	roots := opts.Roots
 	if len(roots) == 0 {
-		roots = []string{"people", "projects", "institutions"}
+		roots = []string{"people", "projects", "institutions", "folders"}
 	}
 	out := []Pick{}
 	for _, root := range roots {
@@ -63,6 +68,16 @@ func PickEntities(opts PickerOpts) ([]Pick, error) {
 		if err != nil {
 			return nil, err
 		}
+		// Drop zero-score picks before TopN crop. folders/ is the new
+		// motivator: most folder notes have neither cadence nor explicit
+		// uncertainty markers and should never be scouted.
+		nonzero := picks[:0]
+		for _, p := range picks {
+			if p.Score > 0 {
+				nonzero = append(nonzero, p)
+			}
+		}
+		picks = nonzero
 		sort.SliceStable(picks, func(i, j int) bool {
 			return picks[i].Score > picks[j].Score
 		})
@@ -71,34 +86,104 @@ func PickEntities(opts PickerOpts) ([]Pick, error) {
 		}
 		out = append(out, picks...)
 	}
+	// Global sort by score so a high-uncertainty folder note outranks a
+	// merely stale canonical entity in a different root. Stable so picks
+	// from the same root keep their per-root order on ties.
+	sort.SliceStable(out, func(i, j int) bool {
+		return out[i].Score > out[j].Score
+	})
 	return out, nil
+}
+
+// scanUncertainty walks one note body looking for explicit
+// uncertainty markers and returns the list of claim lines plus a
+// boost score. Markers:
+//
+//   - lines under any `## Open Questions` heading starting with
+//     `- needs review:` (case-insensitive)
+//   - inline `(unverified)`, `(unconfirmed)`, `(tbd)` or `?` at end of bullet
+//
+// Result is bounded so a malformed note cannot blow up the score.
+func scanUncertainty(body string) ([]string, float64) {
+	var markers []string
+	var score float64
+	inOpenQuestions := false
+	lines := strings.Split(body, "\n")
+	for _, raw := range lines {
+		line := strings.TrimSpace(raw)
+		lower := strings.ToLower(line)
+		if strings.HasPrefix(line, "##") {
+			inOpenQuestions = strings.Contains(lower, "open questions") || strings.Contains(lower, "open question")
+			continue
+		}
+		if inOpenQuestions && strings.HasPrefix(lower, "- needs review:") {
+			markers = append(markers, strings.TrimSpace(line[len("- needs review:"):]))
+			score += 1000
+			continue
+		}
+		if strings.HasPrefix(line, "- ") {
+			if strings.Contains(lower, "(unverified)") || strings.Contains(lower, "(unconfirmed)") || strings.Contains(lower, "(tbd)") {
+				markers = append(markers, strings.TrimPrefix(line, "- "))
+				score += 50
+			}
+		}
+	}
+	if score > 200 && len(markers) > 0 && score < 1000 {
+		// Cap inline-marker contribution so a noisy note can't crowd out
+		// a single explicit `needs review:` request elsewhere.
+		score = 200
+	}
+	if len(markers) > 8 {
+		markers = markers[:8]
+	}
+	return markers, score
 }
 
 func scoreRoot(brainRoot, root string, now time.Time) ([]Pick, error) {
 	abs := filepath.Join(brainRoot, root)
-	entries, err := os.ReadDir(abs)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("scout picker: read %s: %w", abs, err)
-	}
 	out := []Pick{}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
-			continue
+	err := filepath.WalkDir(abs, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			if os.IsNotExist(walkErr) {
+				return filepath.SkipDir
+			}
+			return walkErr
 		}
-		path := filepath.Join(abs, e.Name())
+		if d.IsDir() {
+			return nil
+		}
+		if !strings.HasSuffix(d.Name(), ".md") {
+			return nil
+		}
 		body, err := os.ReadFile(path)
 		if err != nil {
-			continue
+			return nil
 		}
 		note, _ := brain.ParseMarkdownNote(string(body), brain.MarkdownParseOptions{})
 		if note == nil {
-			continue
+			return nil
 		}
-		pick := scoreNote(note, filepath.Join(root, e.Name()), now)
+		rel, err := filepath.Rel(brainRoot, path)
+		if err != nil {
+			rel = filepath.Join(root, d.Name())
+		}
+		rel = filepath.ToSlash(rel)
+		pick := scoreNote(note, rel, now)
+		markers, boost := scanUncertainty(string(body))
+		if len(markers) > 0 {
+			pick.UncertaintyMarkers = markers
+			pick.Score += boost
+			if boost >= 1000 {
+				pick.Reason = strings.TrimSpace(pick.Reason + "; explicit needs-review")
+			} else {
+				pick.Reason = strings.TrimSpace(pick.Reason + fmt.Sprintf("; %d inline markers", len(markers)))
+			}
+		}
 		out = append(out, pick)
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("scout picker: walk %s: %w", abs, err)
 	}
 	return out, nil
 }

@@ -24,18 +24,29 @@ type RunOpts struct {
 	RunID     string
 	Now       time.Time
 	DryRun    bool
+	// EscalateOnConflict, when true, feeds bulk-tier scout reports
+	// through a deterministic classifier; reports flagged with
+	// substantive `## Conflicting / outdated` content or unresolved open
+	// questions get a second pass at the medium tier (codex-mini ↔
+	// claude-haiku round-robin via the router). The medium-tier output
+	// supersedes the bulk one. This is the opencode-first / paid-on-doubt
+	// pattern: most picks stay free, only the genuinely ambiguous ones
+	// burn paid quota.
+	EscalateOnConflict bool
 }
 
 // RunReport summarises the scout pass. Candidates is the number of
 // picks fed in (deterministic picker output); Written is the number of
 // evidence reports actually produced (zero in dry-run, can be smaller
 // than Candidates when the ledger guard or backend skips a pick).
+// Escalated counts how many picks went through a paid second pass.
 type RunReport struct {
 	RunID      string        `json:"run_id"`
 	StartedAt  time.Time     `json:"started_at"`
 	EndedAt    time.Time     `json:"ended_at"`
 	Candidates int           `json:"candidates"`
 	Written    int           `json:"written"`
+	Escalated  int           `json:"escalated"`
 	ReportsDir string        `json:"reports_dir"`
 	Reports    []ReportEntry `json:"reports"`
 	Skipped    int           `json:"skipped"`
@@ -52,6 +63,12 @@ type ReportEntry struct {
 	Skipped    bool    `json:"skipped,omitempty"`
 	Reason     string  `json:"reason,omitempty"`
 	WallMS     int64   `json:"wall_ms,omitempty"`
+	// Escalated is true when the bulk pass flagged conflict and a paid
+	// medium-tier second pass replaced the report content.
+	Escalated         bool   `json:"escalated,omitempty"`
+	EscalationReason  string `json:"escalation_reason,omitempty"`
+	EscalationBackend string `json:"escalation_backend,omitempty"`
+	EscalationModel   string `json:"escalation_model,omitempty"`
 }
 
 // Run executes the scout pass over the picks. Per pick:
@@ -108,6 +125,9 @@ func Run(ctx context.Context, opts RunOpts) (*RunReport, error) {
 		}
 		if entry.ReportPath != "" {
 			report.Written++
+		}
+		if entry.Escalated {
+			report.Escalated++
 		}
 		report.Reports = append(report.Reports, entry)
 	}
@@ -188,7 +208,130 @@ func runOnePick(ctx context.Context, opts RunOpts, reportsDir, stagePrompt strin
 			Extras:    map[string]string{"path": p.Path, "tier": string(pick.Tier)},
 		})
 	}
+	if opts.EscalateOnConflict {
+		if d := classifyForEscalation(body); d.Escalate {
+			if err := escalateOne(ctx, opts, &entry, p, packet, body, d.Reason, rpath); err != nil {
+				// Escalation failure is non-fatal: keep the bulk report.
+				entry.EscalationReason = "attempted: " + d.Reason + "; failed: " + err.Error()
+			}
+		}
+	}
 	return entry
+}
+
+// escalateOne runs a paid medium-tier second pass over a bulk-tier
+// report that the deterministic classifier flagged. The medium-tier
+// output overwrites the report file; ledger gets a second entry tagged
+// with the escalation stage. ReportEntry.Escalated is set on success.
+//
+// Triage stage is the routing target because it shares the medium-tier
+// pool (codex-mini ↔ claude-haiku round-robin) and its prompt is the
+// closest match for "resolve this evidence packet".
+func escalateOne(ctx context.Context, opts RunOpts, entry *ReportEntry, p Pick, originalPacket, bulkReport, reason, reportPath string) error {
+	pick, err := opts.Router.Pick(routing.StageTriage)
+	if err != nil {
+		return fmt.Errorf("router pick triage: %w", err)
+	}
+	if pick.Provider == backend.ProviderLocal {
+		// Both paid providers saturated; nothing to escalate to. Keep the
+		// bulk report unchanged.
+		return fmt.Errorf("paid tiers saturated; staying on bulk")
+	}
+	be, err := backendForID(pick.BackendID)
+	if err != nil {
+		return fmt.Errorf("backendForID: %w", err)
+	}
+	stagePrompt, err := writeEscalatePrompt(opts.RunID)
+	if err != nil {
+		return fmt.Errorf("write prompt: %w", err)
+	}
+	defer os.Remove(stagePrompt)
+	stage := "scout-escalate-" + sanitize(p.Path)
+	sb, err := backend.NewSandbox(opts.RunID, stage, stagePrompt, backend.DefaultMCPConfig())
+	if err != nil {
+		return fmt.Errorf("sandbox: %w", err)
+	}
+	defer sb.Cleanup()
+	packet := buildEscalatePacket(p, originalPacket, bulkReport, reason)
+	resp, err := be.Run(ctx, backend.Request{
+		Stage:            stage,
+		Packet:           packet,
+		SystemPromptPath: sb.SystemPromptIn,
+		Model:            pick.Model,
+		Reasoning:        pick.Reasoning,
+		AllowEdits:       false,
+		Sandbox:          sb,
+	})
+	if err != nil {
+		return fmt.Errorf("backend run: %w", err)
+	}
+	body := strings.TrimSpace(resp.Output)
+	if body == "" {
+		return fmt.Errorf("empty escalation output")
+	}
+	if err := os.WriteFile(reportPath, []byte(body+"\n"), 0o644); err != nil {
+		return fmt.Errorf("write escalated report: %w", err)
+	}
+	entry.Escalated = true
+	entry.EscalationReason = reason
+	entry.EscalationBackend = pick.BackendID
+	entry.EscalationModel = pick.Model
+	if opts.Ledger != nil {
+		_ = opts.Ledger.Append(ledger.Entry{
+			Sphere:    opts.Sphere,
+			Stage:     stage,
+			Provider:  pick.Provider,
+			Backend:   pick.BackendID,
+			Model:     pick.Model,
+			TokensIn:  resp.TokensIn,
+			TokensOut: resp.TokensOut,
+			WallMS:    resp.WallMS,
+			CostHint:  resp.CostHint,
+			Extras:    map[string]string{"path": p.Path, "tier": string(pick.Tier), "escalation": "true"},
+		})
+	}
+	return nil
+}
+
+// writeEscalatePrompt drops a focused system prompt to disk for the
+// medium-tier reviewer call. We do not extract from embedded prompts
+// because this is a synthetic stage that has no static prompt file.
+func writeEscalatePrompt(runID string) (string, error) {
+	dir, err := os.MkdirTemp("", "sloptools-escalate-prompt-")
+	if err != nil {
+		return "", err
+	}
+	body := strings.Join([]string{
+		"You are a paid reviewer for Christopher Albert's brain vault.",
+		"",
+		"You receive a scout packet, plus a bulk-tier (opencode/qwen) evidence",
+		"report that flagged conflicts or open questions. Resolve each conflict",
+		"using sloppy and helpy MCP tools. Do not just rewrite the bulk report:",
+		"address each conflict and each open question with a fresh, traceable",
+		"answer. Output Markdown with the same section structure as the bulk",
+		"report (Verified / Conflicting / outdated / Suggestions / Open questions).",
+		"Cite sources by URL or DOI per claim. Mark anything you could not",
+		"resolve as still open. Never edit canonical Markdown.",
+	}, "\n")
+	path := filepath.Join(dir, "escalate.md")
+	return path, os.WriteFile(path, []byte(body), 0o600)
+}
+
+// buildEscalatePacket bundles the original packet, the bulk report, and
+// the conflict reason for the paid reviewer.
+func buildEscalatePacket(p Pick, originalPacket, bulkReport, reason string) string {
+	var b strings.Builder
+	b.WriteString("# Scout escalation packet\n\n")
+	fmt.Fprintf(&b, "Path: `%s`\n", p.Path)
+	fmt.Fprintf(&b, "Title: %s\n", p.Title)
+	fmt.Fprintf(&b, "Bulk-tier flagged for escalation because: %s\n\n", reason)
+	b.WriteString("## Original scout packet\n\n")
+	b.WriteString(originalPacket)
+	b.WriteString("\n\n## Bulk-tier (opencode) report\n\n")
+	b.WriteString(bulkReport)
+	b.WriteString("\n\n## Your task\n\n")
+	b.WriteString("Resolve each conflict and each open question listed in the bulk report. Output a refined Markdown report with the same section structure. Cite sources per claim.\n")
+	return b.String()
 }
 
 func backendForID(id string) (backend.Backend, error) {
@@ -231,6 +374,14 @@ func buildScoutPacket(brainRoot string, p Pick) string {
 	} else {
 		b.WriteString("(note body not readable)\n\n")
 	}
+	if len(p.UncertaintyMarkers) > 0 {
+		b.WriteString("## Specific claims to verify\n\n")
+		b.WriteString("The picker flagged these claims in the note body. Verify each one specifically; do not confine the report to the entity's high-level identity.\n\n")
+		for _, m := range p.UncertaintyMarkers {
+			fmt.Fprintf(&b, "- %s\n", m)
+		}
+		b.WriteString("\n")
+	}
 	b.WriteString("## Your task\n\n")
 	b.WriteString(strings.Join([]string{
 		"Verify this entity against external evidence.",
@@ -239,6 +390,7 @@ func buildScoutPacket(brainRoot string, p Pick) string {
 		"Never edit canonical Markdown. Write only an evidence report.",
 		"Never invent facts; if a claim has no source, say so explicitly.",
 		"Never register slopshell as an MCP server.",
+		"If a `## Specific claims to verify` block is present in this packet, address each listed claim before producing the high-level Verified / Conflicting / Suggestions sections.",
 		"",
 		"Output format (Markdown):",
 		"",

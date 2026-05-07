@@ -103,6 +103,131 @@ func TestPickerSkipsEntitiesWithoutCadence(t *testing.T) {
 	}
 }
 
+func TestScanUncertainty_NeedsReviewLine(t *testing.T) {
+	body := "# Folder\n\n## Open Questions\n- needs review: license year unclear\n- something else\n"
+	markers, score := scanUncertainty(body)
+	if len(markers) != 1 || markers[0] != "license year unclear" {
+		t.Fatalf("markers=%v", markers)
+	}
+	if score != 1000 {
+		t.Fatalf("score=%v want 1000", score)
+	}
+}
+
+func TestScanUncertainty_InlineMarkers(t *testing.T) {
+	body := "# X\n\n- claim one (unverified)\n- claim two (unconfirmed)\n- normal bullet\n"
+	markers, score := scanUncertainty(body)
+	if len(markers) != 2 {
+		t.Fatalf("markers=%v", markers)
+	}
+	if score != 100 {
+		t.Fatalf("score=%v want 100 (2 inline @ 50)", score)
+	}
+}
+
+func TestScanUncertainty_NoMarkers(t *testing.T) {
+	body := "# X\n\n## Notes\n- regular bullet\n- another\n"
+	markers, score := scanUncertainty(body)
+	if len(markers) != 0 || score != 0 {
+		t.Fatalf("markers=%v score=%v", markers, score)
+	}
+}
+
+func TestScanUncertainty_OpenQuestionsCaseInsensitive(t *testing.T) {
+	body := "# X\n\n## OPEN QUESTIONS\n- needs review: who hosts the data?\n"
+	markers, score := scanUncertainty(body)
+	if len(markers) != 1 || markers[0] != "who hosts the data?" {
+		t.Fatalf("markers=%v", markers)
+	}
+	if score != 1000 {
+		t.Fatalf("score=%v", score)
+	}
+}
+
+func TestScanUncertainty_InlineCapAt200(t *testing.T) {
+	body := "# X\n\n- a (unverified)\n- b (unverified)\n- c (unverified)\n- d (unverified)\n- e (unverified)\n"
+	_, score := scanUncertainty(body)
+	if score != 200 {
+		t.Fatalf("score=%v want 200 (capped)", score)
+	}
+}
+
+func TestPickerFolderNoteWithNeedsReview_OutranksStaleperson(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 5, 7, 0, 0, 0, 0, time.UTC)
+	writeNote(t, root, "people/Stale Person.md", `---
+cadence: monthly
+---
+
+# Stale Person
+`)
+	writeNote(t, root, "folders/plasma/CODES/NEO-RT.md", `---
+title: NEO-RT
+---
+
+# NEO-RT
+
+## Open Questions
+- needs review: latest release tag
+`)
+	picks, err := PickEntities(PickerOpts{BrainRoot: root, Now: now, TopN: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(picks) < 2 {
+		t.Fatalf("expected at least 2 picks, got %d (%v)", len(picks), picks)
+	}
+	if picks[0].Path != "folders/plasma/CODES/NEO-RT.md" {
+		t.Fatalf("expected folder note to win, got %s (score %.2f)", picks[0].Path, picks[0].Score)
+	}
+	if len(picks[0].UncertaintyMarkers) != 1 {
+		t.Fatalf("expected 1 marker, got %v", picks[0].UncertaintyMarkers)
+	}
+}
+
+func TestPickerFolderNoteWithoutMarkersNoCadence_NotPicked(t *testing.T) {
+	root := t.TempDir()
+	writeNote(t, root, "folders/plasma/CODES/idle.md", "# idle\n\nLorem ipsum.\n")
+	writeNote(t, root, "people/Active Person.md", `---
+cadence: weekly
+---
+
+# Active Person
+`)
+	picks, err := PickEntities(PickerOpts{BrainRoot: root, Now: time.Now(), TopN: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range picks {
+		if p.Path == "folders/plasma/CODES/idle.md" {
+			t.Fatalf("zero-score folder note should not be picked: %+v", p)
+		}
+	}
+}
+
+func TestPickerFoldersWalkedRecursively(t *testing.T) {
+	root := t.TempDir()
+	writeNote(t, root, "folders/lv/progphys/PiP_2026/syllabus.md", `# Syllabus
+
+## Open Questions
+- needs review: room booking
+`)
+	picks, err := PickEntities(PickerOpts{BrainRoot: root, Now: time.Now(), TopN: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, p := range picks {
+		if p.Path == "folders/lv/progphys/PiP_2026/syllabus.md" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("nested folder note not picked: %+v", picks)
+	}
+}
+
 func TestPickerStrategicMultiplier(t *testing.T) {
 	root := t.TempDir()
 	now := time.Date(2026, 5, 7, 0, 0, 0, 0, time.UTC)
