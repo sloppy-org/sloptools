@@ -84,12 +84,13 @@ type StageConfig struct {
 // Router holds the loaded stage configs, the ledger, and the per-stage
 // round-robin counters that drive the even split.
 type Router struct {
-	cfg       map[Stage]StageConfig
-	ledger    *ledger.Ledger
-	overrides Overrides
-	mu        sync.Mutex
-	rr        map[Stage]int
-	now       func() time.Time
+	cfg          map[Stage]StageConfig
+	ledger       *ledger.Ledger
+	overrides    Overrides
+	mu           sync.Mutex
+	rr           map[Stage]int
+	now          func() time.Time
+	sessionStart time.Time
 }
 
 // Overrides are session-level routing overrides set by CLI flags.
@@ -102,12 +103,21 @@ type Overrides struct {
 // New builds a Router with the default stage configs.
 func New(l *ledger.Ledger, ov Overrides) *Router {
 	return &Router{
-		cfg:       DefaultStageConfigs(),
-		ledger:    l,
-		overrides: ov,
-		rr:        make(map[Stage]int),
-		now:       time.Now,
+		cfg:          DefaultStageConfigs(),
+		ledger:       l,
+		overrides:    ov,
+		rr:           make(map[Stage]int),
+		now:          time.Now,
+		sessionStart: time.Now(),
 	}
+}
+
+// SetSessionStart pins the start of this nightly run so the per-night
+// 5% cap can be enforced. Called once by the brain night entrypoint.
+func (r *Router) SetSessionStart(t time.Time) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.sessionStart = t
 }
 
 // SetStageConfig replaces one stage's config (used by brain.toml loader).
@@ -166,7 +176,7 @@ func (r *Router) roundRobin(s Stage, cfg StageConfig, pool []Choice) Pick {
 		idx := (start + i) % len(pool)
 		c := pool[idx]
 		if r.ledger != nil {
-			if err := r.ledger.Guard(c.Provider, now); err != nil {
+			if err := r.ledger.Guard(c.Provider, r.sessionStart, now); err != nil {
 				continue
 			}
 		}

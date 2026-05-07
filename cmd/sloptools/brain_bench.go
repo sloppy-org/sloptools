@@ -101,15 +101,16 @@ func cmdBrainBench(args []string) int {
 	}
 
 	res, err := bench.Run(ctx, bench.Options{
-		Tasks:     taskList,
-		Models:    modelList,
-		OutDir:    dest,
-		PromptDir: promptDir,
-		RunID:     dateID,
-		Ledger:    ldg,
-		Sphere:    *sphere,
-		Judge:     judge,
-		Draws:     *draws,
+		Tasks:        taskList,
+		Models:       modelList,
+		OutDir:       dest,
+		PromptDir:    promptDir,
+		RunID:        dateID,
+		Ledger:       ldg,
+		Sphere:       *sphere,
+		Judge:        judge,
+		Draws:        *draws,
+		SessionStart: time.Now().UTC(),
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

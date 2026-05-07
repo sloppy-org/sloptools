@@ -112,6 +112,9 @@ type Options struct {
 	// is a fresh CLI invocation; ledger guard runs per-draw so a partway
 	// saturation skips the remaining draws cleanly.
 	Draws int
+	// SessionStart pins the start of this bench run for the per-night
+	// 5%-of-plan-share gate; zero means weekly-only gating.
+	SessionStart time.Time
 }
 
 // Run executes every (task, fixture, model) cell.
@@ -130,6 +133,9 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 	}
 	if opts.RunID == "" {
 		opts.RunID = time.Now().UTC().Format("20060102-150405")
+	}
+	if opts.SessionStart.IsZero() {
+		opts.SessionStart = time.Now().UTC()
 	}
 	if opts.Draws < 1 {
 		opts.Draws = 1
@@ -168,7 +174,7 @@ func Run(ctx context.Context, opts Options) (*Result, error) {
 func runCell(ctx context.Context, opts Options, task Task, f Fixture, stagePrompt string, m ModelSpec) Cell {
 	cell := Cell{TaskID: task.ID(), FixtureID: f.ID, Model: m}
 	if opts.Ledger != nil {
-		if err := opts.Ledger.Guard(m.Provider, time.Now()); err != nil {
+		if err := opts.Ledger.Guard(m.Provider, opts.SessionStart, time.Now()); err != nil {
 			cell.Skipped = true
 			cell.SkipKind = "weekly_cap_exceeded"
 			cell.Err = err.Error()

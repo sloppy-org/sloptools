@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/sloppy-org/sloptools/internal/brain"
+	"github.com/sloppy-org/sloptools/internal/brain/backend"
 	"github.com/sloppy-org/sloptools/internal/brain/ledger"
 	"github.com/sloppy-org/sloptools/internal/brain/routing"
 	"github.com/sloppy-org/sloptools/internal/brain/scout"
@@ -75,11 +76,13 @@ func cmdBrainNight(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
+	sessionStart := time.Now().UTC()
 	router := routing.New(ldg, routing.Overrides{
 		ClaudeTier: strings.TrimSpace(strings.ToLower(*claudeTier)),
 		OpenAITier: strings.TrimSpace(strings.ToLower(*openaiTier)),
 		ForceLocal: *forceLocal,
 	})
+	router.SetSessionStart(sessionStart)
 	if cfgStages, err := fileCfg.ApplyStages(routing.DefaultStageConfigs()); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
@@ -135,6 +138,7 @@ func cmdBrainNight(args []string) int {
 	}
 
 	report.EndedAt = time.Now().UTC()
+	report.Spend = computeSpend(ldg, sessionStart, report.EndedAt)
 	if err := writeNightReport(vault, runID, report); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
@@ -154,6 +158,18 @@ type nightReport struct {
 	Scout       *scoutSummary      `json:"scout,omitempty"`
 	Judge       *brain.SleepResult `json:"judge,omitempty"`
 	JudgeReport string             `json:"judge_report_path,omitempty"`
+	Spend       *spendSummary      `json:"spend,omitempty"`
+}
+
+// spendSummary records the plan-share spent during this nightly run, in
+// units of weekly-cap fraction. Per-night cap is 0.05 (5%) per provider
+// by default; numbers above that mean the gate failed somewhere.
+type spendSummary struct {
+	AnthropicSessionShare float64 `json:"anthropic_session_share"`
+	OpenAISessionShare    float64 `json:"openai_session_share"`
+	AnthropicWeeklyShare  float64 `json:"anthropic_weekly_share"`
+	OpenAIWeeklyShare     float64 `json:"openai_weekly_share"`
+	SessionStart          string  `json:"session_start"`
 }
 
 type scoutSummary struct {
@@ -261,6 +277,26 @@ func runJudgeStage(cfg *brain.Config, sphere brain.Sphere, opts brain.SleepOpts,
 		report.JudgeReport = res.ReportPath
 	}
 	return nil
+}
+
+// computeSpend reads the ledger and snapshots the session and weekly
+// share for both paid providers. Errors are swallowed: if the ledger
+// can't be read the spend simply doesn't appear in the report.
+func computeSpend(ldg *ledger.Ledger, sessionStart, now time.Time) *spendSummary {
+	out := &spendSummary{SessionStart: sessionStart.Format(time.RFC3339)}
+	if v, err := ldg.RollingShare(backend.ProviderAnthropic, sessionStart, now); err == nil {
+		out.AnthropicSessionShare = v
+	}
+	if v, err := ldg.RollingShare(backend.ProviderOpenAI, sessionStart, now); err == nil {
+		out.OpenAISessionShare = v
+	}
+	if v, err := ldg.WeeklyShare(backend.ProviderAnthropic, now); err == nil {
+		out.AnthropicWeeklyShare = v
+	}
+	if v, err := ldg.WeeklyShare(backend.ProviderOpenAI, now); err == nil {
+		out.OpenAIWeeklyShare = v
+	}
+	return out
 }
 
 func writeNightReport(vault brain.Vault, runID string, r *nightReport) error {

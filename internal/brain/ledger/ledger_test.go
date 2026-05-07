@@ -76,11 +76,71 @@ func TestLedgerGuardRejectsOverCap(t *testing.T) {
 		TokensIn:  200,
 		TokensOut: 200,
 	})
-	if err := l.Guard(backend.ProviderAnthropic, time.Now()); !errors.Is(err, ErrCapExceeded) {
+	// No session start -> only weekly ceiling applies; 40% > 35% so reject.
+	if err := l.Guard(backend.ProviderAnthropic, time.Time{}, time.Now()); !errors.Is(err, ErrCapExceeded) {
 		t.Fatalf("expected ErrCapExceeded, got %v", err)
 	}
-	if err := l.Guard(backend.ProviderOpenAI, time.Now()); err != nil {
+	if err := l.Guard(backend.ProviderOpenAI, time.Time{}, time.Now()); err != nil {
 		t.Fatalf("openai guard should pass, got %v", err)
+	}
+}
+
+// Per-night gate must refuse when this nightly run alone crossed 5%
+// even though the rolling 7-day weekly cap (35%) is still well within.
+func TestLedgerGuardRejectsOverNightlyCap(t *testing.T) {
+	dir := t.TempDir()
+	caps := PlanCaps{
+		AnthropicWeeklyShareMax: 0.05,
+		OpenAIWeeklyShareMax:    0.05,
+		AnthropicTokensPerWeek:  10_000,
+		OpenAITokensPerWeek:     10_000,
+	}
+	l, err := New(dir, caps)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	sessionStart := time.Now().UTC().Add(-30 * time.Minute)
+	// 600 tokens this session -> 6% share; per-night cap = 5%. Reject.
+	_ = l.Append(Entry{
+		TS:        sessionStart.Add(time.Minute),
+		Provider:  backend.ProviderAnthropic,
+		TokensIn:  300,
+		TokensOut: 300,
+	})
+	if err := l.Guard(backend.ProviderAnthropic, sessionStart, time.Now()); !errors.Is(err, ErrCapExceeded) {
+		t.Fatalf("expected ErrCapExceeded for per-night, got %v", err)
+	}
+	// A different session start that excludes the spend -> pass.
+	if err := l.Guard(backend.ProviderAnthropic, time.Now().UTC(), time.Now()); err != nil {
+		t.Fatalf("fresh session should pass, got %v", err)
+	}
+}
+
+// Per-night gate ignores spend that happened before sessionStart even
+// when that older spend pushes the weekly window above 5%.
+func TestLedgerGuardIgnoresPreSessionSpend(t *testing.T) {
+	dir := t.TempDir()
+	caps := PlanCaps{
+		AnthropicWeeklyShareMax: 0.05,
+		OpenAIWeeklyShareMax:    0.05,
+		AnthropicTokensPerWeek:  10_000,
+		OpenAITokensPerWeek:     10_000,
+	}
+	l, err := New(dir, caps)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	now := time.Now().UTC()
+	// Earlier spend (yesterday) used 6% in one shot; weekly is at 6%, well
+	// under 35%. A new session must not be blocked by yesterday's spend.
+	_ = l.Append(Entry{
+		TS:        now.Add(-24 * time.Hour),
+		Provider:  backend.ProviderAnthropic,
+		TokensIn:  300,
+		TokensOut: 300,
+	})
+	if err := l.Guard(backend.ProviderAnthropic, now, now); err != nil {
+		t.Fatalf("fresh session must not see yesterday's spend, got %v", err)
 	}
 }
 

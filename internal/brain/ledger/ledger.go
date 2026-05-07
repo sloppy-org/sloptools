@@ -110,15 +110,15 @@ func (l *Ledger) Append(e Entry) error {
 	return nil
 }
 
-// WeeklyShare returns the rolling-7-day share-of-cap fraction for a
-// provider. Result is in [0, ∞) where >= 1.0 means the cap is exhausted.
-func (l *Ledger) WeeklyShare(p backend.Provider, now time.Time) (float64, error) {
+// RollingShare returns the share-of-weekly-cap consumed by provider p
+// in the window [since, now]. Result is in [0, ∞) where >= 1.0 means
+// the weekly cap is exhausted by that window alone.
+func (l *Ledger) RollingShare(p backend.Provider, since, now time.Time) (float64, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	cutoff := now.Add(-7 * 24 * time.Hour)
 	totalTokens := int64(0)
 	if err := l.scan(func(e Entry) {
-		if e.Provider != p || e.TS.Before(cutoff) {
+		if e.Provider != p || e.TS.Before(since) || e.TS.After(now) {
 			return
 		}
 		totalTokens += e.TokensIn + e.TokensOut
@@ -132,18 +132,37 @@ func (l *Ledger) WeeklyShare(p backend.Provider, now time.Time) (float64, error)
 	return float64(totalTokens) / float64(cap), nil
 }
 
-// Guard returns nil if a new call to provider p is under the configured
-// weekly share-max. Otherwise it returns ErrCapExceeded with diagnostic
-// detail.
-func (l *Ledger) Guard(p backend.Provider, now time.Time) error {
-	share, err := l.WeeklyShare(p, now)
+// WeeklyShare returns the rolling-7-day share-of-cap fraction.
+func (l *Ledger) WeeklyShare(p backend.Provider, now time.Time) (float64, error) {
+	return l.RollingShare(p, now.Add(-7*24*time.Hour), now)
+}
+
+// Guard refuses a new call to provider p when either:
+//
+//   - this nightly run (window [sessionStart, now]) already crossed
+//     providerShareMax (e.g. 5% of weekly cap), or
+//   - the rolling 7-day window already crossed providerShareMax * 7
+//     (e.g. 35% of weekly cap).
+//
+// A zero sessionStart disables the per-night gate (used by tests that
+// only care about the weekly ceiling).
+func (l *Ledger) Guard(p backend.Provider, sessionStart, now time.Time) error {
+	max := l.providerShareMax(p)
+	if !sessionStart.IsZero() {
+		night, err := l.RollingShare(p, sessionStart, now)
+		if err != nil {
+			return err
+		}
+		if night >= max {
+			return fmt.Errorf("%w: provider=%s nightly_share=%.4f cap=%.4f", ErrCapExceeded, p, night, max)
+		}
+	}
+	week, err := l.WeeklyShare(p, now)
 	if err != nil {
 		return err
 	}
-	max := l.providerShareMax(p)
-	// max is 5%/night, total weekly headroom is 7 * 5% = 35%.
-	if share >= max*7 {
-		return fmt.Errorf("%w: provider=%s share=%.3f cap=%.3f", ErrCapExceeded, p, share, max*7)
+	if week >= max*7 {
+		return fmt.Errorf("%w: provider=%s weekly_share=%.4f cap=%.4f", ErrCapExceeded, p, week, max*7)
 	}
 	return nil
 }
