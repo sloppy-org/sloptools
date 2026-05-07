@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/sloppy-org/sloptools/internal/brain/glossary"
 )
 
 type FolderFinding struct {
@@ -158,6 +160,12 @@ func FolderReviewPacket(cfg *Config, sphere Sphere, path string) (string, error)
 	b.Write(data)
 	b.WriteString("\n## Parsed Context\n\n")
 	fmt.Fprintf(&b, "- Note: `%s`\n- Source folder: `%s`\n- Status: `%s`\n", resolved.Rel, folder.SourceFolder, folder.Status)
+	if vault, ok := cfg.Vault(sphere); ok {
+		if section := glossary.FormatPacketSection(glossary.RelevantTerms(vault.BrainRoot(), string(data))); section != "" {
+			b.WriteString("\n")
+			b.WriteString(section)
+		}
+	}
 	b.WriteString("\n## Section Excerpts\n\n")
 	for _, section := range note.Sections() {
 		if section.Level == 2 {

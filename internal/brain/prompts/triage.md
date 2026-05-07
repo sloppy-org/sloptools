@@ -27,7 +27,15 @@ Set `rejection_class` to the empty string when verdict is not "reject".
 Tools you may use:
 - sloppy `brain_search`, `brain_backlinks`, `brain_folder_*`,
   `contact_search`, `calendar_events` for vault and groupware checks.
-- helpy `web_search` only when needed to confirm a textbook claim.
+- helpy `web_search`, `web_fetch` only when needed to confirm a textbook
+  claim; helpy `pdf_read` (modes metadata / text / outline; bounded by
+  `pages` and `max_bytes`) when the candidate references a PDF.
+- read-only bash: `ls`, `head`, `tail`, `wc`, `file`, `find`, `rg --files`,
+  `rg -l`, `stat`, `pwd`. Anything else is denied — use the helpy MCP
+  equivalent.
+
+Tools you may NOT use:
+- slopshell — never register it as an MCP server.
 
 Style:
 - Terse object-level prose. No filler.

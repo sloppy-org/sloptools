@@ -109,11 +109,20 @@ func (OpencodeBackend) Run(ctx context.Context, req Request) (Response, error) {
 // global permission setting does not propagate to a custom agent and
 // MCP calls silently drop, leaving the model to confabulate sources.
 //
-// We deny `edit` and `bash` so the model cannot route its deliverable
-// through the write / edit / apply_patch tools (the `edit` key covers
-// all three per opencode docs) or shell out. With only MCP and read-
-// only tools left, the rewrite path has nowhere to go but the
-// streaming text channel — which is what parseOpencodeJSON expects.
+// We deny `edit` (covers write/edit/apply_patch in opencode) so the
+// model cannot route its deliverable through the file-write side
+// channel; the rewrite must arrive on the streaming text or the `write`
+// tool call we explicitly parse in parseOpencodeJSON.
+//
+// `bash` uses opencode's last-match-wins glob allowlist (object-form
+// permission, supported since 2025; see https://opencode.ai/docs/permissions/)
+// so a small set of read-only commands with bounded output is allowed
+// while everything else stays denied. `cat` is deliberately excluded
+// because it is unbounded; `pdftotext`/`pdfinfo` are excluded because
+// helpy `pdf_read` provides bounded in-process equivalents; `curl`/
+// `wget` are excluded because helpy `web_fetch` is the canonical path.
+// `grep` is excluded because plain grep is unbounded; only `rg --files`
+// / `rg -l` / `rg --files-with-matches` are allowed.
 func opencodeAgentFrontmatter() string {
 	return strings.Join([]string{
 		"---",
@@ -121,7 +130,20 @@ func opencodeAgentFrontmatter() string {
 		"mode: primary",
 		"permission:",
 		"  edit: deny",
-		"  bash: deny",
+		"  bash:",
+		"    \"*\": deny",
+		"    \"ls\": allow",
+		"    \"ls *\": allow",
+		"    \"pwd\": allow",
+		"    \"stat *\": allow",
+		"    \"file *\": allow",
+		"    \"head *\": allow",
+		"    \"tail *\": allow",
+		"    \"wc *\": allow",
+		"    \"find *\": allow",
+		"    \"rg --files*\": allow",
+		"    \"rg -l *\": allow",
+		"    \"rg --files-with-matches *\": allow",
 		"  '*': allow",
 		"---",
 	}, "\n")

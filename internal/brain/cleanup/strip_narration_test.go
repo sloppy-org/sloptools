@@ -1,4 +1,4 @@
-package scout
+package cleanup
 
 import (
 	"strings"
@@ -18,7 +18,7 @@ func TestCleanReport_TrimsPreambleBeforeFirstH1(t *testing.T) {
 		"## Verified",
 		"- a (source: x)",
 	}, "\n")
-	out := cleanReport(in)
+	out := CleanReport(in)
 	if !strings.HasPrefix(out, "# Scout report — Foo") {
 		t.Fatalf("preamble not trimmed:\n%s", out)
 	}
@@ -41,7 +41,7 @@ func TestCleanReport_TrimsTrailingMethodologyFooter(t *testing.T) {
 		"",
 		"**Note on methodology**: This report is based on the bulk-tier evidence...",
 	}, "\n")
-	out := cleanReport(in)
+	out := CleanReport(in)
 	if strings.Contains(out, "Note on methodology") {
 		t.Fatalf("trailing footer not trimmed:\n%s", out)
 	}
@@ -66,7 +66,7 @@ func TestCleanReport_TrimsBothEnds(t *testing.T) {
 		"",
 		"**Note**: tools were unavailable.",
 	}, "\n")
-	out := cleanReport(in)
+	out := CleanReport(in)
 	if !strings.HasPrefix(out, "# Scout report — Baz") {
 		t.Fatalf("preamble not trimmed:\n%s", out)
 	}
@@ -92,7 +92,7 @@ func TestCleanReport_KeepsHorizontalRuleIfFollowedByContent(t *testing.T) {
 		"## Open questions",
 		"- q1",
 	}, "\n")
-	out := cleanReport(in)
+	out := CleanReport(in)
 	if !strings.Contains(out, "## Open questions") {
 		t.Fatalf("legitimate `---` separator caused over-trim:\n%s", out)
 	}
@@ -111,7 +111,7 @@ func TestCleanReport_KeepsBoldInsideBullet(t *testing.T) {
 		"## Open questions",
 		"- **SAB member identities remain unpublished**: no public source.",
 	}, "\n")
-	out := cleanReport(in)
+	out := CleanReport(in)
 	if !strings.Contains(out, "SAB member identities") {
 		t.Fatalf("bold inside bullet was wrongly trimmed:\n%s", out)
 	}
@@ -122,7 +122,7 @@ func TestCleanReport_NoH1ReturnsUnchanged(t *testing.T) {
 	// (e.g., classifier) can see the raw narration and trigger
 	// escalation.
 	in := "I cannot find any evidence and could not be resolved."
-	out := cleanReport(in)
+	out := CleanReport(in)
 	if out != in {
 		t.Fatalf("non-report body should round-trip; got:\n%s", out)
 	}
@@ -138,7 +138,7 @@ func TestCleanReport_NoFooterReturnsUnchanged(t *testing.T) {
 		"## Open questions",
 		"- q",
 	}, "\n")
-	out := cleanReport(in)
+	out := CleanReport(in)
 	if out != strings.TrimSpace(in) {
 		t.Fatalf("clean body should round-trip; got:\n%s", out)
 	}

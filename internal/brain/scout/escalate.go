@@ -6,36 +6,39 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/sloppy-org/sloptools/internal/brain/backend"
 	"github.com/sloppy-org/sloptools/internal/brain/ledger"
 	"github.com/sloppy-org/sloptools/internal/brain/routing"
 )
 
-func escalateOne(ctx context.Context, opts RunOpts, entry *ReportEntry, p Pick, originalPacket, bulkReport, reason, reportPath string) error {
+func escalateOne(ctx context.Context, opts RunOpts, entry *ReportEntry, p Pick, originalPacket, bulkReport, reason, reportPath string) (stageRecord, error) {
+	var rec stageRecord
 	pick, err := opts.Router.Pick(routing.StageTriage)
 	if err != nil {
-		return fmt.Errorf("router pick triage: %w", err)
+		return rec, fmt.Errorf("router pick triage: %w", err)
 	}
 	if pick.Provider == backend.ProviderLocal {
-		return fmt.Errorf("paid tiers saturated; staying on bulk")
+		return rec, fmt.Errorf("paid tiers saturated; staying on bulk")
 	}
 	be, err := backendForID(pick.BackendID)
 	if err != nil {
-		return fmt.Errorf("backendForID: %w", err)
+		return rec, fmt.Errorf("backendForID: %w", err)
 	}
 	stagePrompt, err := writeEscalatePrompt(opts.RunID)
 	if err != nil {
-		return fmt.Errorf("write prompt: %w", err)
+		return rec, fmt.Errorf("write prompt: %w", err)
 	}
 	defer os.Remove(stagePrompt)
 	stage := "scout-escalate-" + sanitize(p.Path)
 	sb, err := backend.NewSandbox(opts.RunID, stage, stagePrompt, backend.DefaultMCPConfig())
 	if err != nil {
-		return fmt.Errorf("sandbox: %w", err)
+		return rec, fmt.Errorf("sandbox: %w", err)
 	}
 	defer sb.Cleanup()
 	packet := buildEscalatePacket(p, originalPacket, bulkReport, reason)
+	startedAt := time.Now().UTC()
 	resp, err := be.Run(ctx, backend.Request{
 		Stage:            stage,
 		Packet:           packet,
@@ -46,15 +49,16 @@ func escalateOne(ctx context.Context, opts RunOpts, entry *ReportEntry, p Pick, 
 		Sandbox:          sb,
 	})
 	if err != nil {
-		return fmt.Errorf("backend run: %w", err)
+		return rec, fmt.Errorf("backend run: %w", err)
 	}
 	body := cleanReport(resp.Output)
 	if body == "" {
-		return fmt.Errorf("empty escalation output")
+		return rec, fmt.Errorf("empty escalation output")
 	}
 	if err := os.WriteFile(reportPath, []byte(body+"\n"), 0o644); err != nil {
-		return fmt.Errorf("write escalated report: %w", err)
+		return rec, fmt.Errorf("write escalated report: %w", err)
 	}
+	rawPath, cleanedPath, _ := writeStageArtifact(reportPath, "escalate."+pick.BackendID, resp.Output, body)
 	entry.Escalated = true
 	entry.EscalationReason = reason
 	entry.EscalationBackend = pick.BackendID
@@ -70,10 +74,26 @@ func escalateOne(ctx context.Context, opts RunOpts, entry *ReportEntry, p Pick, 
 			TokensOut: resp.TokensOut,
 			WallMS:    resp.WallMS,
 			CostHint:  resp.CostHint,
-			Extras:    map[string]string{"path": p.Path, "tier": string(pick.Tier), "escalation": "true"},
+			Extras:    map[string]string{"path": p.Path, "tier": string(pick.Tier), "escalation": "true", "escalation_reason": reason},
 		})
 	}
-	return nil
+	rec = stageRecord{
+		Stage:        stage,
+		Backend:      pick.BackendID,
+		Provider:     string(pick.Provider),
+		Model:        pick.Model,
+		Tier:         string(pick.Tier),
+		StartedAt:    startedAt,
+		WallMS:       resp.WallMS,
+		TokensIn:     resp.TokensIn,
+		TokensOut:    resp.TokensOut,
+		CostHint:     resp.CostHint,
+		RawPath:      rawPath,
+		CleanedPath:  cleanedPath,
+		RawBytes:     len(resp.Output),
+		CleanedBytes: len(body),
+	}
+	return rec, nil
 }
 
 func writeEscalatePrompt(runID string) (string, error) {

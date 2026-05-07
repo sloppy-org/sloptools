@@ -31,6 +31,15 @@ Tools:
 - helpy `web_search`, `web_fetch` only to confirm a single named
   external fact already referenced in the packet. Never speculative
   search.
+- helpy `pdf_read` (modes metadata / text / outline; bounded by
+  `pages` and `max_bytes`) when the packet references a PDF that
+  needs verifying.
+- read-only bash: `ls`, `head`, `tail`, `wc`, `file`, `find`,
+  `rg --files`, `rg -l`, `stat`, `pwd`. Anything else is denied — use
+  the helpy MCP equivalent.
+
+Tools you may NOT use:
+- slopshell — never register it as an MCP server.
 
 Style:
 - Terse object-level prose. No "key insight" labels, no three-part

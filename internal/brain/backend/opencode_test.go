@@ -104,9 +104,57 @@ func TestParseOpencodeJSON_TopLevelUsage(t *testing.T) {
 
 func TestOpencodeAgentFrontmatterDeniesWriteAndBash(t *testing.T) {
 	tmpl := opencodeAgentFrontmatter()
-	for _, want := range []string{"  edit: deny", "  bash: deny", "  '*': allow", "mode: primary"} {
+	// Edit/write/apply_patch is the file-write side channel — must remain denied.
+	for _, want := range []string{"  edit: deny", "  '*': allow", "mode: primary"} {
 		if !strings.Contains(tmpl, want) {
 			t.Fatalf("agent frontmatter missing %q:\n%s", want, tmpl)
+		}
+	}
+	// Bash is now an allowlisted object, not a flat deny.
+	if !strings.Contains(tmpl, "  bash:") {
+		t.Fatalf("agent frontmatter missing bash key:\n%s", tmpl)
+	}
+	if strings.Contains(tmpl, "  bash: deny") {
+		t.Fatalf("bash is no longer a flat deny — should be an object allowlist:\n%s", tmpl)
+	}
+	if !strings.Contains(tmpl, "    \"*\": deny") {
+		t.Fatalf("bash allowlist must default-deny via \"*\":\n%s", tmpl)
+	}
+	for _, want := range []string{
+		"\"ls\": allow",
+		"\"ls *\": allow",
+		"\"head *\": allow",
+		"\"tail *\": allow",
+		"\"wc *\": allow",
+		"\"file *\": allow",
+		"\"find *\": allow",
+		"\"stat *\": allow",
+		"\"pwd\": allow",
+		"\"rg --files*\": allow",
+	} {
+		if !strings.Contains(tmpl, want) {
+			t.Fatalf("bash allowlist missing %q:\n%s", want, tmpl)
+		}
+	}
+	// Negative: cat / pdftotext / curl / wget / awk / sed / grep / git
+	// must NOT be in the allowlist. Helpy MCP tools cover the bounded
+	// equivalents (pdf_read, web_fetch).
+	for _, deny := range []string{
+		"\"cat\": allow",
+		"\"cat *\": allow",
+		"\"pdftotext",
+		"\"pdfinfo",
+		"\"curl",
+		"\"wget",
+		"\"awk",
+		"\"sed",
+		"\"grep ",
+		"\"git ",
+		"\"python",
+		"\"bash ",
+	} {
+		if strings.Contains(tmpl, deny) {
+			t.Fatalf("bash allowlist must NOT include %q:\n%s", deny, tmpl)
 		}
 	}
 	if !strings.HasPrefix(tmpl, "---\n") || !strings.HasSuffix(tmpl, "\n---") {

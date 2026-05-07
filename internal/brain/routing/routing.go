@@ -226,31 +226,43 @@ func (r *Router) applyOpenAIOverride(cfg StageConfig) (Choice, bool) {
 //     external evidence needed; deterministic from inputs. Opencode/qwen.
 //   - scout (bulk): live web + Zotero + TUGonline + vault verification.
 //     The 2026-05-07 first nightly proved opencode/qwen with helpy +
-//     sloppy MCP produces research-grade evidence reports. Bulk only.
-//   - triage (medium): promote/maybe/reject for candidate entities.
-//     STAYS medium until live evidence confirms bulk is sufficient for
-//     this stage's structural-output requirements. The opencode-first
-//     mechanism is available via `scout --escalate-on-conflict`; once
-//     that mechanism has a week of observed nightly data, this stage
-//     should move to bulk-first with paid escalation.
+//     sloppy MCP produces research-grade evidence reports. Bulk only,
+//     with `--escalate-on-conflict` (default true) routing flagged
+//     reports through a free self-resolve pass and then a paid medium
+//     pass when the deterministic classifier still flags the body.
+//   - triage (medium): the routing name "triage" here is the escalation
+//     POOL used by scout when the classifier flags content. It is NOT
+//     a separate triage worker stage — there is no production call site
+//     that picks `StageTriage` outside escalation. Tier stays medium
+//     because that IS its semantic role: codex-mini ↔ claude-haiku
+//     round-robin for "fix this evidence packet please". Renaming this
+//     stage to `StageEscalate` is a follow-up cleanup; behaviour is
+//     correct as-is.
 //   - sleep-judge (medium): editorial pass over a rendered sleep packet.
-//     The packet bakes in citations; the model needs taste, not retrieval.
-//     Medium paid (gpt-5.4-mini ↔ claude-haiku) is appropriate because
-//     judge edits canonical Markdown via the integrity gate.
+//     The packet bakes in citations; the model needs taste, not
+//     retrieval. STAYS medium today; the bulk-first / paid-on-doubt
+//     migration here needs a deterministic classifier of integrity-
+//     gate output (expected sections retained, no forbidden sections
+//     reintroduced, no code-fenced wrapper). Tracked as follow-up;
+//     the shared cleanup package (internal/brain/cleanup) is in place
+//     so the migration is a small refactor away.
 //   - compress (hard): shrink textbook prose while preserving local
 //     anchors. STAYS hard until the v1 fx-neort re-grade observation
 //     ("medium tier on technical packets at risk of fabricating jargon")
-//     is overturned by live evidence. Same as triage: should move to
-//     bulk-first with escalation once we have nightly data showing the
-//     classifier catches structural failures.
+//     is overturned by live evidence. No production call site today
+//     either; the bench task exercises it but no nightly stage routes
+//     through it yet.
 //   - entity-write (hard): writes canonical entity notes. Highest stakes.
-//     Hard tier (gpt-5.5 ↔ claude-sonnet) round-robin.
+//     Hard tier (gpt-5.5 ↔ claude-sonnet) round-robin. STAYS hard until
+//     a structural-integrity gate exists for canonical Markdown writes;
+//     that gate is its own project.
 //
-// The --escalate-on-conflict flag (today on the scout stage only) is the
-// staging area for the bulk-first / paid-on-doubt pattern. After it has
-// proven itself there, the same mechanism extends to triage and compress.
-// Until then, those two stages stay paid by default — quality first,
-// cost second.
+// The --escalate-on-conflict flag (scout today) is the proven pattern
+// for "bulk first, paid only on classifier doubt". The shared
+// internal/brain/cleanup package and the audit-sidecar layer in
+// internal/brain/scout/artifacts.go are the foundation for extending
+// this to sleep-judge, compress, and entity-write once each stage has
+// a deterministic classifier.
 func DefaultStageConfigs() map[Stage]StageConfig {
 	return map[Stage]StageConfig{
 		StageFolderNote:  bulkStage(StageFolderNote),

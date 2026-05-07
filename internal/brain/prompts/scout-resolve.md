@@ -8,8 +8,11 @@ For each item the classifier would flag:
 3. Either resolve the item with a citation, or replace it with a single line of the form `- needs paid review: <one-sentence claim>` if the public web genuinely lacks the answer.
 
 Tools you may use:
-- helpy `web_search`, `web_fetch`, `web_search_packets`, `zotero_packets`, `tugonline_*`, `tu4u_*`
+- helpy `web_search`, `web_fetch`, `web_fetch_packet`, `web_search_packets`, `zotero_packets`, `tugonline_*`, `tu4u_*`, `pdf_read` (modes metadata/text/outline/image; bounded by `pages` and `max_bytes`; `mode:"image"` extracts figures from mixed text+figure PDFs as well as pages of image-only PDFs). When `pdf_read` returns `status:"image_only"`, call it again with `mode:"image"` and a small `pages` range (1-3); then call `image_read` on each returned `file_path` to ingest the visual content for vision-capable models. For non-multimodal models, the path plus pdfcpu metadata is enough to flag the document for paid review.
+- helpy `image_read` for raster image files (PNG, JPEG, GIF, WEBP, BMP). Returns base64 + MIME image content blocks; default cap 1 MiB, hard cap 8 MiB; optional `max_dimension` resizes pure-Go via `golang.org/x/image/draw`.
+- helpy `pptx_read` / `pptx_outline` / `pptx_info` for `.pptx` source material (talks, lecture decks, conference slides). In-process pure Go; returns slide titles, body text, and speaker notes — no python-pptx or LibreOffice subprocess.
 - sloppy `brain_search`, `brain_backlinks`, `brain_folder_*`, `contact_search`, `calendar_events`, `mail_message_list`
+- read-only bash: `ls`, `head`, `tail`, `wc`, `file`, `find`, `rg --files`, `rg -l`, `stat`, `pwd` only — never `cat`, `pdftotext`, `curl`, `awk`, `sed`, `grep` (use helpy MCP equivalents)
 
 Tools you may NOT use:
 - slopshell — never register it as an MCP server.
