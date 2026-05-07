@@ -25,32 +25,39 @@ type RunOpts struct {
 	Now       time.Time
 	DryRun    bool
 	// EscalateOnConflict, when true, feeds bulk-tier scout reports
-	// through a deterministic classifier; reports flagged with
-	// substantive `## Conflicting / outdated` content or unresolved open
-	// questions get a second pass at the medium tier (codex-mini ↔
-	// claude-haiku round-robin via the router). The medium-tier output
-	// supersedes the bulk one. This is the opencode-first / paid-on-doubt
-	// pattern: most picks stay free, only the genuinely ambiguous ones
-	// burn paid quota.
+	// through a deterministic classifier. Flagged reports get a free
+	// opencode self-resolve pass (up to SelfResolvePasses times), and
+	// only when the self-resolve cannot clear the flags do they reach
+	// the paid medium tier. Pattern: bulk → self-resolve (free) → paid
+	// (only if still flagged).
 	EscalateOnConflict bool
+	// SelfResolvePasses is the number of opencode self-resolve passes
+	// to attempt between the bulk pass and the paid escalation. Default
+	// when EscalateOnConflict is true and this is zero is 1 — one
+	// targeted close-the-gaps pass before paid. Capped at 3.
+	SelfResolvePasses int
 }
 
 // RunReport summarises the scout pass. Candidates is the number of
 // picks fed in (deterministic picker output); Written is the number of
 // evidence reports actually produced (zero in dry-run, can be smaller
 // than Candidates when the ledger guard or backend skips a pick).
-// Escalated counts how many picks went through a paid second pass.
+// SelfResolved counts picks where a free opencode self-resolve pass
+// cleared the classifier without needing paid escalation. Escalated
+// counts picks that reached the paid medium tier after the
+// self-resolve passes did not clear them.
 type RunReport struct {
-	RunID      string        `json:"run_id"`
-	StartedAt  time.Time     `json:"started_at"`
-	EndedAt    time.Time     `json:"ended_at"`
-	Candidates int           `json:"candidates"`
-	Written    int           `json:"written"`
-	Escalated  int           `json:"escalated"`
-	ReportsDir string        `json:"reports_dir"`
-	Reports    []ReportEntry `json:"reports"`
-	Skipped    int           `json:"skipped"`
-	Errors     []string      `json:"errors,omitempty"`
+	RunID        string        `json:"run_id"`
+	StartedAt    time.Time     `json:"started_at"`
+	EndedAt      time.Time     `json:"ended_at"`
+	Candidates   int           `json:"candidates"`
+	Written      int           `json:"written"`
+	SelfResolved int           `json:"self_resolved"`
+	Escalated    int           `json:"escalated"`
+	ReportsDir   string        `json:"reports_dir"`
+	Reports      []ReportEntry `json:"reports"`
+	Skipped      int           `json:"skipped"`
+	Errors       []string      `json:"errors,omitempty"`
 }
 
 // ReportEntry records one entity report's outcome.
@@ -63,8 +70,17 @@ type ReportEntry struct {
 	Skipped    bool    `json:"skipped,omitempty"`
 	Reason     string  `json:"reason,omitempty"`
 	WallMS     int64   `json:"wall_ms,omitempty"`
-	// Escalated is true when the bulk pass flagged conflict and a paid
-	// medium-tier second pass replaced the report content.
+	// SelfResolveCount is the number of free opencode self-resolve
+	// passes that ran on this pick after the bulk pass triggered the
+	// classifier. Zero means the bulk pass was clean (or the pick
+	// short-circuited).
+	SelfResolveCount int `json:"self_resolve_count,omitempty"`
+	// SelfResolved is true when one of those self-resolve passes
+	// cleared the classifier so paid escalation was not needed.
+	SelfResolved bool `json:"self_resolved,omitempty"`
+	// Escalated is true when the bulk + self-resolve passes still left
+	// classifier-flagged content and a paid medium-tier reviewer
+	// replaced the report content.
 	Escalated         bool   `json:"escalated,omitempty"`
 	EscalationReason  string `json:"escalation_reason,omitempty"`
 	EscalationBackend string `json:"escalation_backend,omitempty"`
@@ -125,6 +141,9 @@ func Run(ctx context.Context, opts RunOpts) (*RunReport, error) {
 		}
 		if entry.ReportPath != "" {
 			report.Written++
+		}
+		if entry.SelfResolved {
+			report.SelfResolved++
 		}
 		if entry.Escalated {
 			report.Escalated++
@@ -209,14 +228,141 @@ func runOnePick(ctx context.Context, opts RunOpts, reportsDir, stagePrompt strin
 		})
 	}
 	if opts.EscalateOnConflict {
-		if d := classifyForEscalation(body); d.Escalate {
-			if err := escalateOne(ctx, opts, &entry, p, packet, body, d.Reason, rpath); err != nil {
-				// Escalation failure is non-fatal: keep the bulk report.
-				entry.EscalationReason = "attempted: " + d.Reason + "; failed: " + err.Error()
+		d := classifyForEscalation(body)
+		if d.Escalate {
+			passes := opts.SelfResolvePasses
+			if passes <= 0 {
+				passes = 1
+			}
+			if passes > 3 {
+				passes = 3
+			}
+			for i := 0; i < passes && d.Escalate; i++ {
+				newBody, err := selfResolveOne(ctx, opts, p, packet, body, d.Reason, rpath)
+				if err != nil {
+					// Self-resolve failed: leave bulk body in place and fall
+					// through to paid escalation below.
+					break
+				}
+				body = newBody
+				entry.SelfResolveCount++
+				d = classifyForEscalation(body)
+			}
+			if !d.Escalate {
+				entry.SelfResolved = true
+			} else {
+				if err := escalateOne(ctx, opts, &entry, p, packet, body, d.Reason, rpath); err != nil {
+					entry.EscalationReason = "attempted: " + d.Reason + "; failed: " + err.Error()
+				}
 			}
 		}
 	}
 	return entry
+}
+
+// selfResolveOne runs a free opencode self-resolve pass over a bulk-
+// tier report that the classifier flagged. The agent reads its own
+// prior draft plus the original packet and produces a refined report
+// that either resolves the flagged items with citations or marks them
+// `- needs paid review:` for the next pass. The new body overwrites
+// the report file; ledger gets a second entry tagged with the
+// self-resolve stage. Returns the new body so the caller can re-
+// classify it. Non-fatal errors are returned so the caller can decide
+// whether to fall through to paid escalation.
+func selfResolveOne(ctx context.Context, opts RunOpts, p Pick, originalPacket, bulkReport, reason, reportPath string) (string, error) {
+	pick, err := opts.Router.Pick(routing.StageScout)
+	if err != nil {
+		return "", fmt.Errorf("router pick scout: %w", err)
+	}
+	be, err := backendForID(pick.BackendID)
+	if err != nil {
+		return "", fmt.Errorf("backendForID: %w", err)
+	}
+	stagePrompt, err := writeSelfResolvePrompt()
+	if err != nil {
+		return "", fmt.Errorf("write self-resolve prompt: %w", err)
+	}
+	defer os.Remove(stagePrompt)
+	stage := "scout-resolve-" + sanitize(p.Path)
+	sb, err := backend.NewSandbox(opts.RunID, stage, stagePrompt, backend.DefaultMCPConfig())
+	if err != nil {
+		return "", fmt.Errorf("sandbox: %w", err)
+	}
+	defer sb.Cleanup()
+	packet := buildSelfResolvePacket(p, originalPacket, bulkReport, reason)
+	resp, err := be.Run(ctx, backend.Request{
+		Stage:            stage,
+		Packet:           packet,
+		SystemPromptPath: sb.SystemPromptIn,
+		Model:            pick.Model,
+		Reasoning:        pick.Reasoning,
+		AllowEdits:       false,
+		Sandbox:          sb,
+	})
+	if err != nil {
+		return "", fmt.Errorf("backend run: %w", err)
+	}
+	body := strings.TrimSpace(resp.Output)
+	if body == "" {
+		return "", fmt.Errorf("empty self-resolve output")
+	}
+	if err := os.WriteFile(reportPath, []byte(body+"\n"), 0o644); err != nil {
+		return "", fmt.Errorf("write self-resolved report: %w", err)
+	}
+	if opts.Ledger != nil {
+		_ = opts.Ledger.Append(ledger.Entry{
+			Sphere:    opts.Sphere,
+			Stage:     stage,
+			Provider:  pick.Provider,
+			Backend:   pick.BackendID,
+			Model:     pick.Model,
+			TokensIn:  resp.TokensIn,
+			TokensOut: resp.TokensOut,
+			WallMS:    resp.WallMS,
+			CostHint:  resp.CostHint,
+			Extras:    map[string]string{"path": p.Path, "tier": string(pick.Tier), "self_resolve": "true"},
+		})
+	}
+	return body, nil
+}
+
+// writeSelfResolvePrompt drops the close-the-gaps prompt to disk for
+// the self-resolve call. The prompt is in internal/brain/prompts/
+// scout-resolve.md and is extracted into a temp file so the sandbox
+// can copy it (the sandbox needs a real file path).
+func writeSelfResolvePrompt() (string, error) {
+	dir, err := os.MkdirTemp("", "sloptools-scout-resolve-prompt-")
+	if err != nil {
+		return "", err
+	}
+	if _, err := prompts.Extract(dir); err != nil {
+		return "", err
+	}
+	path := filepath.Join(dir, "scout-resolve.md")
+	if _, err := os.Stat(path); err != nil {
+		// Older prompt sets may not have the file; fall back to scout.md
+		// so the call still runs (with the broader exploratory prompt).
+		path = filepath.Join(dir, "scout.md")
+	}
+	return path, nil
+}
+
+// buildSelfResolvePacket bundles the original packet, the bulk report,
+// and the conflict reason for the same opencode model on its second
+// pass.
+func buildSelfResolvePacket(p Pick, originalPacket, bulkReport, reason string) string {
+	var b strings.Builder
+	b.WriteString("# Scout self-resolve packet\n\n")
+	fmt.Fprintf(&b, "Path: `%s`\n", p.Path)
+	fmt.Fprintf(&b, "Title: %s\n", p.Title)
+	fmt.Fprintf(&b, "Classifier flagged the prior draft because: %s\n\n", reason)
+	b.WriteString("## Original entity packet\n\n")
+	b.WriteString(originalPacket)
+	b.WriteString("\n\n## Your prior draft scout report\n\n")
+	b.WriteString(bulkReport)
+	b.WriteString("\n\n## Your task\n\n")
+	b.WriteString("Resolve each flagged item with a targeted MCP query, or mark genuinely-unresolvable items with `- needs paid review:` so the next pass can route them. Rewrite the entire scout report in the same section structure.\n")
+	return b.String()
 }
 
 // escalateOne runs a paid medium-tier second pass over a bulk-tier

@@ -41,7 +41,8 @@ func cmdBrainNight(args []string) int {
 	coverageBudget := fs.Int("coverage-budget", brain.SleepDefaultCoverageBudget, "folder coverage changes before NREM")
 	dryRun := fs.Bool("dry-run", false, "skip LLM, do not apply prune-links, do not write report file")
 	brainTOMLPath := fs.String("brain-toml", "", "override brain.toml path (default ~/.config/sloptools/brain.toml)")
-	escalateOnConflict := fs.Bool("escalate-on-conflict", false, "after each bulk-tier scout report, run a paid medium-tier reviewer pass when the report has substantive ## Conflicting / outdated content or >1 open question")
+	escalateOnConflict := fs.Bool("escalate-on-conflict", false, "after each bulk-tier scout report, run free opencode self-resolve passes (--self-resolve-passes) and only then escalate to a paid medium-tier reviewer if the classifier still flags the report")
+	selfResolvePasses := fs.Int("self-resolve-passes", 1, "number of free opencode self-resolve passes between the bulk pass and a paid escalation, 0-3 (default 1, only applies with --escalate-on-conflict)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -114,7 +115,7 @@ func cmdBrainNight(args []string) int {
 	}
 
 	if stage == "" || stage == "scout" {
-		if err := runScoutStage(vault, ldg, router, runID, *dryRun, *escalateOnConflict, report); err != nil {
+		if err := runScoutStage(vault, ldg, router, runID, *dryRun, *escalateOnConflict, *selfResolvePasses, report); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
 		}
@@ -174,12 +175,13 @@ type spendSummary struct {
 }
 
 type scoutSummary struct {
-	Status     string   `json:"status"`
-	Candidates int      `json:"candidates"`
-	Written    int      `json:"written"`
-	Escalated  int      `json:"escalated"`
-	Reports    []string `json:"reports,omitempty"`
-	Notes      string   `json:"notes,omitempty"`
+	Status       string   `json:"status"`
+	Candidates   int      `json:"candidates"`
+	Written      int      `json:"written"`
+	SelfResolved int      `json:"self_resolved"`
+	Escalated    int      `json:"escalated"`
+	Reports      []string `json:"reports,omitempty"`
+	Notes        string   `json:"notes,omitempty"`
 }
 
 // runSweepStage runs the deterministic, zero-LLM portion of sleep:
@@ -224,7 +226,7 @@ func runTextbookScan(vault brain.Vault, report *nightReport) error {
 // canonical Markdown; suggestions are surfaced in the report payload
 // and persisted in the per-pick evidence files for the judge stage to
 // pick up.
-func runScoutStage(vault brain.Vault, ldg *ledger.Ledger, router *routing.Router, runID string, dryRun, escalateOnConflict bool, report *nightReport) error {
+func runScoutStage(vault brain.Vault, ldg *ledger.Ledger, router *routing.Router, runID string, dryRun, escalateOnConflict bool, selfResolvePasses int, report *nightReport) error {
 	picks, err := scout.PickEntities(scout.PickerOpts{
 		BrainRoot: vault.BrainRoot(),
 		Now:       time.Now().UTC(),
@@ -250,6 +252,7 @@ func runScoutStage(vault brain.Vault, ldg *ledger.Ledger, router *routing.Router
 		RunID:              runID,
 		DryRun:             dryRun,
 		EscalateOnConflict: escalateOnConflict,
+		SelfResolvePasses:  selfResolvePasses,
 	})
 	if err != nil {
 		report.Scout.Status = "error"
@@ -258,6 +261,7 @@ func runScoutStage(vault brain.Vault, ldg *ledger.Ledger, router *routing.Router
 	}
 	report.Scout.Candidates = res.Candidates
 	report.Scout.Written = res.Written
+	report.Scout.SelfResolved = res.SelfResolved
 	report.Scout.Escalated = res.Escalated
 	for _, e := range res.Reports {
 		if e.ReportPath != "" {
