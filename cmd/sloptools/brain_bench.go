@@ -136,10 +136,26 @@ func buildTaskList(spec string) ([]bench.Task, error) {
 		switch id {
 		case "folder-note":
 			out = append(out, bench.FolderNoteTask{FixtureSet: bench.V1FolderNoteFixtures()})
+		case "triage":
+			out = append(out, bench.TriageTask{FixtureSet: bench.V2TriageFixtures()})
+		case "sleep-judge":
+			out = append(out, bench.SleepJudgeTask{FixtureSet: bench.V2SleepJudgeFixtures()})
+		case "scout":
+			out = append(out, bench.ScoutTask{FixtureSet: bench.V2ScoutFixtures()})
+		case "compress":
+			out = append(out, bench.CompressTask{FixtureSet: bench.V2CompressFixtures()})
+		case "all":
+			out = append(out,
+				bench.FolderNoteTask{FixtureSet: bench.V1FolderNoteFixtures()},
+				bench.TriageTask{FixtureSet: bench.V2TriageFixtures()},
+				bench.SleepJudgeTask{FixtureSet: bench.V2SleepJudgeFixtures()},
+				bench.ScoutTask{FixtureSet: bench.V2ScoutFixtures()},
+				bench.CompressTask{FixtureSet: bench.V2CompressFixtures()},
+			)
 		case "":
 			continue
 		default:
-			return nil, fmt.Errorf("unknown task id: %s (v1 supports: folder-note)", id)
+			return nil, fmt.Errorf("unknown task id: %s (supports: folder-note, triage, sleep-judge, scout, compress, all)", id)
 		}
 	}
 	if len(out) == 0 {
@@ -180,17 +196,37 @@ func filterFixtures(tasks []bench.Task, want []string) []bench.Task {
 	for _, w := range want {
 		wantSet[strings.TrimSpace(w)] = true
 	}
+	keep := func(in []bench.Fixture) []bench.Fixture {
+		kept := make([]bench.Fixture, 0, len(in))
+		for _, f := range in {
+			if wantSet[f.ID] {
+				kept = append(kept, f)
+			}
+		}
+		return kept
+	}
 	out := make([]bench.Task, 0, len(tasks))
 	for _, t := range tasks {
-		if folder, ok := t.(bench.FolderNoteTask); ok {
-			kept := folder.FixtureSet[:0]
-			for _, f := range folder.FixtureSet {
-				if wantSet[f.ID] {
-					kept = append(kept, f)
-				}
+		switch v := t.(type) {
+		case bench.FolderNoteTask:
+			if k := keep(v.FixtureSet); len(k) > 0 {
+				out = append(out, bench.FolderNoteTask{FixtureSet: k})
 			}
-			if len(kept) > 0 {
-				out = append(out, bench.FolderNoteTask{FixtureSet: kept})
+		case bench.TriageTask:
+			if k := keep(v.FixtureSet); len(k) > 0 {
+				out = append(out, bench.TriageTask{FixtureSet: k})
+			}
+		case bench.SleepJudgeTask:
+			if k := keep(v.FixtureSet); len(k) > 0 {
+				out = append(out, bench.SleepJudgeTask{FixtureSet: k})
+			}
+		case bench.ScoutTask:
+			if k := keep(v.FixtureSet); len(k) > 0 {
+				out = append(out, bench.ScoutTask{FixtureSet: k})
+			}
+		case bench.CompressTask:
+			if k := keep(v.FixtureSet); len(k) > 0 {
+				out = append(out, bench.CompressTask{FixtureSet: k})
 			}
 		}
 	}
