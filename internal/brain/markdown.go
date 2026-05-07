@@ -148,6 +148,46 @@ func (n *MarkdownNote) SetSectionBody(name, body string) error {
 	return fmt.Errorf("section %q not found", name)
 }
 
+func (n *MarkdownNote) AppendSection(level int, name, body string) error {
+	if strings.TrimSpace(name) == "" {
+		return errors.New("section name is required")
+	}
+	if level <= 0 || level > 6 {
+		level = 2
+	}
+	heading := strings.Repeat("#", level) + " " + strings.TrimSpace(name) + "\n"
+	body = "\n" + strings.Trim(body, "\n") + "\n"
+	if last := n.lastRendered(); last != "" && !strings.HasSuffix(last, "\n\n") {
+		if strings.HasSuffix(last, "\n") {
+			heading = "\n" + heading
+		} else {
+			heading = "\n\n" + heading
+		}
+	}
+	n.elements = append(n.elements, markdownElement{
+		kind:    markdownSection,
+		changed: true,
+		heading: heading,
+		body:    body,
+		section: MarkdownSection{Level: level, Name: strings.TrimSpace(name), Body: body},
+	})
+	return nil
+}
+
+func (n *MarkdownNote) UpsertSection(level int, name, body string) error {
+	if err := n.SetSectionBody(name, body); err == nil {
+		return nil
+	}
+	return n.AppendSection(level, name, body)
+}
+
+func (n *MarkdownNote) lastRendered() string {
+	if n == nil || len(n.elements) == 0 {
+		return ""
+	}
+	return n.elements[len(n.elements)-1].render()
+}
+
 func (n *MarkdownNote) Render() (string, error) {
 	if n == nil {
 		return "", nil
@@ -164,6 +204,41 @@ func (n *MarkdownNote) Render() (string, error) {
 		out.WriteString(elem.render())
 	}
 	return out.String(), nil
+}
+
+func (n *MarkdownNote) sections() []MarkdownSection {
+	var sections []MarkdownSection
+	for _, elem := range n.elements {
+		if elem.kind == markdownSection {
+			sections = append(sections, elem.section)
+		}
+	}
+	return sections
+}
+
+func duplicateRequiredSectionDiagnostics(sections []MarkdownSection, required []string) []MarkdownDiagnostic {
+	requiredSet := map[string]bool{}
+	for _, name := range required {
+		requiredSet[normalizeSectionName(name)] = true
+	}
+	first := map[string]MarkdownSection{}
+	var diags []MarkdownDiagnostic
+	for _, section := range sections {
+		key := normalizeSectionName(section.Name)
+		if !requiredSet[key] {
+			continue
+		}
+		if prev, ok := first[key]; ok {
+			diags = append(diags, MarkdownDiagnostic{Line: section.StartLine, Message: fmt.Sprintf("duplicate required section %q first defined on line %d", section.Name, prev.StartLine)})
+			continue
+		}
+		first[key] = section
+	}
+	return diags
+}
+
+func normalizeSectionName(name string) string {
+	return strings.ToLower(strings.TrimSpace(name))
 }
 
 func (d MarkdownDiagnostic) Error() string {
@@ -192,14 +267,10 @@ func (e markdownElement) render() string {
 }
 
 func (n *MarkdownNote) ensureFrontMatter() *markdownFrontMatter {
-	if n.frontMatter != nil {
-		if n.frontMatter.public.Node == nil {
-			n.frontMatter.public.Node = emptyDocumentMapping()
-		}
-		return n.frontMatter
-	}
-	n.frontMatter = &markdownFrontMatter{
-		public: MarkdownFrontMatter{StartLine: 1, EndLine: 2, Node: emptyDocumentMapping()},
+	if n.frontMatter == nil {
+		n.frontMatter = &markdownFrontMatter{public: MarkdownFrontMatter{StartLine: 1, EndLine: 2, Node: emptyDocumentMapping()}}
+	} else if n.frontMatter.public.Node == nil {
+		n.frontMatter.public.Node = emptyDocumentMapping()
 	}
 	return n.frontMatter
 }
@@ -234,17 +305,8 @@ func parseMarkdownFrontMatter(src string, spans []lineSpan) (*markdownFrontMatte
 }
 
 func decodeFrontMatter(src string, open, close lineSpan) (*markdownFrontMatter, []MarkdownDiagnostic) {
-	content := src[open.end:close.start]
-	fm := &markdownFrontMatter{
-		public: MarkdownFrontMatter{
-			StartLine: open.line,
-			EndLine:   close.line,
-			Raw:       src[open.start:close.end],
-		},
-	}
-	node, diags := parseYAMLFrontMatter(content, open.line+1)
-	fm.public.Node = node
-	return fm, diags
+	node, diags := parseYAMLFrontMatter(src[open.end:close.start], open.line+1)
+	return &markdownFrontMatter{public: MarkdownFrontMatter{StartLine: open.line, EndLine: close.line, Raw: src[open.start:close.end], Node: node}}, diags
 }
 
 func parseYAMLFrontMatter(content string, firstLine int) (*yaml.Node, []MarkdownDiagnostic) {
@@ -272,44 +334,6 @@ func yamlErrorLine(err error, firstLine int) int {
 		return firstLine
 	}
 	return firstLine + line - 1
-}
-
-func parseMarkdownElements(src string, spans []lineSpan) []markdownElement {
-	if len(spans) == 0 {
-		return nil
-	}
-	var elements []markdownElement
-	proseStart := spans[0].start
-	sectionStart := -1
-	var heading lineSpan
-	var section MarkdownSection
-	for _, span := range spans {
-		level, name, ok := parseATXHeading(span.text)
-		if !ok {
-			continue
-		}
-		elements = appendPreviousElement(elements, src, proseStart, sectionStart, span.start, heading, section)
-		sectionStart = span.start
-		heading = span
-		section = MarkdownSection{Level: level, Name: name, StartLine: span.line}
-	}
-	return appendPreviousElement(elements, src, proseStart, sectionStart, len(src), heading, section)
-}
-
-func appendPreviousElement(elements []markdownElement, src string, proseStart, sectionStart, end int, heading lineSpan, section MarkdownSection) []markdownElement {
-	if sectionStart < 0 {
-		if proseStart < end {
-			return append(elements, markdownElement{kind: markdownProse, raw: src[proseStart:end]})
-		}
-		return elements
-	}
-	body := src[heading.end:end]
-	section.Body = body
-	section.EndLine = lineEnd(src[sectionStart:end], section.StartLine)
-	return append(elements, markdownElement{
-		kind: markdownSection, raw: src[sectionStart:end], section: section,
-		heading: heading.text, body: body,
-	})
 }
 
 func parseATXHeading(line string) (int, string, bool) {
@@ -340,40 +364,39 @@ func lineEnd(prefix string, fallback int) int {
 	return fallback + count
 }
 
-func (n *MarkdownNote) sections() []MarkdownSection {
-	var sections []MarkdownSection
-	for _, elem := range n.elements {
-		if elem.kind == markdownSection {
-			sections = append(sections, elem.section)
-		}
+func parseMarkdownElements(src string, spans []lineSpan) []markdownElement {
+	if len(spans) == 0 {
+		return nil
 	}
-	return sections
-}
-
-func duplicateRequiredSectionDiagnostics(sections []MarkdownSection, required []string) []MarkdownDiagnostic {
-	requiredSet := map[string]bool{}
-	for _, name := range required {
-		requiredSet[normalizeSectionName(name)] = true
-	}
-	first := map[string]MarkdownSection{}
-	var diags []MarkdownDiagnostic
-	for _, section := range sections {
-		key := normalizeSectionName(section.Name)
-		if !requiredSet[key] {
+	var elements []markdownElement
+	proseStart := spans[0].start
+	sectionStart := -1
+	var heading lineSpan
+	var section MarkdownSection
+	for _, span := range spans {
+		level, name, ok := parseATXHeading(span.text)
+		if !ok {
 			continue
 		}
-		if prev, ok := first[key]; ok {
-			msg := fmt.Sprintf("duplicate required section %q first defined on line %d", section.Name, prev.StartLine)
-			diags = append(diags, MarkdownDiagnostic{Line: section.StartLine, Message: msg})
-			continue
-		}
-		first[key] = section
+		elements = appendPreviousElement(elements, src, proseStart, sectionStart, span.start, heading, section)
+		sectionStart = span.start
+		heading = span
+		section = MarkdownSection{Level: level, Name: name, StartLine: span.line}
 	}
-	return diags
+	return appendPreviousElement(elements, src, proseStart, sectionStart, len(src), heading, section)
 }
 
-func normalizeSectionName(name string) string {
-	return strings.ToLower(strings.TrimSpace(name))
+func appendPreviousElement(elements []markdownElement, src string, proseStart, sectionStart, end int, heading lineSpan, section MarkdownSection) []markdownElement {
+	if sectionStart < 0 {
+		if proseStart >= end {
+			return elements
+		}
+		return append(elements, markdownElement{kind: markdownProse, raw: src[proseStart:end]})
+	}
+	body := src[heading.end:end]
+	section.Body = body
+	section.EndLine = lineEnd(src[sectionStart:end], section.StartLine)
+	return append(elements, markdownElement{kind: markdownSection, raw: src[sectionStart:end], section: section, heading: heading.text, body: body})
 }
 
 func duplicateYAMLKeyDiagnostics(node *yaml.Node, firstLine int) []MarkdownDiagnostic {
@@ -391,13 +414,18 @@ func visitYAMLMapping(node *yaml.Node, path string, firstLine int, diags *[]Mark
 		return
 	}
 	if node.Kind != yaml.MappingNode {
-		visitYAMLChildren(node, path, firstLine, diags)
+		for _, child := range node.Content {
+			visitYAMLMapping(child, path, firstLine, diags)
+		}
 		return
 	}
 	seen := map[string]int{}
 	for i := 0; i+1 < len(node.Content); i += 2 {
 		key := node.Content[i]
-		full := yamlKeyPath(path, key.Value)
+		full := key.Value
+		if path != "" {
+			full = path + "." + full
+		}
 		if first, ok := seen[key.Value]; ok {
 			msg := fmt.Sprintf("duplicate frontmatter key %q first defined on line %d", full, first)
 			*diags = append(*diags, MarkdownDiagnostic{Line: firstLine + key.Line - 1, Message: msg})
@@ -408,32 +436,15 @@ func visitYAMLMapping(node *yaml.Node, path string, firstLine int, diags *[]Mark
 	}
 }
 
-func visitYAMLChildren(node *yaml.Node, path string, firstLine int, diags *[]MarkdownDiagnostic) {
-	for _, child := range node.Content {
-		visitYAMLMapping(child, path, firstLine, diags)
-	}
-}
-
-func yamlKeyPath(path, key string) string {
-	if path == "" {
-		return key
-	}
-	return path + "." + key
-}
-
 func documentMapping(node *yaml.Node) *yaml.Node {
-	if node == nil || node.Kind != yaml.DocumentNode || len(node.Content) == 0 {
-		return nil
-	}
-	if node.Content[0].Kind != yaml.MappingNode {
+	if node == nil || node.Kind != yaml.DocumentNode || len(node.Content) == 0 || node.Content[0].Kind != yaml.MappingNode {
 		return nil
 	}
 	return node.Content[0]
 }
 
 func ensureDocumentMapping(node *yaml.Node) *yaml.Node {
-	mapping := documentMapping(node)
-	if mapping != nil {
+	if mapping := documentMapping(node); mapping != nil {
 		return mapping
 	}
 	node.Kind = yaml.DocumentNode
@@ -457,16 +468,15 @@ func setMappingValue(mapping *yaml.Node, name string, value *yaml.Node) {
 			return
 		}
 	}
-	key := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: name}
-	mapping.Content = append(mapping.Content, key, value)
+	mapping.Content = append(mapping.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: name}, value)
 }
 
 func yamlValueNode(value any) (*yaml.Node, error) {
-	var doc yaml.Node
 	raw, err := yaml.Marshal(value)
 	if err != nil {
 		return nil, err
 	}
+	var doc yaml.Node
 	if err := yaml.Unmarshal(raw, &doc); err != nil {
 		return nil, err
 	}

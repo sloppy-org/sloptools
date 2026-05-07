@@ -12,11 +12,11 @@ func init() {
 			"sphere":      {Type: "string", Description: "Vault sphere to inspect.", Enum: []string{"work", "private"}},
 			"path":        {Type: "string", Description: "Note path, relative to the brain root or absolute inside the vault."},
 		}},
-		Tool{Name: "brain.note.write", Description: "Round-trip safe update of a brain note's front matter and sections.", Required: []string{"sphere", "path", "fields"}, Properties: map[string]ToolProperty{
+		Tool{Name: "brain.note.write", Description: "Round-trip safe update of a brain note's front matter and sections. Sections are upserted: existing sections are updated in place, new ones are appended at the end.", Required: []string{"sphere", "path", "fields"}, Properties: map[string]ToolProperty{
 			"config_path": {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},
 			"sphere":      {Type: "string", Description: "Vault sphere to inspect.", Enum: []string{"work", "private"}},
 			"path":        {Type: "string", Description: "Note path, relative to the brain root or absolute inside the vault."},
-			"fields":      {Type: "object", Description: "Front matter and section updates. Use frontmatter and sections nested objects when you need to group fields."},
+			"fields":      {Type: "object", Description: "Field updates. Use {frontmatter: {...}, sections: {Name: \"body\" | {body, level}}} to disambiguate. Bare top-level keys are treated as frontmatter for backward compatibility. Section names that do not yet exist are appended as new H2 sections (override with {level: N})."},
 		}},
 		Tool{Name: "brain.vault.validate", Description: "Validate every Markdown brain note in a configured vault and return diagnostics with source paths.", Required: []string{"sphere"}, Properties: map[string]ToolProperty{
 			"config_path": {Type: "string", Description: "Optional vault config path. Defaults to ~/.config/sloptools/vaults.toml."},

@@ -327,8 +327,7 @@ func noteWriteUpdates(args map[string]interface{}) map[string]interface{} {
 	}
 	updates := make(map[string]interface{})
 	for key, value := range args {
-		switch key {
-		case "config_path", "sphere", "path", "commitment":
+		if key == "config_path" || key == "sphere" || key == "path" || key == "commitment" {
 			continue
 		}
 		updates[key] = value
@@ -346,23 +345,32 @@ func applyNoteFrontMatter(note *brain.MarkdownNote, updates map[string]interface
 }
 func applyNoteSections(note *brain.MarkdownNote, updates map[string]interface{}, written *[]string) error {
 	for name, raw := range updates {
-		body, ok := raw.(string)
-		if !ok {
-			if fields := objectArg(map[string]interface{}{"section": raw}, "section"); len(fields) > 0 {
-				if text, ok := stringArgFromMap(fields, "body"); ok {
-					body = text
-				}
-			}
+		body, level, err := sectionUpdate(raw)
+		if err != nil {
+			return fmt.Errorf("section %q: %w", name, err)
 		}
 		if body == "" {
 			continue
 		}
-		if err := note.SetSectionBody(name, body); err != nil {
+		if err := note.UpsertSection(level, name, body); err != nil {
 			return err
 		}
 		*written = append(*written, "section:"+name)
 	}
 	return nil
+}
+
+func sectionUpdate(raw interface{}) (string, int, error) {
+	switch v := raw.(type) {
+	case string:
+		return v, 0, nil
+	case map[string]interface{}:
+		body, _ := stringArgFromMap(v, "body")
+		return body, intArg(v, "level", 0), nil
+	case nil:
+		return "", 0, nil
+	}
+	return "", 0, fmt.Errorf("expected string or {body, level} object, got %T", raw)
 }
 func resurfaceCommitment(commitment *braingtd.Commitment, now time.Time) bool {
 	if commitment == nil {

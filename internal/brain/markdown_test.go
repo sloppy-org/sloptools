@@ -149,6 +149,74 @@ Second.
 	}
 }
 
+func TestMarkdownNoteAppendSectionAddsNewH2AtEnd(t *testing.T) {
+	src := `---
+title: Alpha
+---
+# Context
+
+First.
+`
+	note, diags := ParseMarkdownNote(src, MarkdownParseOptions{})
+	if len(diags) != 0 {
+		t.Fatalf("ParseMarkdownNote() diagnostics: %v", diags)
+	}
+	if err := note.AppendSection(2, "Backlog", "- entry one\n- entry two"); err != nil {
+		t.Fatalf("AppendSection() error: %v", err)
+	}
+	rendered, err := note.Render()
+	if err != nil {
+		t.Fatalf("Render() error: %v", err)
+	}
+	want := "# Context\n\nFirst.\n\n## Backlog\n\n- entry one\n- entry two\n"
+	if !strings.HasSuffix(rendered, want) {
+		t.Fatalf("appended section render mismatch:\n%s", rendered)
+	}
+	reparsed, diags := ParseMarkdownNote(rendered, MarkdownParseOptions{})
+	if len(diags) != 0 {
+		t.Fatalf("re-parse diagnostics: %v", diags)
+	}
+	if section, ok := reparsed.Section("Backlog"); !ok {
+		t.Fatal("reparsed note missing appended Backlog section")
+	} else if section.Level != 2 {
+		t.Fatalf("appended section level = %d, want 2", section.Level)
+	}
+}
+
+func TestMarkdownNoteUpsertSectionUpdatesExistingAndAppendsMissing(t *testing.T) {
+	src := `---
+title: Alpha
+---
+# Context
+
+Old body.
+`
+	note, _ := ParseMarkdownNote(src, MarkdownParseOptions{})
+	if err := note.UpsertSection(0, "Context", "\nUpdated body.\n"); err != nil {
+		t.Fatalf("UpsertSection() update error: %v", err)
+	}
+	if err := note.UpsertSection(0, "Backlog", "Added backlog entry."); err != nil {
+		t.Fatalf("UpsertSection() append error: %v", err)
+	}
+	rendered, err := note.Render()
+	if err != nil {
+		t.Fatalf("Render() error: %v", err)
+	}
+	if !strings.Contains(rendered, "# Context\n\nUpdated body.\n") {
+		t.Fatalf("existing section was not updated:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "## Backlog\n\nAdded backlog entry.\n") {
+		t.Fatalf("missing section was not appended:\n%s", rendered)
+	}
+}
+
+func TestMarkdownNoteAppendSectionRejectsEmptyName(t *testing.T) {
+	note, _ := ParseMarkdownNote("# Context\n\nBody.\n", MarkdownParseOptions{})
+	if err := note.AppendSection(2, "  ", "body"); err == nil {
+		t.Fatal("AppendSection accepted empty name")
+	}
+}
+
 func assertDiagnostic(t *testing.T, diags []MarkdownDiagnostic, line int, contains string) {
 	t.Helper()
 	for _, diag := range diags {

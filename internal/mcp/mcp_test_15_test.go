@@ -226,6 +226,32 @@ Intro prose.
 	}
 }
 
+func TestBrainNoteWriteToolAppendsNewSection(t *testing.T) {
+	tmp := t.TempDir()
+	configPath := writeMCPBrainConfig(t, tmp)
+	notePath := filepath.Join("brain", "notes", "alpha.md")
+	writeMCPBrainFile(t, filepath.Join(tmp, "work", notePath), "---\ntitle: Alpha\n---\nIntro.\n\n## Details\n- one\n")
+	got, err := NewServer(t.TempDir()).callTool("brain.note.write", map[string]interface{}{
+		"config_path": configPath, "sphere": "work", "path": notePath,
+		"fields": map[string]interface{}{"sections": map[string]interface{}{"Backlog": "First backlog entry."}},
+	})
+	if err != nil || got["valid"] != true {
+		t.Fatalf("brain.note.write: err=%v valid=%v got=%#v", err, got["valid"], got)
+	}
+	body, err := os.ReadFile(filepath.Join(tmp, "work", notePath))
+	if err != nil {
+		t.Fatalf("read updated note: %v", err)
+	}
+	for _, want := range []string{"## Backlog", "First backlog entry."} {
+		if !strings.Contains(string(body), want) {
+			t.Fatalf("appended section missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(string(body), "\nsections:") || strings.Contains(string(body), "\nbody:") {
+		t.Fatalf("section update leaked into frontmatter:\n%s", body)
+	}
+}
+
 func TestBrainGTDWriteAndResurfaceToolsMutateCommitmentNotes(t *testing.T) {
 	tmp := t.TempDir()
 	configPath := writeMCPBrainConfig(t, tmp)
