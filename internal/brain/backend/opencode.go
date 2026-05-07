@@ -50,6 +50,10 @@ func (OpencodeBackend) Run(ctx context.Context, req Request) (Response, error) {
 	processLock.Lock()
 	defer processLock.Unlock()
 
+	cwd := req.Sandbox.WorkDir
+	if req.WorkDir != "" {
+		cwd = req.WorkDir
+	}
 	args := []string{
 		"run",
 		"--pure",
@@ -57,7 +61,7 @@ func (OpencodeBackend) Run(ctx context.Context, req Request) (Response, error) {
 		"--model", req.Model,
 		"--variant", string(req.Reasoning),
 		"--format", "json",
-		"--dir", req.Sandbox.WorkDir,
+		"--dir", cwd,
 		"--dangerously-skip-permissions",
 		req.Packet,
 	}
@@ -65,7 +69,7 @@ func (OpencodeBackend) Run(ctx context.Context, req Request) (Response, error) {
 	full := append([]string{"flock", OpencodeLockPath, "opencode"}, args...)
 	cmd := exec.CommandContext(ctx, full[0], full[1:]...)
 	cmd.Env = req.Sandbox.Env()
-	cmd.Dir = req.Sandbox.WorkDir
+	cmd.Dir = cwd
 
 	start := time.Now()
 	out, err := cmd.Output()

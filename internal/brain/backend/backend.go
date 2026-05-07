@@ -50,6 +50,12 @@ type Backend interface {
 
 // Request is the per-call input. SystemPromptPath, Sandbox, Model, and
 // Packet are mandatory. The remaining fields adjust CLI behavior.
+//
+// WorkDir, when non-empty, overrides the per-stage scratch workdir as
+// the child's cwd and the codex `-C` argument. Set this for stages that
+// must edit files outside the sandbox, e.g. the sleep judge editing
+// canonical Markdown in the brain vault. When empty, the child runs in
+// Sandbox.WorkDir (default for read-only stages).
 type Request struct {
 	Stage            string
 	Packet           string
@@ -60,6 +66,7 @@ type Request struct {
 	MCPAllowList     []string
 	MaxBudgetUSD     float64
 	Sandbox          *Sandbox
+	WorkDir          string
 }
 
 // Response is the per-call output. Tokens / wall / cost are best-effort:

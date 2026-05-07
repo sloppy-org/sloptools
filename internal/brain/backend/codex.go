@@ -42,13 +42,17 @@ func (CodexBackend) Run(ctx context.Context, req Request) (Response, error) {
 	if req.AllowEdits {
 		sandboxMode = "workspace-write"
 	}
+	cwd := req.Sandbox.WorkDir
+	if req.WorkDir != "" {
+		cwd = req.WorkDir
+	}
 	args := []string{
 		"--ask-for-approval", "never",
 		"exec",
 		"--skip-git-repo-check",
 		"--sandbox", sandboxMode,
 		"--model", req.Model,
-		"-C", req.Sandbox.WorkDir,
+		"-C", cwd,
 		"--output-last-message", tmpPath,
 		"-c", "base_instructions=@" + req.SystemPromptPath,
 		"-c", "model_reasoning_effort=\"" + string(req.Reasoning) + "\"",
@@ -57,7 +61,7 @@ func (CodexBackend) Run(ctx context.Context, req Request) (Response, error) {
 
 	cmd := exec.CommandContext(ctx, "codex", args...)
 	cmd.Env = req.Sandbox.Env()
-	cmd.Dir = req.Sandbox.WorkDir
+	cmd.Dir = cwd
 	cmd.Stdin = strings.NewReader(req.Packet)
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr

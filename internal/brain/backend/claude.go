@@ -44,9 +44,13 @@ func (ClaudeBackend) Run(ctx context.Context, req Request) (Response, error) {
 	} else {
 		args = append(args, "--permission-mode", "default")
 	}
+	cwd := req.Sandbox.WorkDir
+	if req.WorkDir != "" {
+		cwd = req.WorkDir
+	}
 	cmd := exec.CommandContext(ctx, "claude", args...)
 	cmd.Env = req.Sandbox.Env()
-	cmd.Dir = req.Sandbox.WorkDir
+	cmd.Dir = cwd
 	cmd.Stdin = strings.NewReader(req.Packet)
 	start := time.Now()
 	out, err := cmd.Output()
