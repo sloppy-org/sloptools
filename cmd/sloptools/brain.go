@@ -51,6 +51,8 @@ func cmdBrain(args []string) int {
 		return cmdBrainArchive(args[1:])
 	case "sleep":
 		return cmdBrainSleep(args[1:])
+	case "bench":
+		return cmdBrainBench(args[1:])
 	case "help", "-h", "--help":
 		printBrainHelp()
 		return 0
@@ -62,7 +64,7 @@ func cmdBrain(args []string) int {
 }
 
 func printBrainHelp() {
-	fmt.Println("sloptools brain <search|backlinks|gtd|people|folder|entities|glossary|attention|links|vault|ingest|move|cleanup-dead-dirs|consolidate|dream|archive|sleep> [flags]")
+	fmt.Println("sloptools brain <search|backlinks|gtd|people|folder|entities|glossary|attention|links|vault|ingest|move|cleanup-dead-dirs|consolidate|dream|archive|sleep|bench> [flags]")
 	fmt.Println()
 	fmt.Println("search flags:")
 	fmt.Println("  --config PATH   vault config path (default ~/.config/sloptools/vaults.toml)")
@@ -123,6 +125,14 @@ func printBrainHelp() {
 	fmt.Println("  --backend NAME  codex (default) or none")
 	fmt.Println("  --model NAME    codex model (default gpt-5.4-mini)")
 	fmt.Println("  --dry-run       skip LLM, do not apply prune-links, do not write report file")
+	fmt.Println()
+	fmt.Println("bench flags:")
+	fmt.Println("  --config PATH    vault config path")
+	fmt.Println("  --sphere NAME    vault sphere: work or private")
+	fmt.Println("  --tasks LIST     comma-separated task ids (v1: folder-note)")
+	fmt.Println("  --models LIST    comma-separated model labels (default: full v1 matrix)")
+	fmt.Println("  --out-dir PATH   override output directory")
+	fmt.Println("  --post-comment N post rendered report.md as a comment on sloptools issue N")
 }
 
 func cmdBrainSearch(args []string) int {
