@@ -1,6 +1,9 @@
 package scout
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestClassify_EmptyBulkReport_NoEscalation(t *testing.T) {
 	body := `# Scout report — X
@@ -121,6 +124,24 @@ func TestClassify_CryForHelpPhrase_Escalates(t *testing.T) {
 	d := classifyForEscalation(body)
 	if !d.Escalate {
 		t.Fatalf("'could not verify' phrase must escalate: %+v", d)
+	}
+}
+
+func TestClassify_NewCryForHelpPhrases_Escalate(t *testing.T) {
+	for _, phrase := range []string{
+		"could not be resolved",
+		"tools were unavailable",
+		"permission restrictions on the MCP tools",
+		"no public source confirms",
+	} {
+		body := "# Scout report — X\n\n## Open questions\n- " + phrase + " (source: tools)\n"
+		d := classifyForEscalation(body)
+		if !d.Escalate {
+			t.Fatalf("phrase %q must trip cry-for-help escalation: %+v", phrase, d)
+		}
+		if !strings.Contains(d.Reason, "cry-for-help") {
+			t.Fatalf("phrase %q escalated but with wrong reason %q", phrase, d.Reason)
+		}
 	}
 }
 

@@ -48,7 +48,7 @@ func escalateOne(ctx context.Context, opts RunOpts, entry *ReportEntry, p Pick, 
 	if err != nil {
 		return fmt.Errorf("backend run: %w", err)
 	}
-	body := strings.TrimSpace(resp.Output)
+	body := cleanReport(resp.Output)
 	if body == "" {
 		return fmt.Errorf("empty escalation output")
 	}
@@ -92,6 +92,17 @@ func writeEscalatePrompt(runID string) (string, error) {
 		"report (Verified / Conflicting / outdated / Suggestions / Open questions).",
 		"Cite sources by URL or DOI per claim. Mark anything you could not",
 		"resolve as still open. Never edit canonical Markdown.",
+		"",
+		"Output rules:",
+		"- The first character of your reply must be `#`. The last non-blank",
+		"  line must be the last bullet of the last section.",
+		"- No preamble, no chain-of-thought, no narration of which tools you",
+		"  used, no apology for missing access, no methodology footer.",
+		"- Do not emit a `**Note**`, `**Note on methodology**`,",
+		"  `**Methodology**`, `**Disclaimer**`, or `**Summary of resolution**`",
+		"  block before or after the structured sections — record any such",
+		"  caveat as a bullet inside `## Open questions` instead.",
+		"- Do not wrap the whole report in a code fence.",
 	}, "\n")
 	path := filepath.Join(dir, "escalate.md")
 	return path, os.WriteFile(path, []byte(body), 0o600)
@@ -163,11 +174,21 @@ func scanCryForHelp(body string) string {
 		"unable to verify",
 		"could not verify",
 		"could not confirm",
+		"could not be resolved",
+		"could not be confirmed",
 		"unable to confirm",
 		"unable to access",
+		"unable to use",
 		"not externally accessible",
 		"no source available",
 		"no external source",
+		"no public source",
+		"tools were unavailable",
+		"tool calls were unavailable",
+		"permission restrictions on the mcp",
+		"i'm encountering permission",
+		"i am encountering permission",
+		"mcp tools needed to access",
 	} {
 		if strings.Contains(lower, phrase) {
 			return "cry-for-help phrase: " + phrase

@@ -200,7 +200,7 @@ func runOnePick(ctx context.Context, opts RunOpts, reportsDir, stagePrompt strin
 		return entry
 	}
 	entry.WallMS = resp.WallMS
-	body := strings.TrimSpace(resp.Output)
+	body := cleanReport(resp.Output)
 	if body == "" {
 		entry.Skipped = true
 		entry.Reason = "empty backend output"
@@ -302,7 +302,7 @@ func selfResolveOne(ctx context.Context, opts RunOpts, p Pick, originalPacket, b
 	if err != nil {
 		return "", fmt.Errorf("backend run: %w", err)
 	}
-	body := strings.TrimSpace(resp.Output)
+	body := cleanReport(resp.Output)
 	if body == "" {
 		return "", fmt.Errorf("empty self-resolve output")
 	}

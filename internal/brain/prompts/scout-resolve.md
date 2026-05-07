@@ -15,7 +15,15 @@ Tools you may NOT use:
 - slopshell — never register it as an MCP server.
 
 Output rules:
-- Rewrite the entire scout report Markdown.
+- The first character of your reply must be `#`. The last non-blank
+  line must be the last bullet of the last section. No preamble (no
+  "Now I have all the evidence...", "Let me compile the report..."),
+  no chain-of-thought, no methodology footer (no `**Note**`,
+  `**Note on methodology**`, `**Methodology**`, `**Disclaimer**`,
+  `**Summary of resolution**`), no apology for missing sources, no
+  code fences around the whole document.
+- Rewrite the entire scout report Markdown — replace the prior draft
+  in full, do not append a delta or a "summary of what changed" block.
 - Keep the same section structure: `## Verified`, `## Conflicting / outdated`, `## Suggestions`, `## Open questions`.
 - Keep every prior bullet that was already cleanly cited; do not delete progress.
 - Move resolved items from `## Conflicting / outdated` or `## Open questions` into `## Verified` with a citation when the source confirms.

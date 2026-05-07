@@ -39,10 +39,17 @@ func (ClaudeBackend) Run(ctx context.Context, req Request) (Response, error) {
 	if req.Sandbox.MCPConfigPath != "" {
 		args = append(args, "--mcp-config", req.Sandbox.MCPConfigPath)
 	}
+	// Non-interactive `claude -p` cannot answer permission prompts, so
+	// `--permission-mode default` silently denies every tool call (MCP
+	// included) and the model falls back to narrating "I'm encountering
+	// permission restrictions on the MCP tools" — verified on 2026-05-07
+	// scout escalations to claude-haiku-4-5. Use bypassPermissions for
+	// non-edit calls; the sandbox cwd is a scratch temp dir so there is
+	// nothing canonical to damage.
 	if req.AllowEdits {
 		args = append(args, "--permission-mode", "acceptEdits")
 	} else {
-		args = append(args, "--permission-mode", "default")
+		args = append(args, "--permission-mode", "bypassPermissions")
 	}
 	cwd := req.Sandbox.WorkDir
 	if req.WorkDir != "" {
