@@ -29,11 +29,13 @@ func Render(res *Result) error {
 func writeMatrixTSV(res *Result) error {
 	path := MatrixTSVPath(res.OutDir)
 	var b strings.Builder
-	b.WriteString("task\tfixture\tmodel\tprovider\tpasses\tscore\twall_ms\ttokens_in\ttokens_out\tskipped\trationale\n")
+	b.WriteString("task\tfixture\tmodel\tprovider\tpasses\tscore\twall_ms\ttokens_in\ttokens_out\tskipped\tjudge_used\tjudge_passes\tjudge_score\tinvented_facts\trationale\n")
 	for _, c := range res.Cells {
-		fmt.Fprintf(&b, "%s\t%s\t%s\t%s\t%v\t%.3f\t%d\t%d\t%d\t%v\t%s\n",
+		fmt.Fprintf(&b, "%s\t%s\t%s\t%s\t%v\t%.3f\t%d\t%d\t%d\t%v\t%v\t%v\t%.3f\t%s\t%s\n",
 			c.TaskID, c.FixtureID, c.Model.Label, c.Model.Provider,
 			c.Passes, c.Score, c.WallMS, c.TokensIn, c.TokensOut, c.Skipped,
+			c.JudgeUsed, c.JudgePasses, c.JudgeScore,
+			oneLine(strings.Join(c.JudgeFacts, "; ")),
 			oneLine(c.Rationale))
 	}
 	return os.WriteFile(path, []byte(b.String()), 0o644)
@@ -69,16 +71,14 @@ func writeTaskSection(b *strings.Builder, cells []Cell) {
 		labels = append(labels, k)
 	}
 	sort.Strings(labels)
-	b.WriteString("| model | provider | pass-rate | mean score | mean wall (s) | tokens in/out | skipped |\n")
-	b.WriteString("|-------|----------|-----------|-----------|---------------|---------------|---------|\n")
+	b.WriteString("| model | provider | struct pass | judge pass | mean struct | mean judge | invented facts | mean wall (s) |\n")
+	b.WriteString("|-------|----------|-------------|-----------|-------------|-----------|-----------------|---------------|\n")
 	for _, label := range labels {
 		group := models[label]
 		var (
-			passes  int
-			scoreSum float64
-			wallSum  int64
-			tin, tout int64
-			skipped int
+			passes, judgeRuns, judgePasses, invented, skipped int
+			scoreSum, judgeScoreSum                           float64
+			wallSum                                           int64
 		)
 		for _, c := range group {
 			if c.Skipped {
@@ -90,8 +90,14 @@ func writeTaskSection(b *strings.Builder, cells []Cell) {
 			}
 			scoreSum += c.Score
 			wallSum += c.WallMS
-			tin += c.TokensIn
-			tout += c.TokensOut
+			if c.JudgeUsed {
+				judgeRuns++
+				if c.JudgePasses {
+					judgePasses++
+				}
+				judgeScoreSum += c.JudgeScore
+				invented += len(c.JudgeFacts)
+			}
 		}
 		runs := len(group) - skipped
 		passRate := 0.0
@@ -102,8 +108,15 @@ func writeTaskSection(b *strings.Builder, cells []Cell) {
 			meanScore = scoreSum / float64(runs)
 			meanWallS = float64(wallSum) / float64(runs) / 1000.0
 		}
-		fmt.Fprintf(b, "| %s | %s | %.0f%% | %.2f | %.1f | %d / %d | %d |\n",
-			label, group[0].Model.Provider, passRate*100, meanScore, meanWallS, tin, tout, skipped)
+		judgePassRate := 0.0
+		meanJudge := 0.0
+		if judgeRuns > 0 {
+			judgePassRate = float64(judgePasses) / float64(judgeRuns)
+			meanJudge = judgeScoreSum / float64(judgeRuns)
+		}
+		fmt.Fprintf(b, "| %s | %s | %.0f%% | %.0f%% | %.2f | %.2f | %d | %.1f |\n",
+			label, group[0].Model.Provider, passRate*100, judgePassRate*100,
+			meanScore, meanJudge, invented, meanWallS)
 	}
 }
 

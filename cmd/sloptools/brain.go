@@ -133,6 +133,7 @@ func printBrainHelp() {
 	fmt.Println("  --models LIST    comma-separated model labels (default: full v1 matrix)")
 	fmt.Println("  --out-dir PATH   override output directory")
 	fmt.Println("  --post-comment N post rendered report.md as a comment on sloptools issue N")
+	fmt.Println("  --llm-judge LABEL run a second-pass LLM judge per cell (e.g. claude-sonnet-4-6)")
 }
 
 func cmdBrainSearch(args []string) int {

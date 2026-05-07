@@ -28,6 +28,8 @@ func cmdBrainBench(args []string) int {
 	models := fs.String("models", "", "comma-separated model labels (default: full v1 matrix)")
 	outDir := fs.String("out-dir", "", "override output directory")
 	postIssue := fs.Int("post-comment", 0, "post report.md as a comment on this sloptools issue")
+	llmJudge := fs.String("llm-judge", "", "judge model label (e.g. claude-sonnet-4-6 or codex/gpt-5.4-mini); empty disables LLM judge")
+	fixturesFilter := fs.String("fixtures", "", "comma-separated fixture ids to run (default all)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -68,6 +70,9 @@ func cmdBrainBench(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
 	}
+	if ff := strings.TrimSpace(*fixturesFilter); ff != "" {
+		taskList = filterFixtures(taskList, strings.Split(ff, ","))
+	}
 	modelList := bench.DefaultModelMatrix()
 	if strings.TrimSpace(*models) != "" {
 		modelList = filterModels(modelList, strings.Split(*models, ","))
@@ -80,6 +85,20 @@ func cmdBrainBench(args []string) int {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Minute)
 	defer cancel()
 
+	var judge *bench.Judge
+	if jl := strings.TrimSpace(*llmJudge); jl != "" {
+		spec, ok := matchModelLabel(bench.DefaultModelMatrix(), jl)
+		if !ok {
+			fmt.Fprintf(os.Stderr, "unknown --llm-judge model label: %s\n", jl)
+			return 2
+		}
+		judge = &bench.Judge{
+			BackendID: spec.BackendID,
+			Model:     spec.Model,
+			Reasoning: spec.Reasoning,
+		}
+	}
+
 	res, err := bench.Run(ctx, bench.Options{
 		Tasks:     taskList,
 		Models:    modelList,
@@ -88,6 +107,7 @@ func cmdBrainBench(args []string) int {
 		RunID:     dateID,
 		Ledger:    ldg,
 		Sphere:    *sphere,
+		Judge:     judge,
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -137,6 +157,41 @@ func filterModels(all []bench.ModelSpec, want []string) []bench.ModelSpec {
 	for _, m := range all {
 		if wantSet[m.Label] || wantSet[m.Model] || wantSet[m.BackendID] {
 			out = append(out, m)
+		}
+	}
+	return out
+}
+
+func matchModelLabel(all []bench.ModelSpec, want string) (bench.ModelSpec, bool) {
+	want = strings.TrimSpace(want)
+	for _, m := range all {
+		if want == m.Label || want == m.Model || want == m.BackendID {
+			return m, true
+		}
+	}
+	return bench.ModelSpec{}, false
+}
+
+// filterFixtures returns a new task list whose Fixtures() contain only
+// the specified fixture ids. Tasks with no surviving fixtures are
+// dropped.
+func filterFixtures(tasks []bench.Task, want []string) []bench.Task {
+	wantSet := make(map[string]bool, len(want))
+	for _, w := range want {
+		wantSet[strings.TrimSpace(w)] = true
+	}
+	out := make([]bench.Task, 0, len(tasks))
+	for _, t := range tasks {
+		if folder, ok := t.(bench.FolderNoteTask); ok {
+			kept := folder.FixtureSet[:0]
+			for _, f := range folder.FixtureSet {
+				if wantSet[f.ID] {
+					kept = append(kept, f)
+				}
+			}
+			if len(kept) > 0 {
+				out = append(out, bench.FolderNoteTask{FixtureSet: kept})
+			}
 		}
 	}
 	return out

@@ -69,6 +69,14 @@ type Cell struct {
 	Skipped   bool
 	SkipKind  string
 	Err       string
+
+	// LLM judge fields (populated when Options.Judge is set).
+	JudgeUsed     bool
+	JudgePasses   bool
+	JudgeScore    float64
+	JudgeFacts    []string
+	JudgeNote     string
+	JudgeErr      string
 }
 
 // Result is the full bench output.
@@ -81,13 +89,20 @@ type Result struct {
 
 // Options is the input to Run.
 type Options struct {
-	Tasks         []Task
-	Models        []ModelSpec
-	OutDir        string // <brain-root>/data/brain/bench/<date>/
-	PromptDir     string // packaged prompt directory (internal/brain/prompts)
-	RunID         string // shared sandbox prefix
-	Ledger        *ledger.Ledger
-	Sphere        string
+	Tasks     []Task
+	Models    []ModelSpec
+	OutDir    string // <brain-root>/data/brain/bench/<date>/
+	PromptDir string // packaged prompt directory (internal/brain/prompts)
+	RunID     string // shared sandbox prefix
+	Ledger    *ledger.Ledger
+	Sphere    string
+	// Judge, when set, runs a second-pass LLM judge over each cell's
+	// output to catch quality issues the deterministic rubric misses
+	// (invented facts, degenerate H1, empty sections that should not be
+	// empty). v1 default uses the bench's own routing tier; production
+	// recommendation from the v1 manual re-grade is claude-sonnet-4-6
+	// @ medium.
+	Judge *Judge
 }
 
 // Run executes every (task, fixture, model) cell.
@@ -178,6 +193,19 @@ func runCell(ctx context.Context, opts Options, task Task, f Fixture, stagePromp
 	cell.Score = score
 	cell.Passes = pass
 	cell.Rationale = rationale
+
+	if opts.Judge != nil {
+		v, jerr := runJudge(ctx, *opts.Judge, opts.RunID, task.ID(), f, resp.Output)
+		cell.JudgeUsed = true
+		if jerr != nil {
+			cell.JudgeErr = jerr.Error()
+		} else {
+			cell.JudgePasses = v.Passes
+			cell.JudgeScore = v.Score
+			cell.JudgeFacts = v.InventedFacts
+			cell.JudgeNote = v.Rationale
+		}
+	}
 
 	if opts.Ledger != nil {
 		_ = opts.Ledger.Append(ledger.Entry{
