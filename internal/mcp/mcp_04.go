@@ -335,6 +335,11 @@ func (s *Server) mailMessageList(args map[string]interface{}) (map[string]interf
 	return map[string]interface{}{"account": account, "messages": mailMessageListPayloads(messages, format == "full"), "count": len(messages), "page_token": pageToken, "next_page_token": nextPageToken}, nil
 }
 
+// mailMessageGetDefaultBodyChars caps the body window per call so a
+// single mail_message_get does not blow the agent context window with
+// a long thread quote chain. Callers paginate via body_offset.
+const mailMessageGetDefaultBodyChars = 8000
+
 func (s *Server) mailMessageGet(args map[string]interface{}) (map[string]interface{}, error) {
 	account, provider, err := s.mailProviderForTool(args)
 	if err != nil {
@@ -345,11 +350,75 @@ func (s *Server) mailMessageGet(args map[string]interface{}) (map[string]interfa
 	if messageID == "" {
 		return nil, fmt.Errorf("message_id is required")
 	}
+	bodyOffset := intArg(args, "body_offset", 0)
+	bodyMax := intArg(args, "body_max_chars", mailMessageGetDefaultBodyChars)
+	if bodyMax <= 0 {
+		bodyMax = mailMessageGetDefaultBodyChars
+	}
 	message, err := provider.GetMessage(context.Background(), messageID, "full")
 	if err != nil {
 		return nil, err
 	}
-	return map[string]interface{}{"account": account, "message": message}, nil
+	bodyMeta := windowMessageBody(message, bodyOffset, bodyMax)
+	return map[string]interface{}{
+		"account": account,
+		"message": message,
+		"body":    bodyMeta,
+	}, nil
+}
+
+// windowMessageBody trims message.BodyText (and BodyHTML if BodyText is
+// nil) to a [offset, offset+limit) rune window in place and returns
+// the pagination metadata that goes alongside the message.
+func windowMessageBody(msg *providerdata.EmailMessage, offset, limit int) map[string]interface{} {
+	if msg == nil {
+		return map[string]interface{}{
+			"total_chars":    0,
+			"returned_chars": 0,
+			"offset":         0,
+			"limit":          limit,
+			"truncated":      false,
+		}
+	}
+	source := ""
+	target := "text"
+	if msg.BodyText != nil {
+		source = *msg.BodyText
+	} else if msg.BodyHTML != nil {
+		source = *msg.BodyHTML
+		target = "html"
+	}
+	runes := []rune(source)
+	total := len(runes)
+	if offset < 0 {
+		offset = 0
+	}
+	if offset > total {
+		offset = total
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	window := string(runes[offset:end])
+	if target == "text" && msg.BodyText != nil {
+		*msg.BodyText = window
+	} else if target == "html" && msg.BodyHTML != nil {
+		*msg.BodyHTML = window
+	}
+	truncated := offset > 0 || end < total
+	out := map[string]interface{}{
+		"source":         target,
+		"total_chars":    total,
+		"returned_chars": end - offset,
+		"offset":         offset,
+		"limit":          limit,
+		"truncated":      truncated,
+	}
+	if end < total {
+		out["next_offset"] = end
+	}
+	return out
 }
 
 func (s *Server) mailAttachmentGet(args map[string]interface{}) (map[string]interface{}, error) {
