@@ -77,8 +77,40 @@ func (s *Server) contactList(args map[string]interface{}) (map[string]interface{
 	for _, contact := range items {
 		payloads = append(payloads, contactPayload(contact))
 	}
-	return map[string]interface{}{"account_id": account.ID, "provider": provider.ProviderName(), "contacts": payloads, "count": len(payloads)}, nil
+	total := len(payloads)
+	offset := intArg(args, "offset", 0)
+	if offset < 0 {
+		offset = 0
+	}
+	if offset > total {
+		offset = total
+	}
+	limit := intArg(args, "limit", contactListDefaultLimit)
+	if limit <= 0 {
+		limit = contactListDefaultLimit
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	window := payloads[offset:end]
+	out := map[string]interface{}{
+		"account_id": account.ID,
+		"provider":   provider.ProviderName(),
+		"contacts":   window,
+		"count":      len(window),
+		"total":      total,
+		"offset":     offset,
+		"limit":      limit,
+		"truncated":  offset > 0 || end < total,
+	}
+	if end < total {
+		out["next_offset"] = end
+	}
+	return out, nil
 }
+
+const contactListDefaultLimit = 100
 
 func (s *Server) contactGet(args map[string]interface{}) (map[string]interface{}, error) {
 	account, provider, err := s.contactsProviderForTool(args)

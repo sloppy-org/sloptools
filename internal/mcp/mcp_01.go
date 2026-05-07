@@ -400,8 +400,36 @@ func (s *Server) calendarEvents(args map[string]interface{}) (map[string]interfa
 		}
 		return iStart.Before(jStart)
 	})
-	if len(events) > limit {
-		events = events[:limit]
+	total := len(events)
+	offset := intArg(args, "offset", 0)
+	if offset < 0 {
+		offset = 0
 	}
-	return map[string]interface{}{"provider": store.ExternalProviderGoogleCalendar, "calendar_id": calendarID, "calendar_name": strings.TrimSpace(calendarNames[calendarID]), "days": days, "start": rng.Start.Format(time.RFC3339), "end": rng.End.Format(time.RFC3339), "query": query, "events": events, "count": len(events)}, nil
+	if offset > total {
+		offset = total
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	window := events[offset:end]
+	out := map[string]interface{}{
+		"provider":      store.ExternalProviderGoogleCalendar,
+		"calendar_id":   calendarID,
+		"calendar_name": strings.TrimSpace(calendarNames[calendarID]),
+		"days":          days,
+		"start":         rng.Start.Format(time.RFC3339),
+		"end":           rng.End.Format(time.RFC3339),
+		"query":         query,
+		"events":        window,
+		"count":         len(window),
+		"total":         total,
+		"offset":        offset,
+		"limit":         limit,
+		"truncated":     offset > 0 || end < total,
+	}
+	if end < total {
+		out["next_offset"] = end
+	}
+	return out, nil
 }

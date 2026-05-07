@@ -14,6 +14,10 @@ import (
 	"unicode/utf8"
 )
 
+// itemListDefaultLimit caps a single item_list response so a workspace
+// with thousands of inbox items does not blow the agent context.
+const itemListDefaultLimit = 50
+
 func (s *Server) itemList(args map[string]interface{}) (map[string]interface{}, error) {
 	st, err := s.requireStore()
 	if err != nil {
@@ -33,10 +37,35 @@ func (s *Server) itemList(args map[string]interface{}) (map[string]interface{}, 
 	if err != nil {
 		return nil, err
 	}
-	if limit := intArg(args, "limit", 0); limit > 0 && len(items) > limit {
-		items = items[:limit]
+	total := len(items)
+	offset := intArg(args, "offset", 0)
+	if offset < 0 {
+		offset = 0
 	}
-	return map[string]interface{}{"items": items, "count": len(items)}, nil
+	if offset > total {
+		offset = total
+	}
+	limit := intArg(args, "limit", itemListDefaultLimit)
+	if limit <= 0 {
+		limit = itemListDefaultLimit
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	window := items[offset:end]
+	out := map[string]interface{}{
+		"items":     window,
+		"count":     len(window),
+		"total":     total,
+		"offset":    offset,
+		"limit":     limit,
+		"truncated": offset > 0 || end < total,
+	}
+	if end < total {
+		out["next_offset"] = end
+	}
+	return out, nil
 }
 
 func (s *Server) itemGet(args map[string]interface{}) (map[string]interface{}, error) {
