@@ -50,3 +50,38 @@ func TestParseIntOr_Garbage(t *testing.T) {
 		t.Fatalf("trim failure")
 	}
 }
+
+// codex 0.128 default: "tokens used\n78,965"
+func TestScrapeCodexTokens_NewlineCommaThousands(t *testing.T) {
+	stderr := "some prelude\ntokens used\n78,965\n\nMore text\n"
+	in, out := scrapeCodexTokens(stderr)
+	if in != 0 || out != 78965 {
+		t.Fatalf("got in=%d out=%d, want 0/78965", in, out)
+	}
+}
+
+func TestScrapeCodexTokens_NewlineNoCommas(t *testing.T) {
+	stderr := "Total tokens\n12345\n"
+	in, out := scrapeCodexTokens(stderr)
+	if in != 0 || out != 12345 {
+		t.Fatalf("got in=%d out=%d, want 0/12345", in, out)
+	}
+}
+
+// Inline form must still win when both could match — last hit per format.
+func TestScrapeCodexTokens_InlineCommaThousands(t *testing.T) {
+	stderr := "tokens used: 1,234,567\n"
+	in, out := scrapeCodexTokens(stderr)
+	if in != 0 || out != 1234567 {
+		t.Fatalf("got in=%d out=%d, want 0/1234567", in, out)
+	}
+}
+
+// When prompt/completion are present alongside a total, prompt/completion wins.
+func TestScrapeCodexTokens_PromptCompletionBeatsTotal(t *testing.T) {
+	stderr := "prompt_tokens=10 completion_tokens=20\ntokens used\n50\n"
+	in, out := scrapeCodexTokens(stderr)
+	if in != 10 || out != 20 {
+		t.Fatalf("got in=%d out=%d, want 10/20 (prompt+completion preferred)", in, out)
+	}
+}

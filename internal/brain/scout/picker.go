@@ -43,6 +43,12 @@ type PickerOpts struct {
 	Roots     []string  // entity directories under brain root; default people/, projects/, institutions/
 	Now       time.Time // default time.Now()
 	TopN      int       // default 10 per root
+	// CooldownDays excludes notes that already have a scout report under
+	// <brain>/reports/scout/*/<slug>.md younger than this many days.
+	// Zero (the default sentinel) is replaced with 7 so a weekly nightly
+	// rotates through fresh picks. A negative value disables the filter
+	// entirely (every eligible note is in scope, even if scouted today).
+	CooldownDays int
 }
 
 // Pick walks the canonical-entity directories, parses frontmatter,
@@ -58,6 +64,10 @@ func PickEntities(opts PickerOpts) ([]Pick, error) {
 	if opts.TopN <= 0 {
 		opts.TopN = 10
 	}
+	if opts.CooldownDays == 0 {
+		opts.CooldownDays = 7
+	}
+	cooldown := loadCooldown(opts.BrainRoot, opts.Now, opts.CooldownDays)
 	roots := opts.Roots
 	if len(roots) == 0 {
 		roots = []string{"people", "projects", "institutions", "folders"}
@@ -67,6 +77,18 @@ func PickEntities(opts PickerOpts) ([]Pick, error) {
 		picks, err := scoreRoot(opts.BrainRoot, root, opts.Now)
 		if err != nil {
 			return nil, err
+		}
+		// Drop notes that were already scouted within the cooldown
+		// window. cooldown is keyed by sanitized vault-relative slug.
+		if len(cooldown) > 0 {
+			kept := picks[:0]
+			for _, p := range picks {
+				if cooldown[sanitizePath(p.Path)] {
+					continue
+				}
+				kept = append(kept, p)
+			}
+			picks = kept
 		}
 		// Drop zero-score picks before TopN crop. folders/ is the new
 		// motivator: most folder notes have neither cadence nor explicit
@@ -93,6 +115,66 @@ func PickEntities(opts PickerOpts) ([]Pick, error) {
 		return out[i].Score > out[j].Score
 	})
 	return out, nil
+}
+
+// loadCooldown walks <brain>/reports/scout/* and returns a set of
+// sanitized slugs that have a per-pick report file younger than
+// cooldownDays. Empty result on missing reports dir, missing slugs, or
+// zero cooldown — callers must tolerate the absence.
+//
+// The slug key matches sanitizePath(pick.Path), which is the same
+// transform used by runner.sanitize when writing the report.
+func loadCooldown(brainRoot string, now time.Time, cooldownDays int) map[string]bool {
+	if cooldownDays <= 0 {
+		return nil
+	}
+	scoutDir := filepath.Join(brainRoot, "reports", "scout")
+	cutoff := now.Add(-time.Duration(cooldownDays) * 24 * time.Hour)
+	out := map[string]bool{}
+	runs, err := os.ReadDir(scoutDir)
+	if err != nil {
+		return out
+	}
+	for _, runEntry := range runs {
+		if !runEntry.IsDir() {
+			continue
+		}
+		runDir := filepath.Join(scoutDir, runEntry.Name())
+		entries, err := os.ReadDir(runDir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+				continue
+			}
+			info, err := e.Info()
+			if err != nil || info.ModTime().Before(cutoff) {
+				continue
+			}
+			slug := strings.TrimSuffix(e.Name(), ".md")
+			out[slug] = true
+		}
+	}
+	return out
+}
+
+// sanitizePath mirrors runner.sanitize: lowercase letters, digits, '-'
+// and '_' kept; everything else collapsed to '-'; trim leading/trailing
+// '-'. Used to match a Pick.Path against the scout-report slug key.
+func sanitizePath(p string) string {
+	out := make([]rune, 0, len(p))
+	for _, r := range p {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+			out = append(out, r)
+		case r == '-' || r == '_':
+			out = append(out, r)
+		default:
+			out = append(out, '-')
+		}
+	}
+	return strings.Trim(string(out), "-")
 }
 
 // scanUncertainty walks one note body looking for explicit

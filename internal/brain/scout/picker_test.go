@@ -228,6 +228,121 @@ func TestPickerFoldersWalkedRecursively(t *testing.T) {
 	}
 }
 
+func TestPickerCooldown_RecentlyScoutedSkipped(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 5, 7, 0, 0, 0, 0, time.UTC)
+	writeNote(t, root, "people/Anton Fuchs.md", `---
+cadence: monthly
+---
+
+# Anton Fuchs
+`)
+	writeNote(t, root, "people/Eve Stenson.md", `---
+cadence: monthly
+---
+
+# Eve Stenson
+`)
+	// Simulate a scout report from 2 days ago for Anton Fuchs only.
+	reportDir := filepath.Join(root, "reports", "scout", "20260505-100000")
+	if err := os.MkdirAll(reportDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	reportPath := filepath.Join(reportDir, sanitizePath("people/Anton Fuchs.md")+".md")
+	if err := os.WriteFile(reportPath, []byte("# old report\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	twoDaysAgo := now.Add(-48 * time.Hour)
+	if err := os.Chtimes(reportPath, twoDaysAgo, twoDaysAgo); err != nil {
+		t.Fatal(err)
+	}
+	picks, err := PickEntities(PickerOpts{BrainRoot: root, Now: now, TopN: 10, CooldownDays: 7})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range picks {
+		if p.Path == "people/Anton Fuchs.md" {
+			t.Fatalf("recently-scouted note should be skipped: %+v", p)
+		}
+	}
+	found := false
+	for _, p := range picks {
+		if p.Path == "people/Eve Stenson.md" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("non-cooldown note should still be picked: %+v", picks)
+	}
+}
+
+func TestPickerCooldown_OldReportEligibleAgain(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 5, 7, 0, 0, 0, 0, time.UTC)
+	writeNote(t, root, "people/A.md", `---
+cadence: monthly
+---
+
+# A
+`)
+	reportDir := filepath.Join(root, "reports", "scout", "20260401-100000")
+	if err := os.MkdirAll(reportDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	reportPath := filepath.Join(reportDir, "people-A-md.md")
+	if err := os.WriteFile(reportPath, []byte("# old\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	month := now.Add(-30 * 24 * time.Hour)
+	if err := os.Chtimes(reportPath, month, month); err != nil {
+		t.Fatal(err)
+	}
+	picks, err := PickEntities(PickerOpts{BrainRoot: root, Now: now, TopN: 10, CooldownDays: 7})
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, p := range picks {
+		if p.Path == "people/A.md" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("note scouted >7 days ago should be eligible again: %+v", picks)
+	}
+}
+
+func TestPickerCooldown_ZeroDisablesFilter(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 5, 7, 0, 0, 0, 0, time.UTC)
+	writeNote(t, root, "people/A.md", `---
+cadence: monthly
+---
+
+# A
+`)
+	reportDir := filepath.Join(root, "reports", "scout", "20260507-100000")
+	if err := os.MkdirAll(reportDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(reportDir, "people-A-md.md"), []byte("# fresh\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	picks, err := PickEntities(PickerOpts{BrainRoot: root, Now: now, TopN: 10, CooldownDays: -1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, p := range picks {
+		if p.Path == "people/A.md" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("CooldownDays=-1 should disable filter: %+v", picks)
+	}
+}
+
 func TestPickerStrategicMultiplier(t *testing.T) {
 	root := t.TempDir()
 	now := time.Date(2026, 5, 7, 0, 0, 0, 0, time.UTC)

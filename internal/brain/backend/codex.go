@@ -96,15 +96,21 @@ func (CodexBackend) Run(ctx context.Context, req Request) (Response, error) {
 
 // codex 0.128 prints final usage near the tail of stderr in formats like:
 //
+//	tokens used
+//	78,965
 //	tokens used: 12345
 //	[2026-01-15T12:34:56] tokens used: 12345
 //	prompt_tokens=1234 completion_tokens=567 total_tokens=1801
 //	"input_tokens": 1234, "output_tokens": 567
 //
-// We try several patterns; the last hit wins (final usage line).
+// We try several patterns; the last hit wins (final usage line). The
+// "tokens used" / "Total tokens" forms accept either an inline ": N"
+// separator or a number on the next line, with optional thousands
+// commas (codex 0.128 prints "78,965").
 var (
-	reCodexInOut = regexp.MustCompile(`(?i)(?:prompt|input)[_ -]?tokens?["']?\s*[:=]\s*(\d+).{0,80}?(?:completion|output)[_ -]?tokens?["']?\s*[:=]\s*(\d+)`)
-	reCodexTotal = regexp.MustCompile(`(?i)(?:total[_ -]?tokens?|tokens used)\s*[:=]\s*(\d+)`)
+	reCodexInOut       = regexp.MustCompile(`(?i)(?:prompt|input)[_ -]?tokens?["']?\s*[:=]\s*(\d+).{0,80}?(?:completion|output)[_ -]?tokens?["']?\s*[:=]\s*(\d+)`)
+	reCodexTotalInline = regexp.MustCompile(`(?i)(?:total[_ -]?tokens?|tokens used)\s*[:=]\s*([\d,]+)`)
+	reCodexTotalNL     = regexp.MustCompile(`(?im)^\s*(?:total[_ -]?tokens?|tokens used)\s*\n\s*([\d,]+)`)
 )
 
 // scrapeCodexTokens parses input/output token totals from codex CLI
@@ -118,17 +124,24 @@ func scrapeCodexTokens(s string) (int64, int64) {
 		out = parseIntOr(last[2])
 		return in, out
 	}
-	if matches := reCodexTotal.FindAllStringSubmatch(s, -1); len(matches) > 0 {
-		last := matches[len(matches)-1]
-		// Ledger sums tokens_in + tokens_out; record the total as out so
-		// nothing is double-counted.
-		out = parseIntOr(last[1])
+	// Total-only forms: ledger sums tokens_in + tokens_out, so record
+	// the total as `out` to avoid double-counting. Try newline form
+	// first (codex 0.128 default), then inline.
+	if matches := reCodexTotalNL.FindAllStringSubmatch(s, -1); len(matches) > 0 {
+		out = parseIntOr(matches[len(matches)-1][1])
+		return in, out
+	}
+	if matches := reCodexTotalInline.FindAllStringSubmatch(s, -1); len(matches) > 0 {
+		out = parseIntOr(matches[len(matches)-1][1])
 	}
 	return in, out
 }
 
+// parseIntOr accepts comma-separated thousands ("78,965") and trims
+// whitespace; returns zero on any parse failure.
 func parseIntOr(s string) int64 {
-	v, err := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
+	clean := strings.ReplaceAll(strings.TrimSpace(s), ",", "")
+	v, err := strconv.ParseInt(clean, 10, 64)
 	if err != nil {
 		return 0
 	}
