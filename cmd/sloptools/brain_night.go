@@ -14,6 +14,7 @@ import (
 	"github.com/sloppy-org/sloptools/internal/brain/ledger"
 	"github.com/sloppy-org/sloptools/internal/brain/routing"
 	"github.com/sloppy-org/sloptools/internal/brain/scout"
+	"github.com/sloppy-org/sloptools/internal/brain/textbook"
 )
 
 func encodeIndentJSON(v any) ([]byte, error) {
@@ -102,6 +103,10 @@ func cmdBrainNight(args []string) int {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
 		}
+		if err := runTextbookScan(vault, report); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
 	}
 
 	if stage == "" || stage == "scout" {
@@ -145,6 +150,7 @@ type nightReport struct {
 	OnlyStage   string             `json:"only_stage,omitempty"`
 	DryRun      bool               `json:"dry_run"`
 	Sweep       *brain.SleepResult `json:"sweep,omitempty"`
+	Textbook    *textbook.Summary  `json:"textbook,omitempty"`
 	Scout       *scoutSummary      `json:"scout,omitempty"`
 	Judge       *brain.SleepResult `json:"judge,omitempty"`
 	JudgeReport string             `json:"judge_report_path,omitempty"`
@@ -176,6 +182,20 @@ func runSweepStage(cfg *brain.Config, sphere brain.Sphere, coverageBudget int, d
 		return fmt.Errorf("sweep: %w", err)
 	}
 	report.Sweep = res
+	return nil
+}
+
+// runTextbookScan runs the deny-list classifier over the vault and
+// records the per-verdict counts plus reject and compress lists in the
+// night report. Zero LLM. Surfaces candidates for the judge stage to
+// pick up; never archives or compresses on its own.
+func runTextbookScan(vault brain.Vault, report *nightReport) error {
+	c := textbook.New()
+	s, err := c.Scan(vault.BrainRoot())
+	if err != nil {
+		return fmt.Errorf("textbook scan: %w", err)
+	}
+	report.Textbook = &s
 	return nil
 }
 
