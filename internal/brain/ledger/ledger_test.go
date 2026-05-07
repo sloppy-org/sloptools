@@ -144,6 +144,93 @@ func TestLedgerGuardIgnoresPreSessionSpend(t *testing.T) {
 	}
 }
 
+// Per-night call-count gate refuses the (N+1)th call to a provider in
+// the current session, regardless of token totals.
+func TestLedgerGuardRejectsOverCallCount(t *testing.T) {
+	dir := t.TempDir()
+	caps := PlanCaps{
+		AnthropicWeeklyShareMax:   0.05,
+		OpenAIWeeklyShareMax:      0.05,
+		AnthropicTokensPerWeek:    1_000_000_000, // big enough that token gate never fires
+		OpenAITokensPerWeek:       1_000_000_000,
+		AnthropicMaxCallsPerNight: 3,
+		OpenAIMaxCallsPerNight:    3,
+	}
+	l, err := New(dir, caps)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	sessionStart := time.Now().UTC().Add(-30 * time.Minute)
+	for i := 0; i < 3; i++ {
+		_ = l.Append(Entry{
+			TS:        sessionStart.Add(time.Duration(i) * time.Minute),
+			Provider:  backend.ProviderAnthropic,
+			TokensIn:  10,
+			TokensOut: 10,
+		})
+	}
+	if err := l.Guard(backend.ProviderAnthropic, sessionStart, time.Now()); !errors.Is(err, ErrCapExceeded) {
+		t.Fatalf("expected ErrCapExceeded after 3rd call, got %v", err)
+	}
+	if err := l.Guard(backend.ProviderOpenAI, sessionStart, time.Now()); err != nil {
+		t.Fatalf("openai cap fresh; should pass, got %v", err)
+	}
+}
+
+// Pre-session calls don't count against the per-night call cap.
+func TestLedgerGuardCallCountIgnoresPreSession(t *testing.T) {
+	dir := t.TempDir()
+	caps := PlanCaps{
+		AnthropicWeeklyShareMax:   0.05,
+		OpenAIWeeklyShareMax:      0.05,
+		AnthropicTokensPerWeek:    1_000_000_000,
+		OpenAITokensPerWeek:       1_000_000_000,
+		AnthropicMaxCallsPerNight: 3,
+	}
+	l, err := New(dir, caps)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	now := time.Now().UTC()
+	for i := 0; i < 5; i++ {
+		_ = l.Append(Entry{
+			TS:       now.Add(-24 * time.Hour),
+			Provider: backend.ProviderAnthropic,
+		})
+	}
+	if err := l.Guard(backend.ProviderAnthropic, now, now); err != nil {
+		t.Fatalf("yesterday's calls must not count toward today; got %v", err)
+	}
+}
+
+// Zero MaxCallsPerNight disables the call gate (token gate still active).
+func TestLedgerGuardCallCountZeroDisables(t *testing.T) {
+	dir := t.TempDir()
+	caps := PlanCaps{
+		AnthropicWeeklyShareMax:   0.05,
+		OpenAIWeeklyShareMax:      0.05,
+		AnthropicTokensPerWeek:    1_000_000_000,
+		OpenAITokensPerWeek:       1_000_000_000,
+		AnthropicMaxCallsPerNight: 0,
+	}
+	l, err := New(dir, caps)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	sessionStart := time.Now().UTC().Add(-time.Hour)
+	for i := 0; i < 100; i++ {
+		_ = l.Append(Entry{
+			TS:        sessionStart.Add(time.Duration(i) * time.Second),
+			Provider:  backend.ProviderAnthropic,
+			TokensIn:  1,
+			TokensOut: 1,
+		})
+	}
+	if err := l.Guard(backend.ProviderAnthropic, sessionStart, time.Now()); err != nil {
+		t.Fatalf("call gate should be disabled when cap=0; got %v", err)
+	}
+}
+
 func abs(x float64) float64 {
 	if x < 0 {
 		return -x

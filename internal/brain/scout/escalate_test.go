@@ -23,22 +23,64 @@ func TestClassify_EmptyBulkReport_NoEscalation(t *testing.T) {
 	}
 }
 
-func TestClassify_ConflictBullet_Escalates(t *testing.T) {
+// One or two conflict bullets are NOT enough — the bulk pass already
+// resolved them with citations. Only ≥3 trigger.
+func TestClassify_OneConflictBullet_NoEscalation(t *testing.T) {
 	body := `# Scout report — X
 
 ## Conflicting / outdated
 - email v2c2.at is outdated; current is tugraz.at (source: TUGRAZonline vCard)
-
-## Open questions
-- (none)
 `
 	d := classifyForEscalation(body)
-	if !d.Escalate {
-		t.Fatalf("conflict bullet must escalate: %+v", d)
+	if d.Escalate {
+		t.Fatalf("single resolved conflict should not escalate: %+v", d)
 	}
 }
 
-func TestClassify_MultipleOpenQuestions_Escalates(t *testing.T) {
+func TestClassify_TwoConflictBullets_NoEscalation(t *testing.T) {
+	body := `# Scout report — X
+
+## Conflicting / outdated
+- email v2c2.at outdated; current tugraz.at (source: TUGRAZonline)
+- status dormant since 2020 but DFG profile shows 2024 activity (source: GEPRIS)
+`
+	d := classifyForEscalation(body)
+	if d.Escalate {
+		t.Fatalf("two resolved conflicts should not escalate: %+v", d)
+	}
+}
+
+func TestClassify_ThreeConflictBullets_Escalates(t *testing.T) {
+	body := `# Scout report — X
+
+## Conflicting / outdated
+- a (source ...)
+- b (source ...)
+- c (source ...)
+`
+	d := classifyForEscalation(body)
+	if !d.Escalate {
+		t.Fatalf("≥3 conflicts must escalate: %+v", d)
+	}
+}
+
+func TestClassify_TwoOpenQuestions_NoEscalation(t *testing.T) {
+	body := `# Scout report — X
+
+## Conflicting / outdated
+- (none)
+
+## Open questions
+- one minor?
+- another minor?
+`
+	d := classifyForEscalation(body)
+	if d.Escalate {
+		t.Fatalf("two open questions below threshold: %+v", d)
+	}
+}
+
+func TestClassify_ThreeOpenQuestions_Escalates(t *testing.T) {
 	body := `# Scout report — X
 
 ## Conflicting / outdated
@@ -51,22 +93,34 @@ func TestClassify_MultipleOpenQuestions_Escalates(t *testing.T) {
 `
 	d := classifyForEscalation(body)
 	if !d.Escalate {
-		t.Fatalf("multiple substantive open questions must escalate: %+v", d)
+		t.Fatalf("three open questions must escalate: %+v", d)
 	}
 }
 
-func TestClassify_OneOpenQuestion_NoEscalation(t *testing.T) {
+func TestClassify_NeedsPaidReviewMarker_Escalates(t *testing.T) {
 	body := `# Scout report — X
 
-## Conflicting / outdated
-- (none)
-
 ## Open questions
-- one minor follow-up?
+- needs paid review: which Tower of Letters article matches?
 `
 	d := classifyForEscalation(body)
-	if d.Escalate {
-		t.Fatalf("single open question is below threshold: %+v", d)
+	if !d.Escalate || d.Reason == "" {
+		t.Fatalf("needs-paid-review marker must escalate with reason: %+v", d)
+	}
+}
+
+func TestClassify_CryForHelpPhrase_Escalates(t *testing.T) {
+	body := `# Scout report — X
+
+## Verified
+- thing (source: package)
+
+## Conflicting / outdated
+- could not verify the affiliation against the current TUGonline directory
+`
+	d := classifyForEscalation(body)
+	if !d.Escalate {
+		t.Fatalf("'could not verify' phrase must escalate: %+v", d)
 	}
 }
 

@@ -21,10 +21,12 @@ type FileConfig struct {
 
 // PlanFile carries weekly cap overrides per provider.
 type PlanFile struct {
-	AnthropicShareMax      float64 `toml:"anthropic_weekly_share_max"`
-	OpenAIShareMax         float64 `toml:"openai_weekly_share_max"`
-	AnthropicTokensPerWeek int64   `toml:"anthropic_tokens_per_week"`
-	OpenAITokensPerWeek    int64   `toml:"openai_tokens_per_week"`
+	AnthropicShareMax         float64 `toml:"anthropic_weekly_share_max"`
+	OpenAIShareMax            float64 `toml:"openai_weekly_share_max"`
+	AnthropicTokensPerWeek    int64   `toml:"anthropic_tokens_per_week"`
+	OpenAITokensPerWeek       int64   `toml:"openai_tokens_per_week"`
+	AnthropicMaxCallsPerNight int     `toml:"anthropic_max_calls_per_night"`
+	OpenAIMaxCallsPerNight    int     `toml:"openai_max_calls_per_night"`
 }
 
 // StageFile overrides one stage's tier and pool.
@@ -87,6 +89,12 @@ func (c *FileConfig) PlanCaps() ledger.PlanCaps {
 	}
 	if c.Plan.OpenAITokensPerWeek > 0 {
 		d.OpenAITokensPerWeek = c.Plan.OpenAITokensPerWeek
+	}
+	if c.Plan.AnthropicMaxCallsPerNight > 0 {
+		d.AnthropicMaxCallsPerNight = c.Plan.AnthropicMaxCallsPerNight
+	}
+	if c.Plan.OpenAIMaxCallsPerNight > 0 {
+		d.OpenAIMaxCallsPerNight = c.Plan.OpenAIMaxCallsPerNight
 	}
 	return d
 }

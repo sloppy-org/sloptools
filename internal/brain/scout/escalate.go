@@ -9,26 +9,61 @@ type escalateDecision struct {
 	Reason   string
 }
 
-// classifyForEscalation reads a scout report body and decides whether to
-// re-run it at a paid medium tier. Triggers:
+// classifyForEscalation reads a scout report body and decides whether
+// to re-run it at a paid medium tier. The 2026-05-07 first-with-
+// escalation run showed 100% trigger rate on the original
+// "any-conflict-bullet-or-multiple-open-questions" heuristic — most
+// honest scout reports surface at least one drift item (status, email,
+// affiliation) that the bulk pass already resolved with a citation.
+// Tighter triggers, from observation:
 //
-//   - any substantive bullet under `## Conflicting / outdated` (i.e. a
-//     bullet that is not "(none)" and contains specific words)
-//   - more than one substantive bullet under `## Open questions`
+//   - explicit "needs paid review:" bullet anywhere — caller signal
+//   - cry-for-help phrases ("unable to verify", "could not confirm",
+//     "not externally accessible", "no source available") in any
+//     Verified / Conflicting / Open question bullet — bulk gave up
+//   - ≥3 substantive `## Conflicting / outdated` bullets — severe drift
+//   - ≥3 substantive `## Open questions` bullets — bulk hit a wall
 //
-// "Substantive" means: not empty, not "(none)", not "(unverified)" alone,
-// not "(unconfirmed)" alone. The point is to skip placeholder bullets the
-// model writes when there is genuinely nothing to say.
+// Substantive means: not "(none)", "(unverified)" / "(unconfirmed)" /
+// "(tbd)" alone, and not empty after trimming the leading dash.
 func classifyForEscalation(body string) escalateDecision {
+	if cryReason := scanCryForHelp(body); cryReason != "" {
+		return escalateDecision{Escalate: true, Reason: cryReason}
+	}
 	conflicts := countSubstantiveBullets(body, "## Conflicting", "## Conflicting / outdated", "## Conflicting/outdated")
 	questions := countSubstantiveBullets(body, "## Open Questions", "## Open questions")
-	if conflicts > 0 {
-		return escalateDecision{Escalate: true, Reason: "conflict bullets present"}
+	if conflicts >= 3 {
+		return escalateDecision{Escalate: true, Reason: "≥3 conflict bullets"}
 	}
-	if questions > 1 {
-		return escalateDecision{Escalate: true, Reason: "multiple open questions"}
+	if questions >= 3 {
+		return escalateDecision{Escalate: true, Reason: "≥3 open questions"}
 	}
 	return escalateDecision{}
+}
+
+// scanCryForHelp returns a non-empty reason when the body contains an
+// explicit "needs paid review" line or a phrase the bulk model uses
+// when it could not finish the job. Case-insensitive.
+func scanCryForHelp(body string) string {
+	lower := strings.ToLower(body)
+	if strings.Contains(lower, "- needs paid review:") || strings.Contains(lower, "- needs paid review ") {
+		return "explicit needs-paid-review marker"
+	}
+	for _, phrase := range []string{
+		"unable to verify",
+		"could not verify",
+		"could not confirm",
+		"unable to confirm",
+		"unable to access",
+		"not externally accessible",
+		"no source available",
+		"no external source",
+	} {
+		if strings.Contains(lower, phrase) {
+			return "cry-for-help phrase: " + phrase
+		}
+	}
+	return ""
 }
 
 // countSubstantiveBullets returns the number of bullet lines under the

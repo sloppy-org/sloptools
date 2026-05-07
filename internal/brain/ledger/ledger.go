@@ -38,10 +38,16 @@ type Entry struct {
 	Extras       map[string]string `json:"extras,omitempty"`
 }
 
-// PlanCaps describes the weekly plan ceilings used when computing share.
-// Values are unitless "weekly capacity" numbers; the ledger normalizes
-// per-provider tokens against them. Defaults are deliberately
-// conservative; configure precise values in brain.toml.
+// PlanCaps describes the per-provider ceilings used to gate paid CLI
+// calls. The ledger enforces both gates (whichever fires first):
+//
+//   - share-of-weekly-tokens — relative to a placeholder weekly token
+//     budget (Anthropic and OpenAI publish no real token quotas for
+//     consumer Pro Max plans, so the budget number is a guess; see
+//     brain.toml comments).
+//   - count-of-paid-calls per night — deterministic, observable, does
+//     not depend on the placeholder budget. This is the primary gate
+//     in practice.
 type PlanCaps struct {
 	AnthropicWeeklyShareMax float64 // fraction of weekly cap allowed per night, e.g. 0.05
 	OpenAIWeeklyShareMax    float64
@@ -50,16 +56,27 @@ type PlanCaps struct {
 	// share, not by token, so the share estimate is informational.
 	AnthropicTokensPerWeek int64
 	OpenAITokensPerWeek    int64
+	// Per-night paid-call counts. Zero means unlimited (gate disabled);
+	// positive value means refuse the (N+1)th call to that provider in
+	// this nightly session. Deterministic; survives over- or under-count
+	// in the token scraper.
+	AnthropicMaxCallsPerNight int
+	OpenAIMaxCallsPerNight    int
 }
 
-// DefaultPlanCaps returns sensible defaults for Claude Pro Max + ChatGPT
-// Pro plans as of May 2026. Override in brain.toml per the user's plan.
+// DefaultPlanCaps returns sensible defaults. The 30-call per-night
+// ceiling is conservative for the documented brain night shape (≤30
+// scout picks + ≤1 judge call ≈ 30 paid calls per provider when every
+// pick escalates evenly). Adjust in brain.toml for tighter or looser
+// budgets.
 func DefaultPlanCaps() PlanCaps {
 	return PlanCaps{
-		AnthropicWeeklyShareMax: 0.05,
-		OpenAIWeeklyShareMax:    0.05,
-		AnthropicTokensPerWeek:  20_000_000, // coarse placeholder
-		OpenAITokensPerWeek:     20_000_000,
+		AnthropicWeeklyShareMax:   0.05,
+		OpenAIWeeklyShareMax:      0.05,
+		AnthropicTokensPerWeek:    20_000_000, // coarse placeholder
+		OpenAITokensPerWeek:       20_000_000,
+		AnthropicMaxCallsPerNight: 30,
+		OpenAIMaxCallsPerNight:    30,
 	}
 }
 
@@ -137,18 +154,29 @@ func (l *Ledger) WeeklyShare(p backend.Provider, now time.Time) (float64, error)
 	return l.RollingShare(p, now.Add(-7*24*time.Hour), now)
 }
 
-// Guard refuses a new call to provider p when either:
+// Guard refuses a new call to provider p when ANY of:
 //
-//   - this nightly run (window [sessionStart, now]) already crossed
-//     providerShareMax (e.g. 5% of weekly cap), or
-//   - the rolling 7-day window already crossed providerShareMax * 7
-//     (e.g. 35% of weekly cap).
+//   - per-night call count for this session already at the configured
+//     MaxCallsPerNight (deterministic, primary gate);
+//   - per-night token share crossed providerShareMax (5% of placeholder
+//     weekly token budget — informational, depends on the placeholder);
+//   - rolling 7-day token share crossed providerShareMax * 7 (35%).
 //
-// A zero sessionStart disables the per-night gate (used by tests that
+// A zero sessionStart disables both per-night gates (used by tests that
 // only care about the weekly ceiling).
 func (l *Ledger) Guard(p backend.Provider, sessionStart, now time.Time) error {
 	max := l.providerShareMax(p)
 	if !sessionStart.IsZero() {
+		callCap := l.providerCallCap(p)
+		if callCap > 0 {
+			calls, err := l.CountCalls(p, sessionStart, now)
+			if err != nil {
+				return err
+			}
+			if calls >= callCap {
+				return fmt.Errorf("%w: provider=%s session_calls=%d cap=%d", ErrCapExceeded, p, calls, callCap)
+			}
+		}
 		night, err := l.RollingShare(p, sessionStart, now)
 		if err != nil {
 			return err
@@ -165,6 +193,23 @@ func (l *Ledger) Guard(p backend.Provider, sessionStart, now time.Time) error {
 		return fmt.Errorf("%w: provider=%s weekly_share=%.4f cap=%.4f", ErrCapExceeded, p, week, max*7)
 	}
 	return nil
+}
+
+// CountCalls returns the number of ledger entries for provider p in the
+// window [since, now].
+func (l *Ledger) CountCalls(p backend.Provider, since, now time.Time) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	count := 0
+	if err := l.scan(func(e Entry) {
+		if e.Provider != p || e.TS.Before(since) || e.TS.After(now) {
+			return
+		}
+		count++
+	}); err != nil {
+		return 0, err
+	}
+	return count, nil
 }
 
 // ErrCapExceeded indicates a provider's rolling weekly use crossed the
@@ -193,6 +238,16 @@ func (l *Ledger) scan(visit func(Entry)) error {
 		return fmt.Errorf("ledger: scan: %w", err)
 	}
 	return nil
+}
+
+func (l *Ledger) providerCallCap(p backend.Provider) int {
+	switch p {
+	case backend.ProviderAnthropic:
+		return l.caps.AnthropicMaxCallsPerNight
+	case backend.ProviderOpenAI:
+		return l.caps.OpenAIMaxCallsPerNight
+	}
+	return 0
 }
 
 func (l *Ledger) providerCap(p backend.Provider) int64 {
