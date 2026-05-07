@@ -1,11 +1,15 @@
 package backend
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -63,8 +67,10 @@ func (CodexBackend) Run(ctx context.Context, req Request) (Response, error) {
 	cmd.Env = req.Sandbox.Env()
 	cmd.Dir = cwd
 	cmd.Stdin = strings.NewReader(req.Packet)
-	cmd.Stdout = os.Stderr
-	cmd.Stderr = os.Stderr
+
+	var captured bytes.Buffer
+	cmd.Stdout = io.MultiWriter(os.Stderr, &captured)
+	cmd.Stderr = io.MultiWriter(os.Stderr, &captured)
 
 	start := time.Now()
 	if err := cmd.Run(); err != nil {
@@ -79,10 +85,54 @@ func (CodexBackend) Run(ctx context.Context, req Request) (Response, error) {
 	if strings.TrimSpace(string(body)) == "" {
 		return Response{}, ErrEmptyOutput
 	}
+	in, out := scrapeCodexTokens(captured.String())
 	return Response{
-		Output: strings.TrimRight(string(body), "\n") + "\n",
-		WallMS: wall.Milliseconds(),
+		Output:    strings.TrimRight(string(body), "\n") + "\n",
+		WallMS:    wall.Milliseconds(),
+		TokensIn:  in,
+		TokensOut: out,
 	}, nil
+}
+
+// codex 0.128 prints final usage near the tail of stderr in formats like:
+//
+//	tokens used: 12345
+//	[2026-01-15T12:34:56] tokens used: 12345
+//	prompt_tokens=1234 completion_tokens=567 total_tokens=1801
+//	"input_tokens": 1234, "output_tokens": 567
+//
+// We try several patterns; the last hit wins (final usage line).
+var (
+	reCodexInOut = regexp.MustCompile(`(?i)(?:prompt|input)[_ -]?tokens?["']?\s*[:=]\s*(\d+).{0,80}?(?:completion|output)[_ -]?tokens?["']?\s*[:=]\s*(\d+)`)
+	reCodexTotal = regexp.MustCompile(`(?i)(?:total[_ -]?tokens?|tokens used)\s*[:=]\s*(\d+)`)
+)
+
+// scrapeCodexTokens parses input/output token totals from codex CLI
+// output. Returns zeros when no recognised line is present; callers
+// treat zero as "unknown" rather than "free".
+func scrapeCodexTokens(s string) (int64, int64) {
+	var in, out int64
+	if matches := reCodexInOut.FindAllStringSubmatch(s, -1); len(matches) > 0 {
+		last := matches[len(matches)-1]
+		in = parseIntOr(last[1])
+		out = parseIntOr(last[2])
+		return in, out
+	}
+	if matches := reCodexTotal.FindAllStringSubmatch(s, -1); len(matches) > 0 {
+		last := matches[len(matches)-1]
+		// Ledger sums tokens_in + tokens_out; record the total as out so
+		// nothing is double-counted.
+		out = parseIntOr(last[1])
+	}
+	return in, out
+}
+
+func parseIntOr(s string) int64 {
+	v, err := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
+	if err != nil {
+		return 0
+	}
+	return v
 }
 
 // writeCodexConfig drops a minimal config.toml into CODEX_HOME so the
