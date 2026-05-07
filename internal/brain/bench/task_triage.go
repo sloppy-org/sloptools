@@ -11,9 +11,10 @@ import (
 // it.
 //
 // Output shape:
-//   {"verdict": "promote|maybe|reject",
-//    "reason": "...",
-//    "rejection_class": "textbook|duplicate|out-of-scope|"}
+//
+//	{"verdict": "promote|maybe|reject",
+//	 "reason": "...",
+//	 "rejection_class": "textbook|duplicate|out-of-scope|"}
 //
 // Score is 1.0 when verdict matches the fixture's ground truth and the
 // rejection_class matches when verdict=reject. Passes iff score >= 1.0.

@@ -6,12 +6,12 @@
 //
 //   - Reject (pure textbook):       deny-list match + zero local anchor
 //   - Compress (mixed):             deny-list match + at least one
-//                                    local anchor; textbook prose can
-//                                    be replaced with a one-line pointer
+//     local anchor; textbook prose can
+//     be replaced with a one-line pointer
 //   - Keep (canonical or anchored): not on deny-list, OR canonical
-//                                    entity note (people/projects/
-//                                    institutions), never archived for
-//                                    being on Wikipedia
+//     entity note (people/projects/
+//     institutions), never archived for
+//     being on Wikipedia
 package textbook
 
 import (

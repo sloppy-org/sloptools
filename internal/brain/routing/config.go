@@ -15,8 +15,8 @@ import (
 // FileConfig is the on-disk shape of ~/.config/sloptools/brain.toml. Any
 // field left zero falls back to the in-code default.
 type FileConfig struct {
-	Plan   PlanFile               `toml:"plan"`
-	Stages map[string]StageFile   `toml:"stage"`
+	Plan   PlanFile             `toml:"plan"`
+	Stages map[string]StageFile `toml:"stage"`
 }
 
 // PlanFile carries weekly cap overrides per provider.
@@ -31,10 +31,10 @@ type PlanFile struct {
 
 // StageFile overrides one stage's tier and pool.
 type StageFile struct {
-	Tier   string         `toml:"tier"`
-	Bulk   ChoiceFile     `toml:"bulk"`
-	Medium []ChoiceFile   `toml:"medium"`
-	Hard   []ChoiceFile   `toml:"hard"`
+	Tier   string       `toml:"tier"`
+	Bulk   ChoiceFile   `toml:"bulk"`
+	Medium []ChoiceFile `toml:"medium"`
+	Hard   []ChoiceFile `toml:"hard"`
 }
 
 // ChoiceFile is one choice in a tier pool.

@@ -11,10 +11,10 @@ import (
 // not authorise.
 //
 // Score components:
-//  - retains all expected_sections from fixture (40%)
-//  - does not introduce a forbidden section (30%)
-//  - does not echo the packet verbatim (must edit something) (15%)
-//  - does not output a fenced ``` wrapper around the whole document (15%)
+//   - retains all expected_sections from fixture (40%)
+//   - does not introduce a forbidden section (30%)
+//   - does not echo the packet verbatim (must edit something) (15%)
+//   - does not output a fenced ``` wrapper around the whole document (15%)
 type SleepJudgeTask struct {
 	FixtureSet []Fixture
 }

@@ -20,11 +20,11 @@ type ScanResult struct {
 
 // Summary aggregates a scan over a vault.
 type Summary struct {
-	Total    int          `json:"total"`
-	Keep     int          `json:"keep"`
-	Compress int          `json:"compress"`
-	Reject   int          `json:"reject"`
-	Rejects  []ScanResult `json:"rejects,omitempty"`
+	Total     int          `json:"total"`
+	Keep      int          `json:"keep"`
+	Compress  int          `json:"compress"`
+	Reject    int          `json:"reject"`
+	Rejects   []ScanResult `json:"rejects,omitempty"`
 	Compress_ []ScanResult `json:"compress_candidates,omitempty"`
 }
 

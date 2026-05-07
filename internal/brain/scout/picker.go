@@ -23,7 +23,7 @@ import (
 
 // Pick is one entity selected for verification.
 type Pick struct {
-	Path      string    `json:"path"`       // vault-relative
+	Path      string    `json:"path"` // vault-relative
 	Title     string    `json:"title"`
 	Cadence   string    `json:"cadence"`
 	LastSeen  time.Time `json:"last_seen,omitempty"`
@@ -294,11 +294,11 @@ func scoreNote(note *brain.MarkdownNote, vaultRel string, now time.Time) Pick {
 // computeScore: higher = more in need of verification.
 //
 // Heuristic:
-//  - explicit needs_review:    +1000 base
-//  - strategic + not seen:     +50
-//  - cadence weight base       (daily=1, weekly=7, monthly=30, quarterly=90)
-//  - days since last_seen / cadence_days = staleness ratio
-//  - no last_seen + has cadence = treat as 2× cadence (double overdue)
+//   - explicit needs_review:    +1000 base
+//   - strategic + not seen:     +50
+//   - cadence weight base       (daily=1, weekly=7, monthly=30, quarterly=90)
+//   - days since last_seen / cadence_days = staleness ratio
+//   - no last_seen + has cadence = treat as 2× cadence (double overdue)
 //
 // Notes with no cadence and no needs_review get score 0 (skipped by
 // PickEntities's TopN crop).

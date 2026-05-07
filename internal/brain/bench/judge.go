@@ -28,10 +28,10 @@ type Judge struct {
 
 // Verdict is the parsed JSON output of the bench-judge prompt.
 type Verdict struct {
-	Passes         bool     `json:"passes"`
-	Score          float64  `json:"score"`
-	Rationale      string   `json:"rationale"`
-	InventedFacts  []string `json:"invented_facts,omitempty"`
+	Passes        bool     `json:"passes"`
+	Score         float64  `json:"score"`
+	Rationale     string   `json:"rationale"`
+	InventedFacts []string `json:"invented_facts,omitempty"`
 }
 
 // runJudge invokes the configured judge backend on one cell. Errors

@@ -73,12 +73,12 @@ type Choice struct {
 
 // StageConfig binds a stage to its tier and the eligible model choices.
 type StageConfig struct {
-	Stage   Stage
-	Tier    Tier
-	Bulk    Choice   // local primary (always opencode/qwen)
-	Medium  []Choice // even-split round-robin pool (one OpenAI + one Anthropic)
-	Hard    []Choice // even-split round-robin pool (one OpenAI + one Anthropic)
-	Fallback Choice  // when all paid providers are saturated
+	Stage    Stage
+	Tier     Tier
+	Bulk     Choice   // local primary (always opencode/qwen)
+	Medium   []Choice // even-split round-robin pool (one OpenAI + one Anthropic)
+	Hard     []Choice // even-split round-robin pool (one OpenAI + one Anthropic)
+	Fallback Choice   // when all paid providers are saturated
 }
 
 // Router holds the loaded stage configs, the ledger, and the per-stage

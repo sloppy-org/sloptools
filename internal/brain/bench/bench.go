@@ -74,12 +74,12 @@ type Cell struct {
 	Err       string
 
 	// LLM judge fields (populated when Options.Judge is set).
-	JudgeUsed     bool
-	JudgePasses   bool
-	JudgeScore    float64
-	JudgeFacts    []string
-	JudgeNote     string
-	JudgeErr      string
+	JudgeUsed   bool
+	JudgePasses bool
+	JudgeScore  float64
+	JudgeFacts  []string
+	JudgeNote   string
+	JudgeErr    string
 }
 
 // Result is the full bench output.

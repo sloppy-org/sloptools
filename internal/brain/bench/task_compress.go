@@ -10,9 +10,9 @@ import (
 // background to a one-line pointer.
 //
 // Scoring:
-//  - retains every expected_local_anchor (60%)
-//  - shrinks total length by at least 30% (20%)
-//  - introduces a "Background" pointer line (Wikipedia/textbook ref) (20%)
+//   - retains every expected_local_anchor (60%)
+//   - shrinks total length by at least 30% (20%)
+//   - introduces a "Background" pointer line (Wikipedia/textbook ref) (20%)
 type CompressTask struct {
 	FixtureSet []Fixture
 }
