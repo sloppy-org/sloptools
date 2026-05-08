@@ -76,8 +76,8 @@ Installs and starts `sloptools-runtime.service` on
 
 ### Windows (NSSM)
 
-Requires [NSSM](https://nssm.cc/) (`winget install NSSM.NSSM`). Run from an
-elevated PowerShell:
+Requires [NSSM](https://nssm.cc/) (`winget install NSSM.NSSM`). The script
+self-elevates if not run as administrator.
 
 ```powershell
 .\scripts\install-sloptools-windows-service.ps1
@@ -85,8 +85,14 @@ elevated PowerShell:
 
 Installs and starts the `sloptools` service listening on `127.0.0.1:9420`,
 with data in `%LOCALAPPDATA%\sloppy` and logs in `%LOCALAPPDATA%\sloptools`.
-Override with `-Name`, `-BinaryPath`, `-ProjectDir`, `-DataDir`, `-Bind`,
-`-Port`.
+The script prompts for a service account (cancel for `LocalSystem`).
+
+```powershell
+.\scripts\install-sloptools-windows-service.ps1 -Uninstall
+```
+
+Override defaults with `-Name`, `-BinaryPath`, `-ProjectDir`, `-DataDir`,
+`-Bind`, `-Port`, `-Credential`.
 
 ## Security
 
