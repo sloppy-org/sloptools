@@ -74,25 +74,23 @@ Installs and starts `sloptools-runtime.service` on
 `$XDG_RUNTIME_DIR/sloppy/sloptools.sock` with backend state in
 `$HOME/.local/share/sloppy`.
 
-### Windows (NSSM)
-
-Requires [NSSM](https://nssm.cc/) (`winget install NSSM.NSSM`). The script
-self-elevates if not run as administrator.
+### Windows (Scheduled Task, no admin)
 
 ```powershell
 .\scripts\install-sloptools-windows-service.ps1
 ```
 
-Installs and starts the `sloptools` service listening on `127.0.0.1:9420`,
-with data in `%LOCALAPPDATA%\sloppy` and logs in `%LOCALAPPDATA%\sloptools`.
-The script prompts for a service account (cancel for `LocalSystem`).
+Registers a per-user Scheduled Task that starts `sloptools server` at logon
+on `127.0.0.1:9420`, with data in `%LOCALAPPDATA%\sloppy`, and auto-restarts
+on failure. No administrator rights, no third-party tools. Runs in the
+current user's interactive session.
 
 ```powershell
 .\scripts\install-sloptools-windows-service.ps1 -Uninstall
 ```
 
 Override defaults with `-Name`, `-BinaryPath`, `-ProjectDir`, `-DataDir`,
-`-Bind`, `-Port`, `-Credential`.
+`-Bind`, `-Port`.
 
 ## Security
 
