@@ -82,6 +82,13 @@ func (OpencodeBackend) Run(ctx context.Context, req Request) (Response, error) {
 		return Response{}, fmt.Errorf("opencode exec: %w; stderr=%s", err, stderr.String())
 	}
 	out := stdout.Bytes()
+	// Surface every failed MCP tool call to stderr as a structured
+	// line. Issue #130: previously these failures appeared only as
+	// opencode's own "(failed)" log with no diagnostic, so we could
+	// not tell why a long-running scout saw clusters of failures.
+	for _, f := range extractToolFailures(out) {
+		fmt.Fprintln(os.Stderr, formatToolFailureLogLine(req.Stage, f))
+	}
 	body, tin, tout := parseOpencodeJSON(out)
 	if strings.TrimSpace(body) == "" {
 		body = strings.TrimSpace(string(out))
@@ -323,6 +330,113 @@ func opencodeWriteContent(ev map[string]any) (string, bool) {
 		return "", false
 	}
 	return c, true
+}
+
+// ToolFailure is an instrumentation record for a single failed MCP
+// tool call extracted from opencode's JSON event stream. Surfacing
+// these fields was the deliverable of sloptools issue #130: the
+// previous "mcp: <tool> (failed)" log gave no diagnostic at all, which
+// blocked us from telling whether a failure cluster was a connection
+// reset, a rate limit, or an upstream-config drift. Once enough real
+// last_error values are logged we can pick the right intervention
+// (retry-with-backoff, token bucket, or a config fix); guessing first
+// is exactly what #130 warned against.
+type ToolFailure struct {
+	// Tool is the opencode-side tool identifier. opencode flattens
+	// MCP tools to "<server>_<tool>" (e.g. "helpy_web_search",
+	// "sloppy_brain_search"); we keep the flattened form because the
+	// caller has not been observed splitting it back out reliably.
+	Tool string
+	// Attempt counts repeated failures of the same Tool inside one
+	// opencode run, restarting at 1 per Tool. Useful for spotting the
+	// "10+ web_search failures in a single escalate stage" pattern
+	// called out in #130.
+	Attempt int
+	// LastError is the innermost error message the parser could
+	// recover, in priority order: state.error, state.output (only when
+	// status indicates failure), then a generic "no error detail"
+	// sentinel. Never empty for an emitted ToolFailure.
+	LastError string
+}
+
+// extractToolFailures walks the opencode `--format json` event stream
+// and returns one ToolFailure per failed tool_use part, in stream
+// order. A tool_use part is treated as failed when its
+// part.state.status equals "errored" or "error" (opencode has emitted
+// both spellings across versions).
+//
+// We deliberately keep this best-effort: opencode's event schema is
+// not part of any stable contract we own, so unknown event shapes are
+// silently skipped rather than logged as parse errors. The flip side
+// is that a future opencode release that renames status values would
+// need a corresponding update here; the alternative — strict schema
+// validation — would risk dropping legitimate failures on every minor
+// upgrade.
+func extractToolFailures(raw []byte) []ToolFailure {
+	dec := json.NewDecoder(strings.NewReader(string(raw)))
+	var out []ToolFailure
+	attempts := map[string]int{}
+	for dec.More() {
+		var ev map[string]any
+		if err := dec.Decode(&ev); err != nil {
+			break
+		}
+		if t, _ := ev["type"].(string); t != "tool_use" {
+			continue
+		}
+		part, ok := ev["part"].(map[string]any)
+		if !ok {
+			continue
+		}
+		state, ok := part["state"].(map[string]any)
+		if !ok {
+			continue
+		}
+		status, _ := state["status"].(string)
+		if status != "errored" && status != "error" {
+			continue
+		}
+		tool, _ := part["tool"].(string)
+		if tool == "" {
+			tool = "unknown"
+		}
+		attempts[tool]++
+		out = append(out, ToolFailure{
+			Tool:      tool,
+			Attempt:   attempts[tool],
+			LastError: extractToolErrorMessage(state),
+		})
+	}
+	return out
+}
+
+// extractToolErrorMessage pulls the most informative message out of an
+// errored opencode tool_use state. Priority order: state.error (the
+// dedicated field), state.output (some errored calls only populate
+// output with the failure text), then a sentinel so the caller never
+// emits a blank last_error.
+func extractToolErrorMessage(state map[string]any) string {
+	if msg, ok := state["error"].(string); ok && msg != "" {
+		return msg
+	}
+	if msg, ok := state["output"].(string); ok && msg != "" {
+		return msg
+	}
+	return "no error detail in opencode event"
+}
+
+// formatToolFailureLogLine renders one ToolFailure as a single-line
+// structured log entry. The format is pinned by tests because future
+// log scrapers (brain-sleep ingestion of brain-night transcripts,
+// follow-up issues to #130) parse it. Embedded newlines in LastError
+// are escaped so the entry stays one line.
+func formatToolFailureLogLine(stage string, f ToolFailure) string {
+	msg := strings.ReplaceAll(f.LastError, "\\", "\\\\")
+	msg = strings.ReplaceAll(msg, "\"", "\\\"")
+	msg = strings.ReplaceAll(msg, "\n", "\\n")
+	msg = strings.ReplaceAll(msg, "\r", "\\r")
+	return fmt.Sprintf("mcp tool_failure: stage=%s tool=%s attempt=%d last_error=\"%s\"",
+		stage, f.Tool, f.Attempt, msg)
 }
 
 // stripFences removes a leading ```{lang}\n and trailing \n``` if present.
