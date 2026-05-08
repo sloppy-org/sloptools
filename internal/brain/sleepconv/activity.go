@@ -41,11 +41,12 @@ type SessionDigest struct {
 // FileTouch records a Read/Edit/Write of a file. Op is the strongest
 // observed verb across the day (write > edit > read).
 type FileTouch struct {
-	Path     string
-	Op       string // "read" | "edit" | "write"
-	Sphere   string
-	Sessions int    // count of sessions that touched this file
-	BrainHit string // brain-relative path of an existing folder/project note that governs this path, empty when none
+	Path       string
+	Op         string // "read" | "edit" | "write"
+	Sphere     string
+	Sessions   int    // count of sessions that touched this file
+	BrainHit   string // brain-relative path of an existing folder/project note that governs this path, empty when none
+	Importance int    // 1-10 deterministic score; higher means more worth promoting to canonical
 }
 
 // WebFetchOp captures a WebFetch (claude) or web_fetch (codex) call.
@@ -125,12 +126,68 @@ func mergeActivity(a, b Activity) Activity {
 
 // consolidateActivity dedupes per-file/per-URL records, escalates op
 // strength (write > edit > read), counts sessions, derives GitOps and
-// GitHubRefs from the bash stream.
+// GitHubRefs from the bash stream, and scores each FileTouch by a
+// deterministic importance rule so the renderer can sort by signal.
 func consolidateActivity(a Activity) Activity {
 	a.FilesTouched = consolidateFiles(a.FilesTouched)
 	a.WebFetches = consolidateFetches(a.WebFetches)
 	a.GitOps, a.GitHubRefs = deriveGitAndGitHub(a.BashHits)
+	a.FilesTouched = scoreFileImportance(a.FilesTouched)
 	return a
+}
+
+// scoreFileImportance assigns a 1-10 importance score to each
+// FileTouch using deterministic rules:
+//
+//   - op=write           +6 (creating a new file is a strong signal)
+//   - op=edit            +4 (modifying an existing file is strong)
+//   - op=read            +1 (just reading is weak)
+//   - sessions ≥ 3       +2 (recurring across sessions is stronger)
+//   - sessions == 2      +1
+//   - existing brain note governs path  +1 (canonical-note candidate)
+//   - path under brain/  -3 (brain self-reads, anti-feedback rule)
+//
+// The score is clamped to [1, 10]. The renderer uses it to sort
+// rows so the model encounters the highest-importance edits first.
+func scoreFileImportance(in []FileTouch) []FileTouch {
+	for i := range in {
+		s := 0
+		switch in[i].Op {
+		case "write":
+			s += 6
+		case "edit":
+			s += 4
+		case "read":
+			s += 1
+		}
+		switch {
+		case in[i].Sessions >= 3:
+			s += 2
+		case in[i].Sessions == 2:
+			s += 1
+		}
+		if in[i].BrainHit != "" {
+			s += 1
+		}
+		if isBrainSelfRead(in[i].Path) {
+			s -= 3
+		}
+		if s < 1 {
+			s = 1
+		}
+		if s > 10 {
+			s = 10
+		}
+		in[i].Importance = s
+	}
+	return in
+}
+
+// isBrainSelfRead is a cheap path-prefix check used by the importance
+// scorer; the activity already routed `personal/` paths to drop, so
+// here we only need to detect canonical brain reads.
+func isBrainSelfRead(path string) bool {
+	return strings.Contains(path, "/Nextcloud/brain/") || strings.Contains(path, "/Dropbox/brain/")
 }
 
 func consolidateFiles(in []FileTouch) []FileTouch {

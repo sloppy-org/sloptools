@@ -72,9 +72,22 @@ func writeFilesTable(b *strings.Builder, files []FileTouch) {
 	if len(files) == 0 {
 		return
 	}
+	// Re-sort by importance (descending) so the model encounters the
+	// highest-signal rows first; consolidate already returns by
+	// sessions × op rank, but importance composes both with the
+	// brain-hit boost.
+	sort.SliceStable(files, func(i, j int) bool {
+		if files[i].Importance != files[j].Importance {
+			return files[i].Importance > files[j].Importance
+		}
+		if files[i].Sessions != files[j].Sessions {
+			return files[i].Sessions > files[j].Sessions
+		}
+		return files[i].Path < files[j].Path
+	})
 	fmt.Fprintf(b, "### Files touched (%d)\n\n", len(files))
-	b.WriteString("Op rank: write > edit > read. The Note column is the canonical brain-relative path of the folder note or project note that already governs the file's directory; act on that note when present, or create one when the path's repository or folder is clearly a recurring subject of the user's work.\n\n")
-	b.WriteString("| Op | Path | Sessions | Note |\n|---|---|---|---|\n")
+	b.WriteString("Op rank: write > edit > read. **Importance** is a deterministic 1-10 score: write/edit weigh more than read, recurring across sessions adds, existing brain note governing the path adds, brain self-reads subtract. Rows scored ≥7 deserve canonical-note edits; 4-6 are episodic-log material; <4 is noise unless tied to other strong signals.\n\n")
+	b.WriteString("| Imp | Op | Path | Sessions | Note |\n|---|---|---|---|---|\n")
 	cap := len(files)
 	if cap > 60 {
 		cap = 60
@@ -84,7 +97,7 @@ func writeFilesTable(b *strings.Builder, files []FileTouch) {
 		if note == "" {
 			note = "_(none)_"
 		}
-		fmt.Fprintf(b, "| %s | %s | %d | %s |\n", f.Op, mdCell(f.Path), f.Sessions, mdCell(note))
+		fmt.Fprintf(b, "| %d | %s | %s | %d | %s |\n", f.Importance, f.Op, mdCell(f.Path), f.Sessions, mdCell(note))
 	}
 	if len(files) > cap {
 		fmt.Fprintf(b, "_(+%d more files truncated)_\n", len(files)-cap)
