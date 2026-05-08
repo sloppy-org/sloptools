@@ -1,9 +1,8 @@
 # sloptools
 
-Core MCP server for the [sloppy.at](https://sloppy.at) product family.
-
-Provides domain tools for workspace management, items, artifacts, actors,
-email, calendar, handoffs, temporary files, and canvas relay via the
+Core MCP server for the [sloppy.at](https://sloppy.at) product family. Provides
+workspace, items, artifacts, actors, mail, calendar, contacts, tasks, brain,
+handoffs, temp files, and canvas tools over the
 [Model Context Protocol](https://modelcontextprotocol.io/).
 
 There are exactly two external agent-facing MCP servers in the sloppy stack:
@@ -11,165 +10,91 @@ There are exactly two external agent-facing MCP servers in the sloppy stack:
 - `sloppy` = `sloptools mcp-server`
 - `helpy` = `helpy mcp-stdio`
 
-`slopshell` is the UI/runtime layer and is not an agent-facing MCP server.
+`slopshell` is the UI/runtime layer and is not an MCP server.
 
-## Table of Contents
+Docs:
 
-- [MCP Server](#mcp-server)
-- [Wire Sloptools into Coding Agents](#wire-sloptools-into-coding-agents)
-- [Harness integration](#harness-integration)
-- [Documentation](#documentation)
-- [License](#license)
-- [Disclaimer](#disclaimer)
+- [`docs/groupware.md`](docs/groupware.md) — MCP tool reference and per-backend capability matrix.
+- [`docs/vaults.md`](docs/vaults.md) — brain vault config schema.
 
-## MCP Server
+## Install
 
-The `mcp-server` subcommand speaks MCP over stdio. There is no listening port
-or socket — the coding agent (Claude Code, Codex, opencode, qwen-code) spawns
-`sloptools mcp-server` as a subprocess per session, the subprocess inherits
-the spawning user's UID, and other local users cannot intercept anything.
-
-Manual smoke test:
+Requires Go 1.24+.
 
 ```bash
-sloptools mcp-server --project-dir "$HOME" --data-dir "$HOME/.local/share/sloppy" < /dev/null
+go install github.com/sloppy-org/sloptools/cmd/sloptools@latest
 ```
 
-The separate `server` subcommand can expose the same MCP surface over a local
-HTTP listener or a private Unix socket for embedded applications.
-
-## Runtime Daemon (private Unix socket)
-
-For long-lived local runtime use, prefer:
+Or from a checkout:
 
 ```bash
-sloptools server --project-dir "$HOME" --data-dir "$HOME/.local/share/sloppy" --mcp-unix-socket "$XDG_RUNTIME_DIR/sloppy/sloptools.sock"
+go build -o sloptools ./cmd/sloptools
 ```
 
-This is the private runtime/backend path for Slopshell and similar local
-integrations:
+## Run
 
-- the parent socket directory is forced to mode `0700`
-- the socket itself is forced to mode `0600`
-- persistent backend-owned auth/session/cursor state stays in the sloptools
-  data dir (`$HOME/.local/share/sloppy` by default)
-- the process is meant to stay up and reuse that state across requests
+```bash
+sloptools mcp-server --stdio --vault-config ~/.config/sloptools/vaults.toml
+                             # MCP over stdio (per-agent subprocess; default)
 
-Keep the external coding-agent registration story separate:
+sloptools server \
+  --project-dir "$HOME" \
+  --data-dir "$HOME/.local/share/sloppy" \
+  --mcp-unix-socket "$XDG_RUNTIME_DIR/sloppy/sloptools.sock"
+                             # long-lived runtime daemon (Unix)
 
-- agents register `sloppy` via `sloptools mcp-server` over stdio
-- local runtimes connect to `sloptools server --mcp-unix-socket ...`
+sloptools server \
+  --project-dir "$HOME" \
+  --data-dir "$HOME/.local/share/sloppy" \
+  --mcp-host 127.0.0.1 --mcp-port 9420
+                             # long-lived runtime daemon (Windows / TCP)
+```
 
-That hybrid split keeps per-agent session isolation for coding tools while
-still giving Slopshell and other long-lived local runtimes stable backend state
-and socket reuse.
+## Wire into coding agents
 
-## Wire Sloptools into Coding Agents
-
-One-shot installer (registers sloptools with whatever's on PATH — claude,
-codex, opencode, qwen):
+Registers `sloppy` with every CLI present on PATH (claude, codex, opencode,
+qwen, gemini). Idempotent.
 
 ```bash
 ./scripts/setup-sloptools-mcp.sh
 ```
 
-Per-tool installers:
-
-- `scripts/setup-claude-mcp.sh` — `claude mcp add -s user sloppy -- sloptools mcp-server ...`
-- `scripts/setup-codex-mcp.sh` — `codex mcp add sloppy -- sloptools mcp-server ...`
-- `scripts/setup-opencode-mcp.sh` — writes `mcp.sloppy = {type: "local", command: [...]}` into `~/.config/opencode/opencode.json`
-- `scripts/setup-qwen-mcp.sh` — writes `mcpServers.sloppy = {command: "sloptools", args: [...]}` into `~/.qwen/settings.json`
-
-Each per-tool installer is idempotent and a no-op if its CLI isn't installed.
-Defaults: project dir `$HOME`, data dir `$HOME/.local/share/sloppy`,
-server name `sloppy`. Override via `SLOPTOOLS_PROJECT_DIR`,
+Per-tool scripts live next to it. Override defaults via `SLOPTOOLS_PROJECT_DIR`,
 `SLOPTOOLS_DATA_DIR`, `SLOPTOOLS_MCP_NAME`.
 
-## Harness integration
+## Install as a service
 
-This section documents the canonical launch command and per-harness
-configuration so every harness wires sloptools the same way.
-
-### Canonical launch command
-
-All stdio harnesses launch the same command shape:
-
-```bash
-sloptools mcp-server --stdio --vault-config ~/.config/sloptools/vaults.toml
-```
-
-The `mcp-server` subcommand uses stdio by default; `--stdio` is accepted so
-all harness snippets can be explicit. `--vault-config` sets the default brain
-vault config for MCP calls. Individual brain tools can still override it with
-their `config_path` argument. The repo ships zero defaults pointing at a real
-vault path. See the [vaults.toml schema reference](docs/vaults.md) for the
-user-owned config shape.
-
-### Claude Code
-
-Add the following stanza to `~/.claude/.mcp.json` (create the file if it
-doesn't exist):
-
-```jsonc
-{
-  "mcpServers": {
-    "sloppy": {
-      "command": "sloptools",
-      "args": ["mcp-server", "--stdio", "--vault-config", "~/.config/sloptools/vaults.toml"]
-    }
-  }
-}
-```
-
-After installation, call `mcp__sloppy__brain.vault.validate` with
-`sphere` and, if needed, `config_path`.
-
-### opencode
-
-Use `scripts/setup-opencode-mcp.sh`. It writes a local MCP entry to the
-configured opencode JSON file with this command array:
-
-```json
-["sloptools", "mcp-server", "--stdio", "--vault-config", "~/.config/sloptools/vaults.toml"]
-```
-
-### codex
-
-Use `scripts/setup-codex-mcp.sh`. It registers the same stdio command through
-`codex mcp add`.
-
-### slopshell runtime
-
-For private Slopshell runtime integration, run the MCP server on a private Unix
-socket with `sloptools server --mcp-unix-socket "$XDG_RUNTIME_DIR/sloppy/sloptools.sock"`.
-That socket is for local Slopshell runtime/backend traffic, not coding-agent
-registration. The parent directory is created with mode `0700`, the socket is
-created with mode `0600`, and the daemon reuses the backend-owned state under
-`--data-dir`; external agents should still register the stdio server name
-`sloppy`.
-
-### Local user service install
-
-On Linux, install the long-lived runtime daemon as a user service with:
+### Linux (systemd user)
 
 ```bash
 ./scripts/install-sloptools-user-unit.sh
 ```
 
-That installs and starts `sloptools-runtime.service`, which binds
-`%t/sloppy/sloptools.sock` and keeps the backend-owned state in
-`%h/.local/share/sloppy`.
+Installs and starts `sloptools-runtime.service` on
+`$XDG_RUNTIME_DIR/sloppy/sloptools.sock` with backend state in
+`$HOME/.local/share/sloppy`.
 
-## Documentation
+### Windows (NSSM)
 
-- [`docs/groupware.md`](docs/groupware.md) — MCP tool reference and per-backend capability matrix.
-- [`docs/vaults.md`](docs/vaults.md) — brain vault config schema.
+Requires [NSSM](https://nssm.cc/) (`winget install NSSM.NSSM`). Run from an
+elevated PowerShell:
+
+```powershell
+.\scripts\install-sloptools-windows-service.ps1
+```
+
+Installs and starts the `sloptools` service listening on `127.0.0.1:9420`,
+with data in `%LOCALAPPDATA%\sloppy` and logs in `%LOCALAPPDATA%\sloptools`.
+Override with `-Name`, `-BinaryPath`, `-ProjectDir`, `-DataDir`, `-Bind`,
+`-Port`.
+
+## Security
+
+- MCP stdio: no listening socket; subprocess inherits the spawning UID.
+- Runtime daemon: private Unix socket (`0700` dir, `0600` socket) on Unix;
+  loopback TCP on Windows. Non-loopback binds are blocked unless
+  `--unsafe-public-mcp` is passed.
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
-
-## Disclaimer
-
-This software is provided as-is without warranty. Use at your own risk.
-The authors are not responsible for any damages arising from its use.
+MIT. See [LICENSE](LICENSE). Provided as-is, no warranty.
