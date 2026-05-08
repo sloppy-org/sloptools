@@ -23,6 +23,7 @@ type SleepPacket struct {
 	ConversationContext string
 	ConversationCount   int
 	ConversationScope   string
+	EntityCandidates    string
 }
 
 func limitConsolidateRows(rows []ConsolidateRow, limit int) []ConsolidateRow {
@@ -134,6 +135,7 @@ func renderSleepPacket(packet SleepPacket) string {
 	writeCoverageSection(&b, packet.Coverage)
 	writeRecentSection(&b, packet.RecentPaths, packet.GitPacket)
 	writeConversationsSection(&b, packet.ConversationContext, packet.ConversationCount, packet.ConversationScope)
+	writeEntityCandidatesSection(&b, packet.EntityCandidates)
 	writeNREMSection(&b, packet.NREM)
 	writeREMSection(&b, report)
 	writePruneSection(&b, packet.PrunePlan, packet.Cold, report)
@@ -210,6 +212,21 @@ func writeConversationsSection(b *strings.Builder, body string, count int, scope
 	}
 	if scope != "" {
 		fmt.Fprintf(b, "_Conversation scope: %s; %d prompt(s) kept after filters._\n\n", scope, count)
+	}
+	b.WriteString(body)
+	if !strings.HasSuffix(body, "\n") {
+		b.WriteByte('\n')
+	}
+	b.WriteByte('\n')
+}
+
+// writeEntityCandidatesSection emits the deterministic entity-checklist
+// block, which is a peer of the conversations section: it consumes the
+// same user-prompt prose, runs a proper-noun extractor, looks up
+// canonical notes, and tells the model what to update or create.
+func writeEntityCandidatesSection(b *strings.Builder, body string) {
+	if strings.TrimSpace(body) == "" {
+		return
 	}
 	b.WriteString(body)
 	if !strings.HasSuffix(body, "\n") {

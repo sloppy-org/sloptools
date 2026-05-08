@@ -1,10 +1,12 @@
-package brain
+// Package sleepconv extracts user-typed prompts from interactive Claude
+// Code and Codex CLI session logs, classifies them by sphere, and
+// renders them (plus a deterministic entity-candidate checklist) for
+// the sleep packet. Subpackage of brain/.
+package sleepconv
 
 import (
 	"encoding/json"
 	"fmt"
-	"io/fs"
-	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -12,39 +14,38 @@ import (
 	"time"
 )
 
-// sleepConversationMaxPrompts caps how many user-typed prompts the sleep
-// packet may carry. The packet renders as observations, not instructions,
-// so quantity matters less than rough breadth; oldest are dropped first.
-const sleepConversationMaxPrompts = 80
+const (
+	// SphereWork is the work-vault sphere identifier.
+	SphereWork = "work"
+	// SpherePrivate is the private-vault sphere identifier.
+	SpherePrivate = "private"
+)
 
-// sleepConversationMaxBytes caps total prose bytes across all kept
-// prompts. Each individual prompt is also clipped (see prose clipper).
-const sleepConversationMaxBytes = 40 * 1024
+const (
+	maxPrompts = 80
+	maxBytes   = 40 * 1024
+	proseClip  = 1200
+)
 
-// sleepConversationProseClip is the per-prompt prose ceiling. Long
-// prompts get truncated with a marker; the model sees enough to
-// classify intent without the packet ballooning.
-const sleepConversationProseClip = 1200
-
-// userPrompt is a single user-typed entry extracted from a Claude Code
+// Prompt is a single user-typed entry extracted from a Claude Code
 // or Codex CLI session log.
-type userPrompt struct {
+type Prompt struct {
 	Timestamp time.Time
-	Source    string // "claude" | "codex"
+	Source    string
 	SessionID string
-	CWD       string // absolute, may be empty if event lacks the field
-	Prose     string // residual prose after stripping harness markers
+	CWD       string
+	Prose     string
 }
 
-// sleepConversationsResult is the payload returned to the sleep packet
-// builder. Markdown is empty when no prompts survived the filters.
-type sleepConversationsResult struct {
+// Result is the payload returned to the sleep packet builder.
+type Result struct {
 	Markdown string
 	Count    int
 	Scope    string
+	Prompts  []Prompt
 }
 
-// buildSleepConversations reads interactive Claude Code and Codex CLI
+// Build reads interactive Claude Code and Codex CLI
 // logs since the previous-sleep timestamp, keeps prompts the user
 // actually typed (filtering harness markers, tool results, AGENTS.md
 // auto-prepends, sidechain agent dispatches, brain-night subprocesses),
@@ -60,341 +61,23 @@ type sleepConversationsResult struct {
 // ~/Nextcloud/personal/ are dropped entirely. Any residual prose that
 // mentions a `personal/` path fragment is also dropped to keep quoted
 // paths from leaking via the prose channel.
-func buildSleepConversations(home string, sphere Sphere, since, now time.Time) sleepConversationsResult {
+func Build(home string, sphere string, since, now time.Time) Result {
 	if home == "" || since.IsZero() {
-		return sleepConversationsResult{}
+		return Result{}
 	}
-	var prompts []userPrompt
+	var prompts []Prompt
 	prompts = append(prompts, readClaudeUserPrompts(home, since)...)
 	prompts = append(prompts, readCodexUserPrompts(home, since)...)
 	prompts = filterPersonalGuardrail(prompts, home)
 	prompts = selectSphere(prompts, sphere, home)
 	sort.Slice(prompts, func(i, j int) bool { return prompts[i].Timestamp.Before(prompts[j].Timestamp) })
-	prompts = capPrompts(prompts, sleepConversationMaxPrompts, sleepConversationMaxBytes)
-	return sleepConversationsResult{
-		Markdown: renderSleepConversationsSection(prompts),
+	prompts = capPrompts(prompts, maxPrompts, maxBytes)
+	return Result{
+		Markdown: renderConversationsSection(prompts),
 		Count:    len(prompts),
 		Scope:    fmt.Sprintf("since %s (now %s)", since.UTC().Format(time.RFC3339), now.UTC().Format(time.RFC3339)),
+		Prompts:  prompts,
 	}
-}
-
-func readClaudeUserPrompts(home string, since time.Time) []userPrompt {
-	root := filepath.Join(home, ".claude", "projects")
-	info, err := os.Stat(root)
-	if err != nil || !info.IsDir() {
-		return nil
-	}
-	var out []userPrompt
-	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		if d.IsDir() {
-			return nil
-		}
-		if !strings.HasSuffix(path, ".jsonl") {
-			return nil
-		}
-		stat, statErr := os.Stat(path)
-		if statErr != nil || stat.ModTime().Before(since) {
-			return nil
-		}
-		out = append(out, parseClaudeJSONL(path, since)...)
-		return nil
-	})
-	return out
-}
-
-func parseClaudeJSONL(path string, since time.Time) []userPrompt {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil
-	}
-	defer f.Close()
-	dec := json.NewDecoder(f)
-	dec.UseNumber()
-	sessionID := strings.TrimSuffix(filepath.Base(path), ".jsonl")
-	dirName := filepath.Base(filepath.Dir(path))
-	fallbackCWD := decodeClaudeProjectDir(dirName)
-	var out []userPrompt
-	for dec.More() {
-		var raw map[string]json.RawMessage
-		if err := dec.Decode(&raw); err != nil {
-			break
-		}
-		if !claudeEntryIsUserText(raw) {
-			continue
-		}
-		ts := claudeEntryTimestamp(raw)
-		if !ts.IsZero() && ts.Before(since) {
-			continue
-		}
-		text := claudeEntryProse(raw)
-		text = stripHarnessMarkers(text)
-		text = strings.TrimSpace(text)
-		if proseTooThin(text) {
-			continue
-		}
-		cwd := claudeEntryCWD(raw)
-		if cwd == "" {
-			cwd = fallbackCWD
-		}
-		out = append(out, userPrompt{
-			Timestamp: ts,
-			Source:    "claude",
-			SessionID: sessionID,
-			CWD:       cwd,
-			Prose:     text,
-		})
-	}
-	return out
-}
-
-func claudeEntryIsUserText(raw map[string]json.RawMessage) bool {
-	if t := jsonString(raw["type"]); t != "user" {
-		return false
-	}
-	if jsonBool(raw["isSidechain"]) {
-		return false
-	}
-	msg, ok := raw["message"]
-	if !ok {
-		return false
-	}
-	var inner map[string]json.RawMessage
-	if err := json.Unmarshal(msg, &inner); err != nil {
-		return false
-	}
-	if jsonString(inner["role"]) != "user" {
-		return false
-	}
-	return true
-}
-
-// claudeEntryProse returns the user-typed text, joined when the content
-// is an array of blocks. tool_result blocks are skipped.
-func claudeEntryProse(raw map[string]json.RawMessage) string {
-	msg, ok := raw["message"]
-	if !ok {
-		return ""
-	}
-	var inner map[string]json.RawMessage
-	if err := json.Unmarshal(msg, &inner); err != nil {
-		return ""
-	}
-	content, ok := inner["content"]
-	if !ok {
-		return ""
-	}
-	if s, err := strconvJSONString(content); err == nil {
-		return s
-	}
-	var arr []map[string]json.RawMessage
-	if err := json.Unmarshal(content, &arr); err != nil {
-		return ""
-	}
-	var parts []string
-	for _, block := range arr {
-		btype := jsonString(block["type"])
-		if btype != "text" {
-			continue
-		}
-		parts = append(parts, jsonString(block["text"]))
-	}
-	return strings.Join(parts, "\n")
-}
-
-func claudeEntryCWD(raw map[string]json.RawMessage) string {
-	return strings.TrimSpace(jsonString(raw["cwd"]))
-}
-
-func claudeEntryTimestamp(raw map[string]json.RawMessage) time.Time {
-	s := jsonString(raw["timestamp"])
-	if s == "" {
-		return time.Time{}
-	}
-	t, err := time.Parse(time.RFC3339Nano, s)
-	if err != nil {
-		t, err = time.Parse(time.RFC3339, s)
-		if err != nil {
-			return time.Time{}
-		}
-	}
-	return t
-}
-
-// decodeClaudeProjectDir reverses the dash-encoded cwd used by Claude
-// Code project directories. The encoding is lossy: real dashes in path
-// segments collide with the separator. Only used as a fallback when an
-// individual event lacks a `cwd` field.
-func decodeClaudeProjectDir(name string) string {
-	if name == "" {
-		return ""
-	}
-	if !strings.HasPrefix(name, "-") {
-		return ""
-	}
-	return strings.ReplaceAll(name, "-", "/")
-}
-
-func readCodexUserPrompts(home string, since time.Time) []userPrompt {
-	root := filepath.Join(home, ".codex", "sessions")
-	info, err := os.Stat(root)
-	if err != nil || !info.IsDir() {
-		return nil
-	}
-	var out []userPrompt
-	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		if d.IsDir() {
-			return nil
-		}
-		if !strings.HasSuffix(path, ".jsonl") {
-			return nil
-		}
-		stat, statErr := os.Stat(path)
-		if statErr != nil || stat.ModTime().Before(since) {
-			return nil
-		}
-		out = append(out, parseCodexRollout(path, since)...)
-		return nil
-	})
-	return out
-}
-
-func parseCodexRollout(path string, since time.Time) []userPrompt {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil
-	}
-	defer f.Close()
-	dec := json.NewDecoder(f)
-	sessionID := ""
-	cwd := ""
-	var out []userPrompt
-	first := true
-	for dec.More() {
-		var raw map[string]json.RawMessage
-		if err := dec.Decode(&raw); err != nil {
-			break
-		}
-		etype := jsonString(raw["type"])
-		if etype == "session_meta" {
-			payload := raw["payload"]
-			var meta map[string]json.RawMessage
-			if err := json.Unmarshal(payload, &meta); err == nil {
-				sessionID = jsonString(meta["id"])
-				cwd = strings.TrimSpace(jsonString(meta["cwd"]))
-			}
-			continue
-		}
-		if etype != "response_item" {
-			continue
-		}
-		ts := codexEntryTimestamp(raw)
-		if !ts.IsZero() && ts.Before(since) {
-			continue
-		}
-		role, text := codexExtractUserText(raw)
-		if role != "user" || text == "" {
-			continue
-		}
-		if first {
-			first = false
-			if codexLooksLikeAgentsPreamble(text) {
-				continue
-			}
-		}
-		if codexIsHarnessOnly(text) {
-			continue
-		}
-		text = strings.TrimSpace(text)
-		if proseTooThin(text) {
-			continue
-		}
-		out = append(out, userPrompt{
-			Timestamp: ts,
-			Source:    "codex",
-			SessionID: sessionID,
-			CWD:       cwd,
-			Prose:     text,
-		})
-	}
-	return out
-}
-
-func codexExtractUserText(raw map[string]json.RawMessage) (string, string) {
-	payload, ok := raw["payload"]
-	if !ok {
-		return "", ""
-	}
-	var inner map[string]json.RawMessage
-	if err := json.Unmarshal(payload, &inner); err != nil {
-		return "", ""
-	}
-	if jsonString(inner["type"]) != "message" {
-		return "", ""
-	}
-	role := jsonString(inner["role"])
-	if role != "user" {
-		return role, ""
-	}
-	content, ok := inner["content"]
-	if !ok {
-		return role, ""
-	}
-	var arr []map[string]json.RawMessage
-	if err := json.Unmarshal(content, &arr); err != nil {
-		return role, ""
-	}
-	var parts []string
-	for _, block := range arr {
-		btype := jsonString(block["type"])
-		if btype != "input_text" {
-			continue
-		}
-		parts = append(parts, jsonString(block["text"]))
-	}
-	return role, strings.Join(parts, "\n")
-}
-
-func codexEntryTimestamp(raw map[string]json.RawMessage) time.Time {
-	s := jsonString(raw["timestamp"])
-	if s == "" {
-		return time.Time{}
-	}
-	t, err := time.Parse(time.RFC3339Nano, s)
-	if err != nil {
-		t, err = time.Parse(time.RFC3339, s)
-		if err != nil {
-			return time.Time{}
-		}
-	}
-	return t
-}
-
-// codexLooksLikeAgentsPreamble matches the auto-prepended AGENTS.md
-// rules block that codex injects as the first user-role message of
-// every session. The user did not type this.
-var codexAgentsPreambleHead = regexp.MustCompile(`^(?s)\s*(#\s+AGENTS\.md instructions for /|<INSTRUCTIONS>)`)
-
-func codexLooksLikeAgentsPreamble(text string) bool {
-	return codexAgentsPreambleHead.MatchString(text)
-}
-
-// codexIsHarnessOnly catches codex-internal user-role markers that the
-// CLI emits without user typing (turn aborts, environment notices).
-func codexIsHarnessOnly(text string) bool {
-	t := strings.TrimSpace(text)
-	if strings.HasPrefix(t, "<turn_aborted>") && strings.HasSuffix(t, "</turn_aborted>") {
-		return true
-	}
-	if strings.HasPrefix(t, "<environment_context>") && strings.HasSuffix(t, "</environment_context>") {
-		return true
-	}
-	return false
 }
 
 // stripHarnessMarkers removes Claude Code harness blocks that wrap or
@@ -440,7 +123,7 @@ func proseTooThin(text string) bool {
 // any prompt whose prose mentions the literal `personal/` path
 // fragment (defensive, in case the user pasted a personal/ path while
 // working from elsewhere).
-func filterPersonalGuardrail(prompts []userPrompt, home string) []userPrompt {
+func filterPersonalGuardrail(prompts []Prompt, home string) []Prompt {
 	personalRoot := filepath.Join(home, "Nextcloud", "personal") + string(filepath.Separator)
 	out := prompts[:0]
 	for _, p := range prompts {
@@ -460,7 +143,7 @@ func filterPersonalGuardrail(prompts []userPrompt, home string) []userPrompt {
 
 // selectSphere classifies each prompt and keeps only those for the
 // requested sphere. Ambiguous cwd falls through to a content classifier.
-func selectSphere(prompts []userPrompt, want Sphere, home string) []userPrompt {
+func selectSphere(prompts []Prompt, want string, home string) []Prompt {
 	out := prompts[:0]
 	for _, p := range prompts {
 		if classifyPromptSphere(p, home) == want {
@@ -474,7 +157,7 @@ func selectSphere(prompts []userPrompt, want Sphere, home string) []userPrompt {
 // matches a known root; otherwise a small keyword classifier on the
 // prose decides; ties default to work (the larger-volume sphere; the
 // user can recategorize after the fact).
-func classifyPromptSphere(p userPrompt, home string) Sphere {
+func classifyPromptSphere(p Prompt, home string) string {
 	if explicit := explicitSphereTag(p.Prose); explicit != "" {
 		return explicit
 	}
@@ -500,7 +183,7 @@ func classifyPromptSphere(p userPrompt, home string) Sphere {
 // prompt with. Wins outright over cwd and content classifiers.
 var explicitSphereTagRE = regexp.MustCompile(`(?i)\[\s*sphere\s*=\s*(work|private)\s*\]`)
 
-func explicitSphereTag(prose string) Sphere {
+func explicitSphereTag(prose string) string {
 	m := explicitSphereTagRE.FindStringSubmatch(prose)
 	if m == nil {
 		return ""
@@ -539,7 +222,7 @@ var (
 	}
 )
 
-func classifySphereByContent(prose string) Sphere {
+func classifySphereByContent(prose string) string {
 	low := strings.ToLower(prose)
 	work := 0
 	priv := 0
@@ -561,9 +244,9 @@ func classifySphereByContent(prose string) Sphere {
 
 // capPrompts enforces the count and byte ceilings, dropping the oldest
 // prompts first. Per-prompt prose is also clipped here.
-func capPrompts(prompts []userPrompt, maxN, maxBytes int) []userPrompt {
+func capPrompts(prompts []Prompt, maxN, maxBytes int) []Prompt {
 	for i := range prompts {
-		prompts[i].Prose = clipProse(prompts[i].Prose, sleepConversationProseClip)
+		prompts[i].Prose = clipProse(prompts[i].Prose, proseClip)
 	}
 	if len(prompts) > maxN {
 		prompts = prompts[len(prompts)-maxN:]
@@ -588,10 +271,10 @@ func clipProse(prose string, max int) string {
 	return prose[:max] + "\n[…clipped]"
 }
 
-// renderSleepConversationsSection emits the Markdown block that lands
+// renderConversationsSection emits the Markdown block that lands
 // in the sleep packet between Recent Memory and the NREM section.
 // Returns empty string when there are no prompts.
-func renderSleepConversationsSection(prompts []userPrompt) string {
+func renderConversationsSection(prompts []Prompt) string {
 	if len(prompts) == 0 {
 		return ""
 	}

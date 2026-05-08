@@ -13,6 +13,7 @@ import (
 	"github.com/sloppy-org/sloptools/internal/brain/ledger"
 	"github.com/sloppy-org/sloptools/internal/brain/prompts"
 	"github.com/sloppy-org/sloptools/internal/brain/routing"
+	"github.com/sloppy-org/sloptools/internal/brain/sleepconv"
 )
 
 // SleepBackendCodex routes the dream review through Codex CLI.
@@ -230,6 +231,7 @@ func prepareSleepCycle(cfg *Config, opts SleepOpts, autonomy string) (*preparedS
 	recent = mergeRecentPaths(recent, coverageNotePaths(coverage))
 	nrem = prioritizeSleepNREM(nrem, recent, opts.NREMBudget)
 	conv := gatherSleepConversations(vault, opts.Sphere, opts.Now)
+	candidates := sleepconv.ExtractCandidates(conv.Prompts, vault.BrainRoot())
 	packet := renderSleepPacket(SleepPacket{
 		Report:              report,
 		PrunePlan:           plan,
@@ -244,26 +246,25 @@ func prepareSleepCycle(cfg *Config, opts SleepOpts, autonomy string) (*preparedS
 		ConversationContext: conv.Markdown,
 		ConversationCount:   conv.Count,
 		ConversationScope:   conv.Scope,
+		EntityCandidates:    sleepconv.RenderCandidatesSection(candidates),
 	})
 	return &preparedSleepCycle{vault, cold, plan, report, nrem, recent, coverage, packet}, nil
 }
 
-// gatherSleepConversations resolves the previous-sleep timestamp from
-// the brain repo and reads interactive Claude Code + Codex CLI logs
-// since then, classified into the requested sphere. Returns an empty
-// result when the brain repo has no prior sleep commit (first night)
-// or when HOME is unresolvable.
-func gatherSleepConversations(vault Vault, sphere Sphere, now time.Time) sleepConversationsResult {
+// gatherSleepConversations resolves the previous-sleep anchor and
+// reads interactive Claude Code + Codex logs from there forward.
+// Empty when the brain repo has no prior sleep commit or HOME is
+// unresolvable.
+func gatherSleepConversations(vault Vault, sphere Sphere, now time.Time) sleepconv.Result {
 	since, ok := latestSleepCommitTime(vault.BrainRoot())
 	if !ok {
-		start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-		since = start.AddDate(0, 0, -1)
+		since = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, -1)
 	}
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
-		return sleepConversationsResult{}
+		return sleepconv.Result{}
 	}
-	return buildSleepConversations(home, sphere, since, now)
+	return sleepconv.Build(home, string(sphere), since, now)
 }
 
 func applySleepPrune(cfg *Config, opts SleepOpts, prep *preparedSleepCycle) (sleepPruneOutcome, error) {
@@ -447,18 +448,11 @@ func sleepReportPath(vault Vault, now time.Time) string {
 	}
 }
 
-// defaultCodexExec runs `codex exec --model <model> -C <vault-root>` with
-// the packet on stdin and reads only the final assistant message back via
-// `--output-last-message <tempfile>` (the default codex stdout mixes the
-// session metadata, replayed user/assistant turns, and a token-count
-// footer, none of which we want in the persisted sleep report).
-//
-// `--skip-git-repo-check` lets the call succeed even when the working
-// directory is not on codex's trusted-dir list (Nextcloud-synced vaults
-// usually are not).
-//
-// `--ask-for-approval never` keeps the sleep run non-interactive. Git history
-// is the rollback layer.
+// defaultCodexExec runs `codex exec` non-interactively with the packet
+// on stdin and reads only `--output-last-message` (default stdout
+// mixes metadata + replayed turns + token footer). `--skip-git-repo-check`
+// allows non-trusted-dir cwds; `--ask-for-approval never` keeps the run
+// non-interactive — git history is the rollback layer.
 func defaultCodexExec(ctx context.Context, req SleepCodexRequest) ([]byte, error) {
 	tmp, err := os.CreateTemp("", "sloptools-sleep-codex-*.md")
 	if err != nil {

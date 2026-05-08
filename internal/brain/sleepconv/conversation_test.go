@@ -1,4 +1,4 @@
-package brain
+package sleepconv
 
 import (
 	"os"
@@ -74,7 +74,7 @@ func TestCodexIsHarnessOnly(t *testing.T) {
 }
 
 func TestExplicitSphereTag(t *testing.T) {
-	cases := map[string]Sphere{
+	cases := map[string]string{
 		"[sphere=work] do the thing":        SphereWork,
 		"[ sphere = private ] do the thing": SpherePrivate,
 		"[Sphere=Private] mixed case":       SpherePrivate,
@@ -93,7 +93,7 @@ func TestClassifyPromptSphere_CWDPrimary(t *testing.T) {
 	cases := []struct {
 		cwd   string
 		prose string
-		want  Sphere
+		want  string
 	}{
 		{"/home/u/Nextcloud", "anything", SphereWork},
 		{"/home/u/Nextcloud/brain", "anything", SphereWork},
@@ -110,7 +110,7 @@ func TestClassifyPromptSphere_CWDPrimary(t *testing.T) {
 		{"/tmp/somewhere", "[sphere=private] override wins", SpherePrivate},
 	}
 	for _, c := range cases {
-		got := classifyPromptSphere(userPrompt{CWD: c.cwd, Prose: c.prose}, home)
+		got := classifyPromptSphere(Prompt{CWD: c.cwd, Prose: c.prose}, home)
 		if got != c.want {
 			t.Errorf("classify(cwd=%q, prose=%q) = %q, want %q", c.cwd, c.prose, got, c.want)
 		}
@@ -119,7 +119,7 @@ func TestClassifyPromptSphere_CWDPrimary(t *testing.T) {
 
 func TestFilterPersonalGuardrail_DropsByCWDAndProse(t *testing.T) {
 	home := "/home/u"
-	in := []userPrompt{
+	in := []Prompt{
 		{CWD: "/home/u/Nextcloud/personal/banking", Prose: "ok"},
 		{CWD: "/home/u/Nextcloud", Prose: "look at /home/u/Nextcloud/personal/foo for the receipt"},
 		{CWD: "/home/u/code/sloppy", Prose: "real prose with no personal path"},
@@ -136,19 +136,19 @@ func TestFilterPersonalGuardrail_DropsByCWDAndProse(t *testing.T) {
 
 func TestCapPrompts_DropsOldestUntilUnderLimits(t *testing.T) {
 	t0 := time.Date(2026, 5, 8, 0, 0, 0, 0, time.UTC)
-	prompts := []userPrompt{
+	prompts := []Prompt{
 		{Timestamp: t0.Add(0 * time.Minute), Prose: strings.Repeat("a", 800)},
 		{Timestamp: t0.Add(1 * time.Minute), Prose: strings.Repeat("b", 800)},
 		{Timestamp: t0.Add(2 * time.Minute), Prose: strings.Repeat("c", 800)},
 	}
-	out := capPrompts(append([]userPrompt(nil), prompts...), 10, 1700)
+	out := capPrompts(append([]Prompt(nil), prompts...), 10, 1700)
 	if len(out) != 2 {
 		t.Fatalf("byte cap 1700 with three 800-byte prompts should keep last two (1600 bytes), got %d", len(out))
 	}
 	if out[0].Prose[0] != 'b' || out[1].Prose[0] != 'c' {
 		t.Fatalf("oldest should be dropped first, got prefixes %c%c", out[0].Prose[0], out[1].Prose[0])
 	}
-	out = capPrompts(append([]userPrompt(nil), prompts...), 2, 1<<20)
+	out = capPrompts(append([]Prompt(nil), prompts...), 2, 1<<20)
 	if len(out) != 2 || out[0].Prose[0] != 'b' {
 		t.Fatalf("count cap should drop oldest, got %d, prefix %c", len(out), out[0].Prose[0])
 	}
@@ -266,7 +266,7 @@ func TestBuildSleepConversations_EndToEnd_ClaudeAndCodex_RoutedBySphere(t *testi
 	since := time.Date(2026, 5, 7, 0, 0, 0, 0, time.UTC)
 	now := time.Date(2026, 5, 8, 4, 0, 0, 0, time.UTC)
 
-	work := buildSleepConversations(home, SphereWork, since, now)
+	work := Build(home, SphereWork, since, now)
 	if work.Count != 1 {
 		t.Fatalf("work sphere want 1 prompt, got %d (markdown: %q)", work.Count, work.Markdown)
 	}
@@ -280,7 +280,7 @@ func TestBuildSleepConversations_EndToEnd_ClaudeAndCodex_RoutedBySphere(t *testi
 		t.Errorf("work markdown leaked personal/ prompt: %q", work.Markdown)
 	}
 
-	priv := buildSleepConversations(home, SpherePrivate, since, now)
+	priv := Build(home, SpherePrivate, since, now)
 	if priv.Count != 1 {
 		t.Fatalf("private sphere want 1 prompt, got %d (markdown: %q)", priv.Count, priv.Markdown)
 	}
