@@ -229,19 +229,41 @@ func prepareSleepCycle(cfg *Config, opts SleepOpts, autonomy string) (*preparedS
 	recent := recentBrainMemory(vault, opts.Now)
 	recent = mergeRecentPaths(recent, coverageNotePaths(coverage))
 	nrem = prioritizeSleepNREM(nrem, recent, opts.NREMBudget)
+	conv := gatherSleepConversations(vault, opts.Sphere, opts.Now)
 	packet := renderSleepPacket(SleepPacket{
-		Report:      report,
-		PrunePlan:   plan,
-		Cold:        cold,
-		NREM:        nrem,
-		RecentPaths: recent,
-		Coverage:    coverage,
-		Sphere:      vault.Sphere,
-		Autonomy:    autonomy,
-		Now:         opts.Now,
-		GitPacket:   report.GitContext,
+		Report:              report,
+		PrunePlan:           plan,
+		Cold:                cold,
+		NREM:                nrem,
+		RecentPaths:         recent,
+		Coverage:            coverage,
+		Sphere:              vault.Sphere,
+		Autonomy:            autonomy,
+		Now:                 opts.Now,
+		GitPacket:           report.GitContext,
+		ConversationContext: conv.Markdown,
+		ConversationCount:   conv.Count,
+		ConversationScope:   conv.Scope,
 	})
 	return &preparedSleepCycle{vault, cold, plan, report, nrem, recent, coverage, packet}, nil
+}
+
+// gatherSleepConversations resolves the previous-sleep timestamp from
+// the brain repo and reads interactive Claude Code + Codex CLI logs
+// since then, classified into the requested sphere. Returns an empty
+// result when the brain repo has no prior sleep commit (first night)
+// or when HOME is unresolvable.
+func gatherSleepConversations(vault Vault, sphere Sphere, now time.Time) sleepConversationsResult {
+	since, ok := latestSleepCommitTime(vault.BrainRoot())
+	if !ok {
+		start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		since = start.AddDate(0, 0, -1)
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return sleepConversationsResult{}
+	}
+	return buildSleepConversations(home, sphere, since, now)
 }
 
 func applySleepPrune(cfg *Config, opts SleepOpts, prep *preparedSleepCycle) (sleepPruneOutcome, error) {

@@ -116,6 +116,25 @@ func latestSleepCommit(workTree string) (string, bool) {
 	return hash, true
 }
 
+// latestSleepCommitTime returns the commit time of the most recent
+// `brain sleep: …` commit in the brain repo. Used to bound the
+// conversation-log scan in buildSleepConversations.
+func latestSleepCommitTime(workTree string) (time.Time, bool) {
+	hash, ok := latestSleepCommit(workTree)
+	if !ok {
+		return time.Time{}, false
+	}
+	out, err := gitOutput(workTree, "show", "-s", "--format=%cI", hash)
+	if err != nil {
+		return time.Time{}, false
+	}
+	t, err := time.Parse(time.RFC3339, strings.TrimSpace(out))
+	if err != nil {
+		return time.Time{}, false
+	}
+	return t, true
+}
+
 func inclusiveCommitRange(workTree, hash string) string {
 	if _, err := gitOutput(workTree, "rev-parse", hash+"^"); err != nil {
 		return hash
