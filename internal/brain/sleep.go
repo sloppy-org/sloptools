@@ -231,7 +231,9 @@ func prepareSleepCycle(cfg *Config, opts SleepOpts, autonomy string) (*preparedS
 	recent = mergeRecentPaths(recent, coverageNotePaths(coverage))
 	nrem = prioritizeSleepNREM(nrem, recent, opts.NREMBudget)
 	conv := gatherSleepConversations(vault, opts.Sphere, opts.Now)
+	idx := sleepconv.NewBrainIndex(vault.BrainRoot())
 	candidates := sleepconv.ExtractCandidates(conv.Prompts, vault.BrainRoot())
+	activity := gatherSleepActivity(vault, opts.Sphere, opts.Now)
 	packet := renderSleepPacket(SleepPacket{
 		Report:              report,
 		PrunePlan:           plan,
@@ -247,25 +249,14 @@ func prepareSleepCycle(cfg *Config, opts SleepOpts, autonomy string) (*preparedS
 		ConversationCount:   conv.Count,
 		ConversationScope:   conv.Scope,
 		EntityCandidates:    sleepconv.RenderCandidatesSection(candidates),
+		ActivityContext:     sleepconv.RenderActivitySection(activity, idx, sleepconv.VaultRootsForHome(homeOrEmpty())),
 	})
 	return &preparedSleepCycle{vault, cold, plan, report, nrem, recent, coverage, packet}, nil
 }
 
-// gatherSleepConversations resolves the previous-sleep anchor and
-// reads interactive Claude Code + Codex logs from there forward.
-// Empty when the brain repo has no prior sleep commit or HOME is
-// unresolvable.
-func gatherSleepConversations(vault Vault, sphere Sphere, now time.Time) sleepconv.Result {
-	since, ok := latestSleepCommitTime(vault.BrainRoot())
-	if !ok {
-		since = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, -1)
-	}
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return sleepconv.Result{}
-	}
-	return sleepconv.Build(home, string(sphere), since, now)
-}
+// gather helpers (gatherSleepConversations, gatherSleepActivity,
+// previousSleepWindow, homeOrEmpty) live in sleep_gather.go to keep
+// this file under the repo's 500-line budget.
 
 func applySleepPrune(cfg *Config, opts SleepOpts, prep *preparedSleepCycle) (sleepPruneOutcome, error) {
 	if opts.DryRun || len(prep.cold) == 0 {

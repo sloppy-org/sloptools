@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/sloppy-org/sloptools/internal/brain/sleepconv"
 )
 
 const sleepGitPacketLimit = 96 * 1024
@@ -182,4 +185,41 @@ func shortHash(hash string) string {
 		return hash
 	}
 	return hash[:12]
+}
+
+// gatherSleepConversations resolves the previous-sleep anchor and
+// reads interactive Claude Code + Codex logs from there forward.
+func gatherSleepConversations(vault Vault, sphere Sphere, now time.Time) sleepconv.Result {
+	home := homeOrEmpty()
+	if home == "" {
+		return sleepconv.Result{}
+	}
+	return sleepconv.Build(home, string(sphere), previousSleepWindow(vault, now), now)
+}
+
+// gatherSleepActivity walks the same session logs but extracts
+// tool-call traces — files touched, URLs fetched, git/gh/sloptools
+// commands run, sub-agents dispatched. The day's actual experience
+// the sleep stage must consolidate.
+func gatherSleepActivity(vault Vault, sphere Sphere, now time.Time) sleepconv.Activity {
+	home := homeOrEmpty()
+	if home == "" {
+		return sleepconv.Activity{}
+	}
+	return sleepconv.BuildActivity(home, string(sphere), previousSleepWindow(vault, now), now)
+}
+
+func previousSleepWindow(vault Vault, now time.Time) time.Time {
+	if t, ok := latestSleepCommitTime(vault.BrainRoot()); ok {
+		return t
+	}
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, -1)
+}
+
+func homeOrEmpty() string {
+	h, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return h
 }
