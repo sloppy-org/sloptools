@@ -87,6 +87,21 @@ func (CodexBackend) Run(ctx context.Context, req Request) (Response, error) {
 		return Response{}, ErrEmptyOutput
 	}
 	in, out := scrapeCodexTokens(captured.String())
+	if in == 0 && out > 0 {
+		// Total-only form: codex 0.128 prints `tokens used\n<TOTAL>`
+		// with no prompt/completion split. Split by byte ratio so the
+		// ledger reflects approximate input vs output instead of
+		// suggesting 0 input tokens. Token/byte ratio is ~0.25 for
+		// both English and code, so the byte ratio is a reasonable
+		// proxy for the token ratio.
+		total := out
+		inBytes := int64(len(req.Packet))
+		outBytes := int64(len(body))
+		if denom := inBytes + outBytes; denom > 0 {
+			in = total * inBytes / denom
+			out = total - in
+		}
+	}
 	return Response{
 		Output:    strings.TrimRight(string(body), "\n") + "\n",
 		WallMS:    wall.Milliseconds(),

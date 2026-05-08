@@ -293,7 +293,15 @@ func runJudgeStage(cfg *brain.Config, sphere brain.Sphere, opts brain.SleepOpts,
 		return nil
 	}
 	var res *brain.SleepResult
-	commitMsg := fmt.Sprintf("brain night: %s %s judge", sphere, time.Now().Format("2006-01-02"))
+	// Subject must match the `^brain sleep:` regex in
+	// internal/brain/sleep_git.go::latestSleepCommit so subsequent runs
+	// use this commit as the previous-sleep anchor for git scope and
+	// for the conversation-log time window. Earlier "brain night: …
+	// judge" wording was missed by the regex, causing every nightly to
+	// blow its scope back to the last manual `sloptools brain sleep`
+	// commit. The (night) qualifier lives in the body, not the subject.
+	commitMsg := fmt.Sprintf("brain sleep: %s %s\n\nNight run; judge stage of `sloptools brain night --sphere %s`.\n",
+		sphere, time.Now().Format("2006-01-02"), sphere)
 	const skipIntegrityGate = true
 	err := applyIntegrityGate(cfg, sphere, skipIntegrityGate, commitMsg, func() error {
 		var runErr error

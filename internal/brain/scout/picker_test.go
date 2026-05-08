@@ -21,16 +21,20 @@ func writeNote(t *testing.T, root, vaultRel, body string) {
 func TestPickerScoresStaleEntitiesHigher(t *testing.T) {
 	root := t.TempDir()
 	now := time.Date(2026, 5, 7, 0, 0, 0, 0, time.UTC)
+	// fresh: last_seen 2 days ago — under the 90-day staleness threshold,
+	// scores 0 from staleness; focus=active still gives baseline 120.
 	writeNote(t, root, "people/fresh.md", `---
-cadence: weekly
+focus: active
 last_seen: 2026-05-05
 ---
 
 # Fresh
 `)
+	// stale: last_seen 187 days ago, well past the 90-day threshold,
+	// scores 187 from staleness + 120 focus baseline = 307.
 	writeNote(t, root, "people/stale.md", `---
-cadence: weekly
-last_seen: 2026-04-01
+focus: active
+last_seen: 2025-11-01
 ---
 
 # Stale
@@ -57,14 +61,14 @@ func TestPickerNeedsReviewBoostsScore(t *testing.T) {
 	root := t.TempDir()
 	now := time.Date(2026, 5, 7, 0, 0, 0, 0, time.UTC)
 	writeNote(t, root, "people/normal.md", `---
-cadence: weekly
-last_seen: 2026-04-01
+focus: active
+last_seen: 2025-11-01
 ---
 
 # Normal
 `)
 	writeNote(t, root, "people/flagged.md", `---
-cadence: monthly
+focus: watch
 last_seen: 2026-05-01
 needs_review: true
 ---
@@ -80,7 +84,7 @@ needs_review: true
 	}
 }
 
-func TestPickerSkipsEntitiesWithoutCadence(t *testing.T) {
+func TestPickerSkipsEntitiesWithoutSignals(t *testing.T) {
 	root := t.TempDir()
 	writeNote(t, root, "people/blank.md", `---
 ---
@@ -156,7 +160,8 @@ func TestPickerFolderNoteWithNeedsReview_OutranksStaleperson(t *testing.T) {
 	root := t.TempDir()
 	now := time.Date(2026, 5, 7, 0, 0, 0, 0, time.UTC)
 	writeNote(t, root, "people/Stale Person.md", `---
-cadence: monthly
+focus: active
+last_seen: 2025-11-01
 ---
 
 # Stale Person
@@ -185,11 +190,11 @@ title: NEO-RT
 	}
 }
 
-func TestPickerFolderNoteWithoutMarkersNoCadence_NotPicked(t *testing.T) {
+func TestPickerFolderNoteWithoutMarkersNoSignals_NotPicked(t *testing.T) {
 	root := t.TempDir()
 	writeNote(t, root, "folders/plasma/CODES/idle.md", "# idle\n\nLorem ipsum.\n")
 	writeNote(t, root, "people/Active Person.md", `---
-cadence: weekly
+focus: active
 ---
 
 # Active Person
@@ -232,13 +237,13 @@ func TestPickerCooldown_RecentlyScoutedSkipped(t *testing.T) {
 	root := t.TempDir()
 	now := time.Date(2026, 5, 7, 0, 0, 0, 0, time.UTC)
 	writeNote(t, root, "people/Anton Fuchs.md", `---
-cadence: monthly
+focus: active
 ---
 
 # Anton Fuchs
 `)
 	writeNote(t, root, "people/Eve Stenson.md", `---
-cadence: monthly
+focus: active
 ---
 
 # Eve Stenson
@@ -280,7 +285,7 @@ func TestPickerCooldown_OldReportEligibleAgain(t *testing.T) {
 	root := t.TempDir()
 	now := time.Date(2026, 5, 7, 0, 0, 0, 0, time.UTC)
 	writeNote(t, root, "people/A.md", `---
-cadence: monthly
+focus: active
 ---
 
 # A
@@ -316,7 +321,7 @@ func TestPickerCooldown_ZeroDisablesFilter(t *testing.T) {
 	root := t.TempDir()
 	now := time.Date(2026, 5, 7, 0, 0, 0, 0, time.UTC)
 	writeNote(t, root, "people/A.md", `---
-cadence: monthly
+focus: active
 ---
 
 # A
@@ -347,14 +352,14 @@ func TestPickerStrategicMultiplier(t *testing.T) {
 	root := t.TempDir()
 	now := time.Date(2026, 5, 7, 0, 0, 0, 0, time.UTC)
 	writeNote(t, root, "people/normal.md", `---
-cadence: weekly
+focus: active
 last_seen: 2026-04-01
 ---
 
 # Normal
 `)
 	writeNote(t, root, "people/strategic.md", `---
-cadence: weekly
+focus: active
 last_seen: 2026-04-01
 strategic: true
 ---

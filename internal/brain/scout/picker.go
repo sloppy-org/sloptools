@@ -272,6 +272,7 @@ func scoreRoot(brainRoot, root string, now time.Time) ([]Pick, error) {
 
 func scoreNote(note *brain.MarkdownNote, vaultRel string, now time.Time) Pick {
 	cadence := scalarField(note, "cadence")
+	focus := scalarField(note, "focus")
 	lastSeen := parseDateField(note, "last_seen")
 	strategic := boolField(note, "strategic")
 	needsReview := boolField(note, "needs_review")
@@ -279,7 +280,7 @@ func scoreNote(note *brain.MarkdownNote, vaultRel string, now time.Time) Pick {
 	if title == "" {
 		title = strings.TrimSuffix(filepath.Base(vaultRel), ".md")
 	}
-	score, reason := computeScore(cadence, lastSeen, strategic, needsReview, now)
+	score, reason := computeScoreWithFocus(lastSeen, focus, strategic, needsReview, now)
 	return Pick{
 		Path:      vaultRel,
 		Title:     title,
@@ -293,36 +294,46 @@ func scoreNote(note *brain.MarkdownNote, vaultRel string, now time.Time) Pick {
 
 // computeScore: higher = more in need of verification.
 //
-// Heuristic:
-//   - explicit needs_review:    +1000 base
-//   - strategic + not seen:     +50
-//   - cadence weight base       (daily=1, weekly=7, monthly=30, quarterly=90)
-//   - days since last_seen / cadence_days = staleness ratio
-//   - no last_seen + has cadence = treat as 2× cadence (double overdue)
+// Selection signals (since 2026-05-08):
+//   - explicit needs_review:        +1000 base
+//   - last_seen older than 90 days: +days_since_last_seen
+//   - focus weight (when set):      core=200, active=120, watch=60, parked=0
+//   - strategic with positive base: ×1.25 multiplier
 //
-// Notes with no cadence and no needs_review get score 0 (skipped by
-// PickEntities's TopN crop).
-func computeScore(cadence string, lastSeen time.Time, strategic, needsReview bool, now time.Time) (float64, string) {
+// `cadence` is intentionally NOT used. It is the user's contact /
+// review rhythm with an entity (per `brain/conventions/attention.md`
+// "how often the node should resurface for review, contact, or
+// attention"), not a directive to scout to rescan automatically. The
+// previous score formula used cadence as a rescan-frequency trigger,
+// which over-picked entities the user merely meets weekly even when
+// nothing about them changed. Drive scout selection from explicit
+// review flags, fresh staleness, and focus alone.
+//
+// Notes with no needs_review, no last_seen, and no focus get score 0
+// (skipped by PickEntities's TopN crop). Tag notes with
+// `needs_review: true` to force a rescan, or set `focus: core/active`
+// when the entity belongs in the regular scout backlog.
+func computeScore(_ string, lastSeen time.Time, strategic, needsReview bool, now time.Time) (float64, string) {
+	return computeScoreWithFocus(lastSeen, "", strategic, needsReview, now)
+}
+
+func computeScoreWithFocus(lastSeen time.Time, focus string, strategic, needsReview bool, now time.Time) (float64, string) {
 	score := 0.0
 	reason := []string{}
-	cadDays := cadenceDays(cadence)
 	if needsReview {
 		score += 1000
 		reason = append(reason, "needs_review flag")
 	}
-	if cadDays > 0 {
-		var ratio float64
-		if lastSeen.IsZero() {
-			ratio = 2.0
-			reason = append(reason, "no last_seen")
-		} else {
-			days := now.Sub(lastSeen).Hours() / 24.0
-			ratio = days / float64(cadDays)
+	if !lastSeen.IsZero() {
+		days := now.Sub(lastSeen).Hours() / 24.0
+		if days >= 90 {
+			score += days
+			reason = append(reason, fmt.Sprintf("last_seen %.0fd ago", days))
 		}
-		if ratio > 0 {
-			score += ratio * float64(cadDays)
-			reason = append(reason, fmt.Sprintf("cadence=%s ratio=%.2f", cadence, ratio))
-		}
+	}
+	if w := focusWeight(focus); w > 0 {
+		score += w
+		reason = append(reason, fmt.Sprintf("focus=%s", focus))
 	}
 	if strategic && score > 0 {
 		score *= 1.25
@@ -331,20 +342,18 @@ func computeScore(cadence string, lastSeen time.Time, strategic, needsReview boo
 	return score, strings.Join(reason, "; ")
 }
 
-func cadenceDays(c string) int {
-	switch strings.ToLower(strings.TrimSpace(c)) {
-	case "daily":
-		return 1
-	case "weekly":
-		return 7
-	case "biweekly", "fortnightly":
-		return 14
-	case "monthly":
-		return 30
-	case "quarterly":
-		return 90
-	case "annual", "yearly":
-		return 365
+// focusWeight maps the canonical focus tiers to baseline scout
+// priority. core/active notes deserve regular re-verification even
+// without an explicit needs_review flag; watch is a low signal;
+// parked is intentionally excluded.
+func focusWeight(f string) float64 {
+	switch strings.ToLower(strings.TrimSpace(f)) {
+	case "core":
+		return 200
+	case "active":
+		return 120
+	case "watch":
+		return 60
 	}
 	return 0
 }

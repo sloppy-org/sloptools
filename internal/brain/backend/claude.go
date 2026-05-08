@@ -90,6 +90,14 @@ func (ClaudeBackend) Run(ctx context.Context, req Request) (Response, error) {
 // `claude -p --output-format json` output. The exact schema varies
 // between releases; we tolerate both the `{type:"result", result, usage}`
 // and the `{result, total_cost_usd, usage}` shapes.
+//
+// Token accounting: Anthropic reports input usage in three buckets —
+// `input_tokens` is uncached message content, `cache_creation_input_tokens`
+// is the prompt-cache write portion, `cache_read_input_tokens` is the
+// prompt-cache hit portion. A 124KB system-prompt packet with a 14-token
+// user turn used to surface as `tokens_in: 14` because the cache-creation
+// portion was missing from the sum. Total all three buckets so the
+// ledger reflects what was actually sent.
 func parseClaudeJSON(raw []byte) (body string, tin, tout int64, cost float64, err error) {
 	var top map[string]any
 	if jerr := json.Unmarshal(raw, &top); jerr != nil {
@@ -104,8 +112,10 @@ func parseClaudeJSON(raw []byte) (body string, tin, tout int64, cost float64, er
 		cost = v
 	}
 	if u, ok := top["usage"].(map[string]any); ok {
-		if v, ok := u["input_tokens"].(float64); ok {
-			tin = int64(v)
+		for _, k := range []string{"input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"} {
+			if v, ok := u[k].(float64); ok {
+				tin += int64(v)
+			}
 		}
 		if v, ok := u["output_tokens"].(float64); ok {
 			tout = int64(v)
