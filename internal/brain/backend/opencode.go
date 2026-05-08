@@ -56,24 +56,18 @@ func (OpencodeBackend) Run(ctx context.Context, req Request) (Response, error) {
 	if req.WorkDir != "" {
 		cwd = req.WorkDir
 	}
-	args := []string{
-		"run",
-		"--pure",
-		"--print-logs",
-		"--log-level", "WARN",
-		"--agent", OpencodeAgentName,
-		"--model", req.Model,
-		"--variant", string(req.Reasoning),
-		"--format", "json",
-		"--dir", cwd,
-		"--dangerously-skip-permissions",
-		req.Packet,
-	}
+	args := opencodeArgs(OpencodeAgentName, req.Model, string(req.Reasoning), cwd)
 
 	full := append([]string{"flock", OpencodeLockPath, "opencode"}, args...)
 	cmd := exec.CommandContext(ctx, full[0], full[1:]...)
 	cmd.Env = req.Sandbox.Env()
 	cmd.Dir = cwd
+	// #128: pass the packet on stdin instead of as the trailing argv
+	// element. A 167 KB sleep packet baked into argv crashed fork/exec
+	// with "argument list too long" because the kernel ARG_MAX (~128 KB
+	// on Linux) caps argv + envp combined. opencode reads its message
+	// from stdin when no positional arg is given.
+	cmd.Stdin = strings.NewReader(req.Packet)
 	setReapOnParentDeath(cmd)
 
 	var stdout bytes.Buffer
@@ -101,6 +95,26 @@ func (OpencodeBackend) Run(ctx context.Context, req Request) (Response, error) {
 		TokensOut: tout,
 		WallMS:    wall.Milliseconds(),
 	}, nil
+}
+
+// opencodeArgs builds the argv for `opencode run`, omitting the prompt.
+// The prompt MUST travel on stdin (#128): baking it into argv risks a
+// fork/exec "argument list too long" failure because the kernel
+// ARG_MAX caps argv + envp. Caller wraps this in `flock <lock> opencode
+// ...` and pipes the packet via cmd.Stdin.
+func opencodeArgs(agent, model, variant, cwd string) []string {
+	return []string{
+		"run",
+		"--pure",
+		"--print-logs",
+		"--log-level", "WARN",
+		"--agent", agent,
+		"--model", model,
+		"--variant", variant,
+		"--format", "json",
+		"--dir", cwd,
+		"--dangerously-skip-permissions",
+	}
 }
 
 // opencodeAgentFrontmatter returns the YAML frontmatter prepended to

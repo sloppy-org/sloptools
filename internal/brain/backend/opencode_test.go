@@ -5,6 +5,38 @@ import (
 	"testing"
 )
 
+// TestOpencodeArgvDoesNotEmbedPacket guards against #128: a 200 KB sleep
+// packet baked into the opencode argv triggers fork/exec
+// "argument list too long" because the kernel ARG_MAX (~128 KB on Linux,
+// ~256 KB on macOS) caps the total environment + argv size. Buld the
+// argv via the same helper Run uses, with a 200 KB synthetic prompt, and
+// assert no single element exceeds 16 KB and the prompt body is not
+// embedded anywhere in the argv. The packet must arrive on stdin.
+func TestOpencodeArgvDoesNotEmbedPacket(t *testing.T) {
+	const maxArg = 16 * 1024
+	prompt := strings.Repeat("a", 200*1024)
+	args := opencodeArgs("brain-stage", "llamacpp/qwen", "high", "/tmp/work")
+	for i, a := range args {
+		if len(a) > maxArg {
+			t.Fatalf("argv[%d] length %d exceeds %d-byte cap (kernel ARG_MAX risk)", i, len(a), maxArg)
+		}
+	}
+	for i, a := range args {
+		if strings.Contains(a, prompt) {
+			t.Fatalf("argv[%d] contains the prompt body; packet must travel on stdin not argv", i)
+		}
+	}
+	// Concatenated argv stays well under kernel ARG_MAX even with a 200 KB
+	// prompt because the prompt is not in argv at all.
+	total := 0
+	for _, a := range args {
+		total += len(a) + 1
+	}
+	if total > 8*1024 {
+		t.Fatalf("argv total bytes %d unexpectedly large; argv should be CLI flags only", total)
+	}
+}
+
 func TestParseOpencodeJSON_TextOnly(t *testing.T) {
 	raw := strings.Join([]string{
 		`{"type":"step_start","part":{"type":"step-start"}}`,
