@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sloppy-org/sloptools/internal/brain/backend"
 	"github.com/sloppy-org/sloptools/internal/brain/ledger"
 	"github.com/sloppy-org/sloptools/internal/brain/prompts"
 	"github.com/sloppy-org/sloptools/internal/brain/routing"
+	"github.com/sloppy-org/sloptools/internal/brain/sleep"
 	"github.com/sloppy-org/sloptools/internal/brain/sleepconv"
 )
 
@@ -297,23 +297,21 @@ func runSleepCodex(opts SleepOpts, backendName, model, autonomy string, prep *pr
 }
 
 // runSleepWithRouter routes the sleep-judge editorial pass through the
-// Backend interface. The router picks one of {claude, codex, opencode}
-// per the configured tier; the resulting CLI runs under a per-call
-// scratch sandbox with HOME / CODEX_HOME / XDG_CONFIG_HOME isolated and
-// MCP servers (sloppy + helpy, never slopshell) regenerated locally.
+// new sleep.RunJudge pipeline: pre-flight packet-size gate → bulk
+// (opencode/qwen) → deterministic classifier → paid escalation
+// (codex/gpt-5.4-mini) when the classifier flags the bulk output.
 //
-// The vault root is passed as WorkDir so the model can edit canonical
-// Markdown directly under workspace-write sandbox mode (autonomy=full)
-// or read-only (autonomy=plan-only).
+// Mirrors internal/brain/scout's bulk → resolve → escalate shape so
+// audit sidecars (.bulk.md / .escalate.<backend>.md / .audit.json)
+// land next to the canonical sleep report. The pre-flight gate exists
+// because a 167 KB packet collapsed qwen's context window and produced
+// trigram spam (#129); pipelines that route oversize packets through
+// bulk first waste several minutes of wall-time before classifying.
+//
+// The vault root is passed as BrainRoot so the model can edit
+// canonical Markdown directly under workspace-write sandbox mode
+// (autonomy=full) or read-only (autonomy=plan-only).
 func runSleepWithRouter(opts SleepOpts, autonomy string, prep *preparedSleepCycle) (string, bool, error) {
-	pick, err := opts.Router.Pick(routing.StageSleepJudge)
-	if err != nil {
-		return "", false, fmt.Errorf("sleep route: %w", err)
-	}
-	be, err := backendForPick(pick.BackendID)
-	if err != nil {
-		return "", false, err
-	}
 	runID := opts.RunID
 	if runID == "" {
 		runID = opts.Now.UTC().Format("20060102-150405")
@@ -331,56 +329,31 @@ func runSleepWithRouter(opts SleepOpts, autonomy string, prep *preparedSleepCycl
 	if _, err := os.Stat(stagePrompt); err != nil {
 		stagePrompt = filepath.Join(promptDir, "folder-note.md")
 	}
-	sb, err := backend.NewSandbox(runID, stage, stagePrompt, backend.DefaultMCPConfig())
-	if err != nil {
-		return "", false, fmt.Errorf("sleep route: sandbox: %w", err)
+	reportPath := sleepReportPath(prep.vault, opts.Now)
+	if err := os.MkdirAll(filepath.Dir(reportPath), 0o755); err != nil {
+		return "", false, fmt.Errorf("sleep route: mkdir report dir: %w", err)
 	}
-	defer sb.Cleanup()
-	req := backend.Request{
-		Stage:            stage,
+	res, err := sleep.RunJudge(context.Background(), sleep.JudgeOpts{
 		Packet:           prep.packet,
-		SystemPromptPath: sb.SystemPromptIn,
-		Model:            pick.Model,
-		Reasoning:        pick.Reasoning,
+		ReportPath:       reportPath,
+		SystemPromptPath: stagePrompt,
+		BrainRoot:        prep.vault.BrainRoot(),
+		RunID:            runID,
+		Sphere:           string(opts.Sphere),
+		Stage:            stage,
 		AllowEdits:       autonomy == SleepAutonomyFull,
-		Sandbox:          sb,
-		WorkDir:          prep.vault.BrainRoot(),
-	}
-	resp, err := be.Run(context.Background(), req)
+		Router:           opts.Router,
+		Ledger:           opts.Ledger,
+		Now:              opts.Now,
+	})
 	if err != nil {
-		return "", false, fmt.Errorf("sleep route: backend run: %w", err)
+		return "", false, fmt.Errorf("sleep route: %w", err)
 	}
-	if opts.Ledger != nil {
-		_ = opts.Ledger.Append(ledger.Entry{
-			Sphere:    string(opts.Sphere),
-			Stage:     stage,
-			Provider:  pick.Provider,
-			Backend:   pick.BackendID,
-			Model:     pick.Model,
-			TokensIn:  resp.TokensIn,
-			TokensOut: resp.TokensOut,
-			WallMS:    resp.WallMS,
-			CostHint:  resp.CostHint,
-			Extras:    map[string]string{"tier": string(pick.Tier)},
-		})
-	}
-	body := strings.TrimRight(resp.Output, "\n")
+	body := strings.TrimRight(res.Body, "\n")
 	if body == "" {
 		return "", false, fmt.Errorf("sleep route: empty output")
 	}
 	return body + "\n", true, nil
-}
-
-func backendForPick(id string) (backend.Backend, error) {
-	switch id {
-	case "claude":
-		return backend.ClaudeBackend{}, nil
-	case "codex":
-		return backend.CodexBackend{}, nil
-	case "opencode":
-		return backend.OpencodeBackend{}, nil
-	}
-	return nil, fmt.Errorf("sleep route: unknown backend id %q", id)
 }
 
 func writeSleepReport(vault Vault, now time.Time, dryRun bool, markdown string) (string, error) {
