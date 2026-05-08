@@ -233,11 +233,14 @@ func (r *Router) applyOpenAIOverride(cfg StageConfig) (Choice, bool) {
 //   - triage (medium): the routing name "triage" here is the escalation
 //     POOL used by scout when the classifier flags content. It is NOT
 //     a separate triage worker stage — there is no production call site
-//     that picks `StageTriage` outside escalation. Tier stays medium
-//     because that IS its semantic role: codex-mini ↔ claude-haiku
-//     round-robin for "fix this evidence packet please". Renaming this
-//     stage to `StageEscalate` is a follow-up cleanup; behaviour is
-//     correct as-is.
+//     that picks `StageTriage` outside escalation. Tier stays medium;
+//     the pool is codex/gpt-5.4-mini@medium only. Anthropic backends
+//     were removed 2026-05-08 because the `claude` CLI subprocess
+//     pattern (consumer-OAuth tokens, sibling-process refresh races
+//     that log the user out of their interactive session) is not the
+//     right shape for unattended batch escalations. Re-add only with
+//     ANTHROPIC_API_KEY-based auth, never via the Pro/Max OAuth flow.
+//     Renaming this stage to `StageEscalate` is a follow-up cleanup.
 //   - sleep-judge (medium): editorial pass over a rendered sleep packet.
 //     The packet bakes in citations; the model needs taste, not
 //     retrieval. STAYS medium today; the bulk-first / paid-on-doubt
@@ -292,7 +295,6 @@ func mediumStage(s Stage) StageConfig {
 		Bulk:  bulk,
 		Medium: []Choice{
 			CodexMiniMedium(),
-			ClaudeHaikuMedium(),
 		},
 		Fallback: bulk,
 	}
@@ -306,7 +308,6 @@ func hardStage(s Stage) StageConfig {
 		Bulk:  bulk,
 		Hard: []Choice{
 			CodexFullHigh(),
-			ClaudeSonnetMedium(),
 		},
 		Fallback: bulk,
 	}

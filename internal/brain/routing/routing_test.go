@@ -43,25 +43,25 @@ func TestPickBulkStage_OpencodeAlways(t *testing.T) {
 	}
 }
 
-func TestPickMediumStage_AlternatesProviders(t *testing.T) {
+// TestPickMediumStage_CodexOnly pins the post-2026-05-08 single-provider
+// medium pool. Anthropic was removed because the `claude` CLI subprocess
+// pattern uses consumer-OAuth tokens and sibling refresh races logged
+// the user out of their interactive session.
+func TestPickMediumStage_CodexOnly(t *testing.T) {
 	r, _, _ := newTestRouter(t, Overrides{})
-	picks := []Pick{}
 	for i := 0; i < 4; i++ {
 		p, err := r.Pick(StageSleepJudge)
 		if err != nil {
 			t.Fatal(err)
 		}
-		picks = append(picks, p)
-	}
-	if picks[0].Provider == picks[1].Provider {
-		t.Fatalf("expected alternation, picks[0]=%s picks[1]=%s", picks[0].Provider, picks[1].Provider)
-	}
-	if picks[2].Provider != picks[0].Provider {
-		t.Fatalf("expected wrap, picks[2]=%s picks[0]=%s", picks[2].Provider, picks[0].Provider)
-	}
-	for _, p := range picks {
-		if p.Provider == backend.ProviderLocal {
-			t.Fatalf("medium tier should not pick local: %+v", p)
+		if p.BackendID != "codex" {
+			t.Fatalf("medium pick %d wanted codex, got %s", i, p.BackendID)
+		}
+		if p.Provider != backend.ProviderOpenAI {
+			t.Fatalf("medium pick %d wanted openai, got %s", i, p.Provider)
+		}
+		if p.Model != "gpt-5.4-mini" {
+			t.Fatalf("medium pick %d wanted gpt-5.4-mini, got %s", i, p.Model)
 		}
 		if p.Reasoning == "" {
 			t.Fatalf("missing reasoning: %+v", p)
@@ -69,19 +69,24 @@ func TestPickMediumStage_AlternatesProviders(t *testing.T) {
 	}
 }
 
-func TestPickHardStage_RoundRobinIndependentFromMedium(t *testing.T) {
+// TestPickHardStage_CodexOnly pins the post-2026-05-08 single-provider
+// hard pool (same Anthropic OAuth concern).
+func TestPickHardStage_CodexOnly(t *testing.T) {
 	r, _, _ := newTestRouter(t, Overrides{})
-	hard1, _ := r.Pick(StageEntityWrite)
-	med1, _ := r.Pick(StageSleepJudge)
-	hard2, _ := r.Pick(StageEntityWrite)
-	if hard1.Provider == hard2.Provider {
-		t.Fatalf("hard pool should alternate, got %s %s", hard1.Provider, hard2.Provider)
-	}
-	if med1.Provider == backend.ProviderLocal {
-		t.Fatalf("medium tier should not be local")
-	}
-	if hard1.Reasoning != backend.ReasoningHigh && hard1.Reasoning != backend.ReasoningMedium {
-		t.Fatalf("hard tier reasoning unexpected: %s", hard1.Reasoning)
+	for i := 0; i < 4; i++ {
+		p, err := r.Pick(StageEntityWrite)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if p.BackendID != "codex" {
+			t.Fatalf("hard pick %d wanted codex, got %s", i, p.BackendID)
+		}
+		if p.Model != "gpt-5.5" {
+			t.Fatalf("hard pick %d wanted gpt-5.5, got %s", i, p.Model)
+		}
+		if p.Reasoning != backend.ReasoningHigh {
+			t.Fatalf("hard pick %d reasoning wanted high, got %s", i, p.Reasoning)
+		}
 	}
 }
 

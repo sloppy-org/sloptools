@@ -74,6 +74,7 @@ func (OpencodeBackend) Run(ctx context.Context, req Request) (Response, error) {
 	cmd := exec.CommandContext(ctx, full[0], full[1:]...)
 	cmd.Env = req.Sandbox.Env()
 	cmd.Dir = cwd
+	setReapOnParentDeath(cmd)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer

@@ -67,6 +67,7 @@ func (CodexBackend) Run(ctx context.Context, req Request) (Response, error) {
 	cmd.Env = req.Sandbox.Env()
 	cmd.Dir = cwd
 	cmd.Stdin = strings.NewReader(req.Packet)
+	setReapOnParentDeath(cmd)
 
 	var captured bytes.Buffer
 	cmd.Stdout = io.MultiWriter(os.Stderr, &captured)

@@ -59,6 +59,7 @@ func (ClaudeBackend) Run(ctx context.Context, req Request) (Response, error) {
 	cmd.Env = req.Sandbox.Env()
 	cmd.Dir = cwd
 	cmd.Stdin = strings.NewReader(req.Packet)
+	setReapOnParentDeath(cmd)
 	start := time.Now()
 	out, err := cmd.Output()
 	wall := time.Since(start)
