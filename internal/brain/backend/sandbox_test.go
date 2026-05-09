@@ -87,3 +87,30 @@ func TestSandboxEnvOverridesHOMEAndCODEXHOME(t *testing.T) {
 		t.Fatalf("XDG_CONFIG_HOME not overridden, got %q want %q", have["XDG_CONFIG_HOME"], sb.XDGConfigHome)
 	}
 }
+
+func TestSandboxRootIsUniqueForSameRunAndStage(t *testing.T) {
+	first, err := NewSandbox("same-run", "sleep/judge", "", DefaultMCPConfig())
+	if err != nil {
+		t.Fatalf("first NewSandbox: %v", err)
+	}
+	t.Cleanup(func() { _ = first.Cleanup() })
+
+	second, err := NewSandbox("same-run", "sleep/judge", "", DefaultMCPConfig())
+	if err != nil {
+		t.Fatalf("second NewSandbox: %v", err)
+	}
+	t.Cleanup(func() { _ = second.Cleanup() })
+
+	if first.Root == second.Root {
+		t.Fatalf("sandbox roots collided: %s", first.Root)
+	}
+	parent := filepath.Join(os.TempDir(), "sloptools-brain-same-run")
+	for _, root := range []string{first.Root, second.Root} {
+		if filepath.Dir(root) != parent {
+			t.Fatalf("root %q not under %q", root, parent)
+		}
+		if strings.Contains(filepath.Base(root), "/") {
+			t.Fatalf("root basename contains path separator: %q", root)
+		}
+	}
+}

@@ -30,7 +30,7 @@ type Sandbox struct {
 	MCPConfigPath  string
 }
 
-// NewSandbox builds the scratch tree under /tmp/sloptools-brain-<runID>/<stage>/.
+// NewSandbox builds a scratch tree under /tmp/sloptools-brain-<runID>/.
 // It does not invoke any CLI; backends own the exec step.
 //
 // stagePromptPath is copied into <root>/system.md so the call has a stable,
@@ -43,7 +43,10 @@ func NewSandbox(runID, stage, stagePromptPath string, mcpServers MCPConfig) (*Sa
 	if stage == "" {
 		return nil, fmt.Errorf("sandbox: stage required")
 	}
-	root := filepath.Join(os.TempDir(), fmt.Sprintf("sloptools-brain-%s", runID), stage)
+	root, err := newSandboxRoot(runID, stage)
+	if err != nil {
+		return nil, err
+	}
 	homeDir := filepath.Join(root, "HOME")
 	codexHome := filepath.Join(root, "CODEX_HOME")
 	xdgConfig := filepath.Join(homeDir, ".config")
@@ -96,6 +99,38 @@ func NewSandbox(runID, stage, stagePromptPath string, mcpServers MCPConfig) (*Sa
 		return nil, err
 	}
 	return sb, nil
+}
+
+func newSandboxRoot(runID, stage string) (string, error) {
+	parent := filepath.Join(os.TempDir(), fmt.Sprintf("sloptools-brain-%s", runID))
+	if err := os.MkdirAll(parent, 0o700); err != nil {
+		return "", fmt.Errorf("sandbox mkdir %s: %w", parent, err)
+	}
+	root, err := os.MkdirTemp(parent, safeSandboxName(stage)+"-")
+	if err != nil {
+		return "", fmt.Errorf("sandbox tempdir: %w", err)
+	}
+	return root, nil
+}
+
+func safeSandboxName(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "stage"
+	}
+	var b strings.Builder
+	for _, r := range s {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' || r == '.' {
+			b.WriteRune(r)
+			continue
+		}
+		b.WriteByte('-')
+	}
+	out := strings.Trim(b.String(), "-.")
+	if out == "" {
+		return "stage"
+	}
+	return out
 }
 
 // Cleanup removes the scratch tree.
