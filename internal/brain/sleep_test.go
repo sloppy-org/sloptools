@@ -15,6 +15,7 @@ import (
 func newSleepVault(t *testing.T) (*Config, string) {
 	t.Helper()
 	root := t.TempDir()
+	t.Setenv("HOME", root)
 	if err := os.MkdirAll(filepath.Join(root, "topics"), 0o755); err != nil {
 		t.Fatalf("mkdir topics: %v", err)
 	}
