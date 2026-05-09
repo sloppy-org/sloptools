@@ -55,7 +55,7 @@ type JudgeResult struct {
 //     directly. The 167 KB qwen context-window collapse that motivated
 //     this gate is non-recoverable — the bulk model returns trigram
 //     spam, not a report.
-//  2. Bulk pass: opencode/qwen with the sleep-judge system prompt and
+//  2. Bulk pass: local OpenCode Qwen with the sleep-judge system prompt and
 //     the packet on stdin. Output goes through cleanup.CleanReport.
 //  3. Classifier: classifySleepJudgeOutput inspects the cleaned body
 //     and returns a Decision. Signals: parse-error wrapper, leaked
@@ -139,7 +139,7 @@ func RunJudge(ctx context.Context, opts JudgeOpts) (*JudgeResult, error) {
 	}, nil
 }
 
-// runBulk runs the opencode/qwen pass and returns the StageRecord plus
+// runBulk runs the local OpenCode Qwen pass and returns the StageRecord plus
 // the cleaned body. The error is non-nil on any backend failure.
 func runBulk(ctx context.Context, opts JudgeOpts) (*audit.StageRecord, string, error) {
 	bulkPick := routing.OpencodeQwenHigh()

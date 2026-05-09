@@ -15,6 +15,7 @@ import (
 
 	"github.com/sloppy-org/sloptools/internal/brain/backend"
 	"github.com/sloppy-org/sloptools/internal/brain/ledger"
+	"github.com/sloppy-org/sloptools/internal/brain/routing"
 )
 
 // ModelSpec names a single bench cell's model. Provider determines which
@@ -31,15 +32,15 @@ type ModelSpec struct {
 // explicit Reasoning value: medium for the medium tier (cheap, fast,
 // the GPT-5.5 documented "balanced starting point"), high for the
 // hard-tier paid models, high for opencode (its --variant maps to
-// provider-specific reasoning depth and qwen3.6-35B-A3B benefits from
-// it for structured output tasks). Never xhigh by default — that is
+// provider-specific reasoning depth and Qwen benefits from it for
+// structured output tasks). Never xhigh by default — that is
 // for the hardest asynchronous agentic evals, not the brain night.
 //
-// Opencode uses the llamacpp/qwen identifier; the user's opencode
-// config maps that to qwen3.6-35B-A3B.
+// Opencode uses routing.OpencodeQwenModel so the bench matrix follows
+// the same brain-tools default as ingest, scout, sleep, and dream.
 func DefaultModelMatrix() []ModelSpec {
 	return []ModelSpec{
-		{ProviderLocal(), "opencode", "llamacpp/qwen", backend.ReasoningHigh, "opencode/qwen3.6-35B-A3B"},
+		{ProviderLocal(), "opencode", routing.OpencodeQwenModel, backend.ReasoningHigh, routing.OpencodeQwenLabel},
 		{ProviderOpenAI(), "codex", "gpt-5.4-mini", backend.ReasoningMedium, "codex/gpt-5.4-mini@medium"},
 		{ProviderOpenAI(), "codex", "gpt-5.5", backend.ReasoningHigh, "codex/gpt-5.5@high"},
 		{ProviderAnthropic(), "claude", "claude-haiku-4-5", backend.ReasoningMedium, "claude-haiku-4-5@medium"},

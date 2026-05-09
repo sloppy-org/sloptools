@@ -298,7 +298,7 @@ func runSleepCodex(opts SleepOpts, backendName, model, autonomy string, prep *pr
 
 // runSleepWithRouter routes the sleep-judge editorial pass through the
 // new sleep.RunJudge pipeline: pre-flight packet-size gate → bulk
-// (opencode/qwen) → deterministic classifier → paid escalation
+// (local OpenCode Qwen) → deterministic classifier → paid escalation
 // (codex/gpt-5.4-mini) when the classifier flags the bulk output.
 //
 // Mirrors internal/brain/scout's bulk → resolve → escalate shape so

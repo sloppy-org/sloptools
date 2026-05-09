@@ -104,7 +104,7 @@ func writeEscalatePrompt(runID string) (string, error) {
 	body := strings.Join([]string{
 		"You are a paid reviewer for Christopher Albert's brain vault.",
 		"",
-		"You receive a scout packet, plus a bulk-tier (opencode/qwen) evidence",
+		"You receive a scout packet, plus a bulk-tier local OpenCode Qwen evidence",
 		"report that flagged conflicts or open questions. Resolve each conflict",
 		"using sloppy and helpy MCP tools. Do not just rewrite the bulk report:",
 		"address each conflict and each open question with a fresh, traceable",

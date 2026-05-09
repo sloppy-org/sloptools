@@ -1,5 +1,5 @@
 // Package meetings — quickprompt.go owns the surgical short-memo
-// prompt (issue #56 E3.8). The watcher must spec the opencode/qwen
+// prompt (issue #56 E3.8). The watcher must spec the local OpenCode Qwen
 // prompt for the quick-commitment path so the LLM emits exactly one
 // outcome line with no commentary, and must reject responses that
 // violate that contract.
@@ -17,7 +17,7 @@ import (
 )
 
 // QuickMemoSystemPrompt is the canonical instruction the watcher hands
-// to the local opencode/qwen renderer for the short voice-memo path.
+// to the local OpenCode Qwen renderer for the short voice-memo path.
 // The contract is intentionally narrow: emit one outcome line that
 // captures the requested next action, no commentary, no markdown, no
 // code fences, no enclosing quotes.

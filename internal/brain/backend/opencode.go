@@ -185,7 +185,7 @@ func writeOpencodeAgent(req Request) error {
 }
 
 // writeOpencodeConfig writes a per-call opencode config that inherits
-// the user's real provider / model definitions (so llamacpp/qwen and
+// the user's real provider / model definitions (so llamacpp/qwen27b and
 // any other configured backends still resolve) but replaces the agent
 // list and MCP entries with brain-night-specific ones.
 func writeOpencodeConfig(req Request) error {
@@ -244,7 +244,7 @@ func mcpForOpencode(servers MCPConfig) map[string]any {
 //
 //  1. As streaming "text" parts (free-form assistant prose).
 //  2. As a "write" tool call whose part.state.input.content carries the
-//     full file body the model intended to save. opencode/qwen routes
+//     full file body the model intended to save. local OpenCode Qwen routes
 //     the rewrite through this tool when the prompt nudges it toward a
 //     save action; only inter-tool narration ("Now I have all the
 //     evidence...", "Here's a summary...") arrives as text events, and

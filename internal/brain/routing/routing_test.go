@@ -38,6 +38,12 @@ func TestPickBulkStage_OpencodeAlways(t *testing.T) {
 	if p.Provider != backend.ProviderLocal {
 		t.Fatalf("bulk provider wanted local, got %s", p.Provider)
 	}
+	if p.Model != OpencodeQwenModel {
+		t.Fatalf("bulk model wanted %s, got %s", OpencodeQwenModel, p.Model)
+	}
+	if p.Label != OpencodeQwenLabel {
+		t.Fatalf("bulk label wanted %s, got %s", OpencodeQwenLabel, p.Label)
+	}
 	if p.Reasoning != backend.ReasoningHigh {
 		t.Fatalf("bulk reasoning wanted high, got %s", p.Reasoning)
 	}
@@ -131,6 +137,9 @@ func TestLedgerGuard_FallsBackToBulkWhenBothSaturated(t *testing.T) {
 	}
 	if pick.BackendID != "opencode" {
 		t.Fatalf("expected opencode fallback, got %s", pick.BackendID)
+	}
+	if pick.Model != OpencodeQwenModel {
+		t.Fatalf("expected fallback model %s, got %s", OpencodeQwenModel, pick.Model)
 	}
 }
 

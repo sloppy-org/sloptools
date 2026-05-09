@@ -88,7 +88,7 @@ type ReportEntry struct {
 
 // Run executes the scout pass over the picks. Per pick:
 //  1. ledger guard skips a pick whose tier is saturated;
-//  2. the bulk tier (opencode/qwen) builds an evidence report from a
+//  2. the bulk tier (local OpenCode Qwen) builds an evidence report from a
 //     packet that names the entity + its locally-known anchors and
 //     prompts the agent to verify against helpy MCP web/Zotero/TUGonline;
 //  3. the report lands at <brain>/reports/scout/<run-id>/<slug>.md.

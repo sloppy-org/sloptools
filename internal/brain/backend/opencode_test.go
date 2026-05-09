@@ -15,7 +15,7 @@ import (
 func TestOpencodeArgvDoesNotEmbedPacket(t *testing.T) {
 	const maxArg = 16 * 1024
 	prompt := strings.Repeat("a", 200*1024)
-	args := opencodeArgs("brain-stage", "llamacpp/qwen", "high", "/tmp/work")
+	args := opencodeArgs("brain-stage", "llamacpp/qwen27b", "high", "/tmp/work")
 	for i, a := range args {
 		if len(a) > maxArg {
 			t.Fatalf("argv[%d] length %d exceeds %d-byte cap (kernel ARG_MAX risk)", i, len(a), maxArg)

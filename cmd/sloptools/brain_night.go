@@ -25,7 +25,7 @@ func encodeIndentJSON(v any) ([]byte, error) {
 // cmdBrainNight dispatches `sloptools brain night`, the unified
 // sweep → scout → judge orchestrator. Each stage is independently
 // invokable via --only-stage. Routing is even-split round-robin across
-// OpenAI ↔ Anthropic for medium / hard tiers; bulk is opencode/qwen.
+// OpenAI ↔ Anthropic for medium / hard tiers; bulk is local OpenCode Qwen.
 // brain.toml at ~/.config/sloptools/brain.toml overrides the defaults.
 func cmdBrainNight(args []string) int {
 	fs := flag.NewFlagSet("brain night", flag.ContinueOnError)
@@ -34,7 +34,7 @@ func cmdBrainNight(args []string) int {
 	onlyStage := fs.String("only-stage", "", "sweep | scout | judge (default: all)")
 	claudeTier := fs.String("claude-tier", "", "force Anthropic at tier: haiku | sonnet | opus")
 	openaiTier := fs.String("openai-tier", "", "force OpenAI at tier: mini | full")
-	forceLocal := fs.Bool("force-local", false, "pin every stage to opencode/qwen")
+	forceLocal := fs.Bool("force-local", false, "pin every stage to the configured local OpenCode Qwen model")
 	autonomy := fs.String("autonomy", brain.SleepDefaultAutonomy, "full or plan-only")
 	budget := fs.Int("budget", brain.SleepDefaultBudget, "REM notes to dream over (judge stage)")
 	nremBudget := fs.Int("nrem-budget", brain.SleepDefaultNREMBudget, "NREM consolidation rows to replay")

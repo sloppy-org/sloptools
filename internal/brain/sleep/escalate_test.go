@@ -6,7 +6,7 @@ import (
 )
 
 // classifySleepJudgeOutput is the deterministic gate that decides whether
-// the bulk-tier (opencode/qwen) editorial pass on a sleep packet is
+// the bulk-tier local OpenCode Qwen editorial pass on a sleep packet is
 // trustworthy or whether the harness must throw the same packet at the
 // paid tier (codex). #129 lists four signals; each gets a dedicated
 // table-driven case so a regression on one signal does not silently

@@ -134,7 +134,7 @@ func printBrainHelp() {
 	fmt.Println("  --only-stage NAME   sweep | scout | judge (default: all)")
 	fmt.Println("  --claude-tier NAME  force Anthropic at tier: haiku | sonnet | opus")
 	fmt.Println("  --openai-tier NAME  force OpenAI at tier: mini | full")
-	fmt.Println("  --force-local       pin every stage to opencode/qwen")
+	fmt.Println("  --force-local       pin every stage to the configured local OpenCode Qwen model")
 	fmt.Println("  --autonomy NAME     full (default) or plan-only")
 	fmt.Println("  --brain-toml PATH   override brain.toml path")
 	fmt.Println("  --dry-run           skip LLM, do not apply prune-links, do not write report")

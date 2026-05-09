@@ -75,7 +75,7 @@ type Choice struct {
 type StageConfig struct {
 	Stage    Stage
 	Tier     Tier
-	Bulk     Choice   // local primary (always opencode/qwen)
+	Bulk     Choice   // local primary (always OpencodeQwenModel)
 	Medium   []Choice // even-split round-robin pool (one OpenAI + one Anthropic)
 	Hard     []Choice // even-split round-robin pool (one OpenAI + one Anthropic)
 	Fallback Choice   // when all paid providers are saturated
@@ -97,7 +97,7 @@ type Router struct {
 type Overrides struct {
 	ClaudeTier string // "haiku" | "sonnet" | "opus" — force Anthropic + tier
 	OpenAITier string // "mini"  | "full"  | "pro"   — force OpenAI    + tier
-	ForceLocal bool   // pin every stage to opencode/qwen
+	ForceLocal bool   // pin every stage to OpencodeQwenModel
 }
 
 // New builds a Router with the default stage configs.
@@ -223,9 +223,9 @@ func (r *Router) applyOpenAIOverride(cfg StageConfig) (Choice, bool) {
 // DefaultStageConfigs returns the stage→tier map. Evidence and rationale:
 //
 //   - folder-note (bulk): text-only synthesis from attached files; no
-//     external evidence needed; deterministic from inputs. Opencode/qwen.
+//     external evidence needed; deterministic from inputs. Opencode/Qwen.
 //   - scout (bulk): live web + Zotero + TUGonline + vault verification.
-//     The 2026-05-07 first nightly proved opencode/qwen with helpy +
+//     The 2026-05-07 first nightly proved opencode/Qwen with helpy +
 //     sloppy MCP produces research-grade evidence reports. Bulk only,
 //     with `--escalate-on-conflict` (default true) routing flagged
 //     reports through a free self-resolve pass and then a paid medium
@@ -315,13 +315,22 @@ func hardStage(s Stage) StageConfig {
 
 // Choice constructors. Reasoning is mandatory; never xhigh by default.
 
+const (
+	// OpencodeQwenModel is the single brain-tools default for local
+	// OpenCode Qwen work. OpenCode maps this model id to slopgate's
+	// qwen27b alias; platform/install defaults that serve 35B live in
+	// slopcode-infra and intentionally stay separate.
+	OpencodeQwenModel = "llamacpp/qwen27b"
+	OpencodeQwenLabel = "opencode/qwen3.6-27B"
+)
+
 func OpencodeQwenHigh() Choice {
 	return Choice{
 		BackendID: "opencode",
 		Provider:  backend.ProviderLocal,
-		Model:     "llamacpp/qwen",
+		Model:     OpencodeQwenModel,
 		Reasoning: backend.ReasoningHigh,
-		Label:     "opencode/qwen3.6-35B-A3B",
+		Label:     OpencodeQwenLabel,
 	}
 }
 
