@@ -156,11 +156,57 @@ func hasURLScheme(target string) bool {
 }
 
 func isWithin(root, path string) bool {
-	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(path))
+	cleanRoot := canonicalForCompare(root)
+	cleanPath := canonicalForCompare(path)
+	rel, err := filepath.Rel(cleanRoot, cleanPath)
 	if err != nil {
 		return false
 	}
 	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
+}
+
+func samePath(left, right string) bool {
+	return canonicalForCompare(left) == canonicalForCompare(right)
+}
+
+func canonicalForCompare(path string) string {
+	clean := filepath.Clean(path)
+	if evaluated, err := filepath.EvalSymlinks(clean); err == nil {
+		return filepath.Clean(evaluated)
+	}
+	existing, rest := nearestExisting(clean)
+	if existing == "" {
+		return clean
+	}
+	evaluated, err := filepath.EvalSymlinks(existing)
+	if err != nil {
+		return clean
+	}
+	if rest == "" {
+		return filepath.Clean(evaluated)
+	}
+	return filepath.Clean(filepath.Join(evaluated, rest))
+}
+
+func nearestExisting(path string) (string, string) {
+	clean := filepath.Clean(path)
+	rest := ""
+	for {
+		if _, err := os.Lstat(clean); err == nil {
+			return clean, rest
+		}
+		parent := filepath.Dir(clean)
+		if parent == clean {
+			return "", ""
+		}
+		base := filepath.Base(clean)
+		if rest == "" {
+			rest = base
+		} else {
+			rest = filepath.Join(base, rest)
+		}
+		clean = parent
+	}
 }
 
 func evalExisting(path string) (string, bool, error) {

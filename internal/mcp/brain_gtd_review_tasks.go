@@ -146,6 +146,56 @@ func addBulkTaskReviewItems(build *gtdReviewBuild, sphere, providerName string, 
 	}
 }
 
+func parseRFC3339OrDate(raw string) time.Time {
+	clean := strings.TrimSpace(raw)
+	if clean == "" {
+		return time.Time{}
+	}
+	if value, err := time.Parse(time.RFC3339, clean); err == nil {
+		return value.UTC()
+	}
+	if value, err := time.Parse("2006-01-02", clean); err == nil {
+		return time.Date(value.Year(), value.Month(), value.Day(), 0, 0, 0, 0, time.UTC)
+	}
+	return time.Time{}
+}
+
+func taskMutationItemFromArgs(args map[string]interface{}, id, listID, title string) providerdata.TaskItem {
+	notes := strings.TrimSpace(strArg(args, "notes"))
+	description := strings.TrimSpace(strArg(args, "description"))
+	if description == "" {
+		description = notes
+	}
+	item := providerdata.TaskItem{
+		ID:          strings.TrimSpace(id),
+		ListID:      strings.TrimSpace(listID),
+		Title:       strings.TrimSpace(title),
+		Notes:       notes,
+		Description: description,
+		SectionID:   strings.TrimSpace(strArg(args, "section_id")),
+		ParentID:    strings.TrimSpace(strArg(args, "parent_id")),
+		Labels:      stringListArg(args, "labels"),
+		AssigneeID:  strings.TrimSpace(strArg(args, "assignee_id")),
+		Priority:    strings.TrimSpace(strArg(args, "priority")),
+	}
+	if startAt, ok := parseOptionalTaskTime(args, "start_at", "follow_up_at"); ok {
+		item.StartAt = &startAt
+	}
+	if due, ok := parseOptionalTaskTime(args, "due", "deadline"); ok {
+		item.Due = &due
+	}
+	return item
+}
+
+func parseOptionalTaskTime(args map[string]interface{}, keys ...string) (time.Time, bool) {
+	for _, key := range keys {
+		if raw := strings.TrimSpace(strArg(args, key)); raw != "" {
+			return parseRFC3339OrDate(raw), true
+		}
+	}
+	return time.Time{}, false
+}
+
 func taskListForReviewItem(byID map[string]providerdata.TaskList, item providerdata.TaskItem) providerdata.TaskList {
 	for _, candidate := range []string{strings.TrimSpace(item.ListID), strings.TrimSpace(item.ProjectID)} {
 		if candidate == "" {

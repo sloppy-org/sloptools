@@ -11,7 +11,12 @@ import (
 func TestRunServerStopsCleanlyOnSignalForUnixSocket(t *testing.T) {
 	projectDir := t.TempDir()
 	dataDir := filepath.Join(t.TempDir(), "data")
-	socketPath := filepath.Join(t.TempDir(), "runtime", "mcp.sock")
+	socketDir, err := os.MkdirTemp("/tmp", "sloptools-mcp-")
+	if err != nil {
+		t.Fatalf("MkdirTemp(/tmp): %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(socketDir) })
+	socketPath := filepath.Join(socketDir, "mcp.sock")
 
 	origSignalNotifyContext := signalNotifyContext
 	t.Cleanup(func() {

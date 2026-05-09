@@ -128,7 +128,7 @@ func TestStopNoServerIsNoop(t *testing.T) {
 
 func TestStartUnixTightensSocketPermissions(t *testing.T) {
 	projectDir := t.TempDir()
-	socketDir := filepath.Join(t.TempDir(), "runtime")
+	socketDir := mustShortTempDir(t, "sloptools-mcp-")
 	if err := os.MkdirAll(socketDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(socketDir): %v", err)
 	}
@@ -196,6 +196,16 @@ func TestHandleMCPGetReturnsEventStreamHeaders(t *testing.T) {
 	if cc := rr.Header().Get("Cache-Control"); cc != "no-cache" {
 		t.Fatalf("Cache-Control = %q, want no-cache", cc)
 	}
+}
+
+func mustShortTempDir(t *testing.T, pattern string) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("/tmp", pattern)
+	if err != nil {
+		t.Fatalf("MkdirTemp(/tmp): %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	return dir
 }
 
 func waitForUnixHealth(t *testing.T, socketPath string) {

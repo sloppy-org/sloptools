@@ -2,16 +2,14 @@ package mcp
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
-	"github.com/sloppy-org/sloptools/internal/store"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
-	"time"
 	"unicode/utf8"
+
+	"github.com/sloppy-org/sloptools/internal/store"
 )
 
 // itemListDefaultLimit caps a single item_list response so a workspace
@@ -411,110 +409,4 @@ func (s *Server) readArtifactContent(artifact store.Artifact) (string, string) {
 		return "", "artifact content is not valid UTF-8 text"
 	}
 	return string(data), ""
-}
-
-const defaultHandoffMaxConsumes = 1
-
-type handoffRegistry struct {
-	mu       sync.Mutex
-	handoffs map[string]*storedHandoff
-}
-
-type storedHandoff struct {
-	envelope      handoffEnvelope
-	expiresAt     time.Time
-	maxConsumes   int
-	consumedCount int
-	revoked       bool
-}
-
-func newHandoffRegistry() *handoffRegistry {
-	return &handoffRegistry{handoffs: map[string]*storedHandoff{}}
-}
-
-func (s *Server) handoffCreate(args map[string]interface{}) (map[string]interface{}, error) {
-	kind := strings.TrimSpace(strArg(args, "kind"))
-	if kind == "" {
-		return nil, errors.New("kind is required")
-	}
-	selector, _ := args["selector"].(map[string]interface{})
-	if selector == nil {
-		return nil, errors.New("selector is required")
-	}
-	policy, _ := args["policy"].(map[string]interface{})
-	switch kind {
-	case handoffKindMail:
-		return s.mailHandoffCreate(selector, policy)
-	default:
-		return nil, fmt.Errorf("unsupported handoff kind: %s", kind)
-	}
-}
-
-func (s *Server) handoffPeek(args map[string]interface{}) (map[string]interface{}, error) {
-	record, err := s.lookupHandoff(args)
-	if err != nil {
-		return nil, err
-	}
-	return handoffSummary(record), nil
-}
-
-func (s *Server) handoffConsume(args map[string]interface{}) (map[string]interface{}, error) {
-	record, err := s.lookupHandoff(args)
-	if err != nil {
-		return nil, err
-	}
-	return s.handoffs.consume(record.envelope.HandoffID)
-}
-
-func (s *Server) handoffRevoke(args map[string]interface{}) (map[string]interface{}, error) {
-	record, err := s.lookupHandoff(args)
-	if err != nil {
-		return nil, err
-	}
-	return s.handoffs.revoke(record.envelope.HandoffID)
-}
-
-func (s *Server) handoffStatus(args map[string]interface{}) (map[string]interface{}, error) {
-	record, err := s.lookupHandoff(args)
-	if err != nil {
-		return nil, err
-	}
-	return handoffStatus(record), nil
-}
-
-func (s *Server) lookupHandoff(args map[string]interface{}) (*storedHandoff, error) {
-	handoffID := strings.TrimSpace(strArg(args, "handoff_id"))
-	if handoffID == "" {
-		return nil, errors.New("handoff_id is required")
-	}
-	return s.handoffs.lookup(handoffID)
-}
-
-func (s *Server) mailHandoffCreate(selector, policy map[string]interface{}) (map[string]interface{}, error) {
-	account, provider, messageIDs, err := s.mailHandoffSelection(selector)
-	if err != nil {
-		return nil, err
-	}
-	defer provider.Close()
-	messages, err := provider.GetMessages(context.Background(), messageIDs, "full")
-	if err != nil {
-		return nil, err
-	}
-	orderedMessages, err := orderedMailMessages(messageIDs, messages)
-	if err != nil {
-		return nil, err
-	}
-	now := time.Now().UTC()
-	handoffID, err := newHandoffID(handoffKindMail)
-	if err != nil {
-		return nil, err
-	}
-	policyState, err := parseHandoffPolicy(policy, now)
-	if err != nil {
-		return nil, err
-	}
-	envelope := handoffEnvelope{SpecVersion: "handoff.v1", HandoffID: handoffID, Kind: handoffKindMail, CreatedAt: now.Format(time.RFC3339), Meta: mailHandoffMeta(account, orderedMessages), Payload: map[string]interface{}{"messages": mailHandoffMessages(orderedMessages)}}
-	record := &storedHandoff{envelope: envelope, expiresAt: policyState.expiresAt, maxConsumes: policyState.maxConsumes}
-	s.handoffs.store(record)
-	return handoffSummary(record), nil
 }

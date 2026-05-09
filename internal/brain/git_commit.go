@@ -102,7 +102,7 @@ func ensureGitRepo(brainRoot string) error {
 	}
 	root := filepath.Clean(strings.TrimSpace(out))
 	want := filepath.Clean(brainRoot)
-	if root != want {
+	if !samePath(root, want) {
 		return fmt.Errorf("brain auto-commit: git root %s does not match brain root %s", root, want)
 	}
 	return nil
