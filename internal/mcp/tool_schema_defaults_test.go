@@ -105,6 +105,25 @@ func TestToolDefinitionsAdvertiseCompactDefaults(t *testing.T) {
 	}
 }
 
+func TestToolDefinitionsStayConcise(t *testing.T) {
+	for _, def := range toolDefinitions() {
+		name, _ := def["name"].(string)
+		desc, _ := def["description"].(string)
+		if len(desc) > 300 {
+			t.Fatalf("%s description has %d chars, want <= 300", name, len(desc))
+		}
+		schema, _ := def["inputSchema"].(map[string]interface{})
+		props, _ := schema["properties"].(map[string]interface{})
+		for propName, raw := range props {
+			prop, _ := raw.(map[string]interface{})
+			propDesc, _ := prop["description"].(string)
+			if len(propDesc) > 160 {
+				t.Fatalf("%s.%s description has %d chars, want <= 160", name, propName, len(propDesc))
+			}
+		}
+	}
+}
+
 // TestGroupwareDocListsEveryMCPTool ensures the groupware doc inventory
 // matches the code inventory. Tools in the Canvas/Handoff/Temp/Workspace/
 // Items/Artifacts/Actors sections are out of scope for the groupware doc.

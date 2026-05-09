@@ -12,7 +12,7 @@ func init() {
 			},
 			"sphere": {
 				Type:        "string",
-				Description: "Optional legacy work/private top-level context filter used when account_id is omitted.",
+				Description: "Optional work/private filter when account_id is omitted.",
 				Enum:        []string{"work", "private"},
 			},
 			"limit": {
