@@ -11,12 +11,13 @@ import (
 )
 
 // PreflightPacketCap is the byte ceiling above which the bulk tier is
-// skipped entirely. The 167 KB qwen context-window collapse that
-// motivated #129 happened on a 167 KB packet; the empirically-safe band
-// is well below that. 24 KB matches the size at which qwen still
-// produces structured Markdown without trigram repetition or
-// non-printable spam in the fixtures we have.
-const PreflightPacketCap = 24 * 1024
+// skipped entirely. Originally 24 KB (calibrated for the qwen27b collapse
+// at 167 KB on a ~40K-token window, #129). qwen3-MoE has a 256K-token
+// context window (~1 MB of text), so the old cap was far too conservative
+// and routed every real sleep packet straight to the paid tier. Raised to
+// 200 KB (~50K tokens) — well within the model's window with room to spare
+// for the system prompt and output tokens.
+const PreflightPacketCap = 200 * 1024
 
 // nonPrintableRatioThreshold is the fraction of body runes that may be
 // non-printable + outside the basic ASCII / Latin-1 / common-Unicode

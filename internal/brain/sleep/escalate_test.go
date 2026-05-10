@@ -14,15 +14,20 @@ import (
 
 func TestClassifySleepJudge_PreflightPacketSizeGate(t *testing.T) {
 	body := "# Sleep report\n\n- normal\n"
-	// The classifier is also called pre-flight with empty body and the
-	// real packet size. A 167 KB packet (the size that crashed tonight)
-	// must route directly to paid before bulk wastes wall-time.
-	d := classifySleepJudgeOutput(body, 167*1024)
+	// Packets above 200 KB (PreflightPacketCap) must skip bulk and route
+	// directly to paid. qwen3-MoE has a 256K-token window so 167 KB is fine
+	// for bulk; the cap is now 200 KB.
+	d := classifySleepJudgeOutput(body, 201*1024)
 	if !d.Escalate {
-		t.Fatalf("packet size 167 KB must route directly to paid: %+v", d)
+		t.Fatalf("packet size 201 KB must route directly to paid: %+v", d)
 	}
 	if !strings.Contains(d.Reason, "packet size") {
 		t.Fatalf("reason should name packet size: %q", d.Reason)
+	}
+	// 167 KB is well within the 256K-token window — must NOT preflight.
+	d2 := classifySleepJudgeOutput(body, 167*1024)
+	if d2.Escalate && strings.Contains(d2.Reason, "packet size") {
+		t.Fatalf("167 KB should pass preflight on 256K-token model, got: %q", d2.Reason)
 	}
 }
 

@@ -30,6 +30,12 @@ func buildSleepGitPacket(vault Vault, now time.Time) sleepGitPacket {
 	}
 	base, ok := latestSleepCommit(root)
 	scope := ""
+	// Include full diffs (--patch) so the model can see changed brain note
+	// content, but exclude reports/, data/, and episodic/ from the commit
+	// log: those directories accumulate large new files (sleep/scout reports,
+	// ledger entries, episodic logs) whose full content is noise for NREM/REM.
+	// The previous sleep commit is shown separately with full --patch so the
+	// model still sees the previous sleep report body.
 	args := []string{
 		"log", "--date=iso-strict", "--patch", "--stat",
 		"--summary", "--find-renames",
@@ -38,7 +44,8 @@ func buildSleepGitPacket(vault Vault, now time.Time) sleepGitPacket {
 	previousSleep := ""
 	if ok {
 		scope = "since previous sleep commit " + shortHash(base) + " inclusive"
-		args = append(args, inclusiveCommitRange(root, base), "--")
+		args = append(args, inclusiveCommitRange(root, base),
+			"--", ".", ":!reports/", ":!data/", ":!episodic/")
 		var err error
 		previousSleep, err = gitOutput(root,
 			"show", "--date=iso-strict", "--patch", "--stat",
@@ -50,7 +57,8 @@ func buildSleepGitPacket(vault Vault, now time.Time) sleepGitPacket {
 	} else {
 		start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 		scope = "since " + start.Format("2006-01-02 15:04:05 -0700")
-		args = append(args, "--since="+start.Format(time.RFC3339), "HEAD", "--")
+		args = append(args, "--since="+start.Format(time.RFC3339), "HEAD",
+			"--", ".", ":!reports/", ":!data/", ":!episodic/")
 	}
 	logText, err := gitOutput(root, args...)
 	if err != nil {
