@@ -209,8 +209,15 @@ func executeQwenXMLToolCalls(xmlCalls []qwenXMLCall, toolMap map[string]*MCPClie
 	})
 }
 
+// toolResultCap is the maximum byte length of a single tool result appended
+// to the messages history. Brain actions (gtd_list, projects_render, search)
+// return hundreds of KB of vault content; without a cap the accumulated
+// messages array overflows the model context window across rounds.
+const toolResultCap = 8 * 1024
+
 // callToolSafe invokes the named tool; returns an error string on failure so
-// the model sees what went wrong without aborting the agent loop.
+// the model sees what went wrong without aborting the agent loop. Results
+// are capped at toolResultCap bytes so the messages array stays bounded.
 func callToolSafe(toolMap map[string]*MCPClient, name string, args map[string]interface{}) string {
 	client, ok := toolMap[name]
 	if !ok {
@@ -219,6 +226,9 @@ func callToolSafe(toolMap map[string]*MCPClient, name string, args map[string]in
 	result, err := client.Call(name, args)
 	if err != nil {
 		return fmt.Sprintf("tool error: %v", err)
+	}
+	if len(result) > toolResultCap {
+		result = result[:toolResultCap] + fmt.Sprintf("\n[truncated: %d bytes omitted]", len(result)-toolResultCap)
 	}
 	return result
 }
