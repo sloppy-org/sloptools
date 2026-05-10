@@ -251,6 +251,9 @@ func prepareSleepCycle(cfg *Config, opts SleepOpts, autonomy string) (*preparedS
 		EntityCandidates:    sleepconv.RenderCandidatesSection(candidates),
 		ActivityContext:     sleepconv.RenderActivitySection(activity, idx, sleepconv.VaultRootsForHome(homeOrEmpty())),
 	})
+	// Sanitize to valid UTF-8: git patches, note bodies, and conversation
+	// content can embed binary data that breaks codex exec and JSON encoding.
+	packet = strings.ToValidUTF8(packet, "")
 	return &preparedSleepCycle{vault, cold, plan, report, nrem, recent, coverage, packet}, nil
 }
 
