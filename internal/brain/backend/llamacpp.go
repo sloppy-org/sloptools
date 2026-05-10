@@ -90,22 +90,20 @@ func runLlamacppAgentLoop(ctx context.Context, model, modelHeader, affinity stri
 		lastContent    string
 		totalTokensIn  int64
 		totalTokensOut int64
-		seenXMLCalls   bool
 	)
 	for round := 0; round < llamacppMaxRounds; round++ {
 		activeDefs := toolDefs
 		if round == llamacppMaxRounds-1 {
-			if seenXMLCalls {
-				// For qwen XML format, stripping tools won't force text; inject
-				// an explicit synthesis instruction as the next user message.
-				messages = append(messages, map[string]interface{}{
-					"role":    "user",
-					"content": "You have gathered enough information. Write the complete report now. Do not make any more tool calls.",
-				})
-			} else {
-				// OpenAI format: strip tools so the model must produce text.
-				activeDefs = nil
-			}
+			// Final round: strip tools and inject a synthesis instruction.
+			// XML-format models ignore missing tool defs and still emit
+			// <tool_call> blocks; only the explicit instruction forces text.
+			// OpenAI-format models (qwen27b) return content:"" with tool_calls
+			// throughout, so the instruction is necessary for both formats.
+			activeDefs = nil
+			messages = append(messages, map[string]interface{}{
+				"role":    "user",
+				"content": "You have gathered enough information. Write the complete report now. Do not make any more tool calls.",
+			})
 		}
 		body, err := llamacppPost(ctx, model, modelHeader, affinity, messages, activeDefs)
 		if err != nil {
@@ -149,7 +147,6 @@ func runLlamacppAgentLoop(ctx context.Context, model, modelHeader, affinity stri
 		if len(toolCalls) > 0 {
 			executeOpenAIToolCalls(toolCalls, toolMap, &messages)
 		} else {
-			seenXMLCalls = true
 			executeQwenXMLToolCalls(xmlCalls, toolMap, &messages)
 		}
 	}
