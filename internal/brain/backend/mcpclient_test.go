@@ -1,6 +1,7 @@
 package backend_test
 
 import (
+	"os"
 	"os/exec"
 	"testing"
 
@@ -8,6 +9,9 @@ import (
 )
 
 func TestMCPClientListTools(t *testing.T) {
+	if os.Getenv("INTEGRATION") == "" {
+		t.Skip("set INTEGRATION=1 to run MCP subprocess tests")
+	}
 	// Requires sloptools on PATH (the project builds and installs it).
 	if _, err := exec.LookPath("sloptools"); err != nil {
 		t.Skip("sloptools not on PATH:", err)

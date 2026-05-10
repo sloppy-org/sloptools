@@ -11,6 +11,9 @@ import (
 )
 
 func TestLlamacppBackendNoToolSingleShot(t *testing.T) {
+	if os.Getenv("INTEGRATION") == "" {
+		t.Skip("set INTEGRATION=1 to run live LLM tests")
+	}
 	// Skip if the slopgate endpoint is not reachable.
 	client := &http.Client{Timeout: 3 * time.Second}
 	resp, err := client.Get(backend.LlamacppBaseURL + "/health")

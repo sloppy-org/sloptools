@@ -14,15 +14,19 @@ import (
 
 const (
 	// LlamacppBaseURL is the slopgate HTTP endpoint.
-	LlamacppBaseURL   = "http://10.77.0.20:8080"
-	llamacppMaxRounds = 30
+	LlamacppBaseURL = "http://10.77.0.20:8080"
+	// llamacppMaxTokens is the per-request output token budget.
 	llamacppMaxTokens = 4096
+	// llamacppAgentBudget is the wall-clock ceiling for the full agent loop.
+	// Matches opencode behaviour: no round limit, just a time budget. The
+	// model runs until it naturally stops making tool calls and produces text.
+	llamacppAgentBudget = 30 * time.Minute
 )
 
 // LlamacppBackend calls the slopgate HTTP API directly (OpenAI-compatible
 // /v1/chat/completions). No subprocess overhead; no opencode cold-start cost.
 // When req.MCPAllowList is non-nil and non-empty, it runs an agent loop with
-// up to llamacppMaxRounds tool-call rounds over MCP stdio clients.
+// no round limit (mirrors opencode behaviour) bounded only by llamacppAgentBudget.
 //
 // Qwen3 MoE at slopgate may return tool calls in two formats:
 //   - Standard OpenAI: tool_calls JSON field on the message
@@ -38,7 +42,7 @@ func (LlamacppBackend) Provider() Provider { return ProviderLocal }
 func (LlamacppBackend) Name() string { return "llamacpp" }
 
 // Run executes the request. Single-shot when MCPAllowList is empty; agent
-// loop (≤llamacppMaxRounds) otherwise.
+// loop bounded by llamacppAgentBudget (wall clock) otherwise.
 func (LlamacppBackend) Run(ctx context.Context, req Request) (Response, error) {
 	if err := req.validate(); err != nil {
 		return Response{}, err
@@ -91,21 +95,12 @@ func runLlamacppAgentLoop(ctx context.Context, model, modelHeader, affinity stri
 		totalTokensIn  int64
 		totalTokensOut int64
 	)
-	for round := 0; round < llamacppMaxRounds; round++ {
-		activeDefs := toolDefs
-		if round == llamacppMaxRounds-1 {
-			// Final round: strip tools and inject a synthesis instruction.
-			// XML-format models ignore missing tool defs and still emit
-			// <tool_call> blocks; only the explicit instruction forces text.
-			// OpenAI-format models (qwen27b) return content:"" with tool_calls
-			// throughout, so the instruction is necessary for both formats.
-			activeDefs = nil
-			messages = append(messages, map[string]interface{}{
-				"role":    "user",
-				"content": "You have gathered enough information. Write the complete report now. Do not make any more tool calls.",
-			})
+	deadline := start.Add(llamacppAgentBudget)
+	for {
+		if time.Now().After(deadline) {
+			break
 		}
-		body, err := llamacppPost(ctx, model, modelHeader, affinity, messages, activeDefs)
+		body, err := llamacppPost(ctx, model, modelHeader, affinity, messages, toolDefs)
 		if err != nil {
 			return Response{}, err
 		}
@@ -151,7 +146,7 @@ func runLlamacppAgentLoop(ctx context.Context, model, modelHeader, affinity stri
 		}
 	}
 
-	// Round limit reached: return whatever we accumulated.
+	// Budget exhausted: return whatever the model last produced.
 	clean := stripXMLToolCalls(lastContent)
 	if strings.TrimSpace(clean) == "" {
 		return Response{}, ErrEmptyOutput
