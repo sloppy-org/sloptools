@@ -289,7 +289,7 @@ func TestContactCreateUpdateDeleteRoundTrip(t *testing.T) {
 		return provider, nil
 	}
 
-	created, err := s.callTool("sloppy_contacts", map[string]interface{}{"action": "create", 
+	created, err := s.callTool("sloppy_contacts", map[string]interface{}{"action": "create",
 		"account_id": account.ID,
 		"contact": map[string]interface{}{
 			"name":         "Marie Curie",
@@ -319,7 +319,7 @@ func TestContactCreateUpdateDeleteRoundTrip(t *testing.T) {
 		t.Fatalf("birthday = %v, want 1867-11-07", contact["birthday"])
 	}
 
-	updated, err := s.callTool("sloppy_contacts", map[string]interface{}{"action": "update", 
+	updated, err := s.callTool("sloppy_contacts", map[string]interface{}{"action": "update",
 		"account_id": account.ID,
 		"contact": map[string]interface{}{
 			"provider_ref": providerRef,

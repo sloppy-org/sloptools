@@ -262,7 +262,7 @@ func TestMeetingShareCreateCallsOCSWhenNoURLProvided(t *testing.T) {
 		return fake, nil
 	}
 
-	created, err := server.callTool("sloppy_meeting", map[string]interface{}{"action": "share_create", 
+	created, err := server.callTool("sloppy_meeting", map[string]interface{}{"action": "share_create",
 		"config_path":    configPath,
 		"sources_config": sourcesPath,
 		"sphere":         "work",
@@ -318,7 +318,7 @@ func TestMeetingShareCreateRequiresNextcloudOrURL(t *testing.T) {
 	sourcesPath := writeMeetingsSummarySources(t, tmp, meetingsRoot, nil, "")
 
 	server := NewServer(t.TempDir())
-	if _, err := server.callTool("sloppy_meeting", map[string]interface{}{"action": "share_create", 
+	if _, err := server.callTool("sloppy_meeting", map[string]interface{}{"action": "share_create",
 		"config_path":    configPath,
 		"sources_config": sourcesPath,
 		"sphere":         "work",
@@ -343,7 +343,7 @@ func TestMeetingShareRevokeCallsOCSDeleteWhenIDRecorded(t *testing.T) {
 		return fake, nil
 	}
 
-	if _, err := server.callTool("sloppy_meeting", map[string]interface{}{"action": "share_create", 
+	if _, err := server.callTool("sloppy_meeting", map[string]interface{}{"action": "share_create",
 		"config_path":    configPath,
 		"sources_config": sourcesPath,
 		"sphere":         "work",
@@ -352,7 +352,7 @@ func TestMeetingShareRevokeCallsOCSDeleteWhenIDRecorded(t *testing.T) {
 		t.Fatalf("share.create: %v", err)
 	}
 
-	out, err := server.callTool("sloppy_meeting", map[string]interface{}{"action": "share_revoke", 
+	out, err := server.callTool("sloppy_meeting", map[string]interface{}{"action": "share_revoke",
 		"config_path":    configPath,
 		"sources_config": sourcesPath,
 		"sphere":         "work",
@@ -388,7 +388,7 @@ func TestMeetingShareRevokeReportsLiveDeleteFailure(t *testing.T) {
 		return fake, nil
 	}
 
-	if _, err := server.callTool("sloppy_meeting", map[string]interface{}{"action": "share_create", 
+	if _, err := server.callTool("sloppy_meeting", map[string]interface{}{"action": "share_create",
 		"config_path":    configPath,
 		"sources_config": sourcesPath,
 		"sphere":         "work",
@@ -397,7 +397,7 @@ func TestMeetingShareRevokeReportsLiveDeleteFailure(t *testing.T) {
 		t.Fatalf("share.create: %v", err)
 	}
 
-	if _, err := server.callTool("sloppy_meeting", map[string]interface{}{"action": "share_revoke", 
+	if _, err := server.callTool("sloppy_meeting", map[string]interface{}{"action": "share_revoke",
 		"config_path":    configPath,
 		"sources_config": sourcesPath,
 		"sphere":         "work",

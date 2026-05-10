@@ -64,7 +64,7 @@ labels:
 		t.Fatalf("tracks = %#v, want one canonical label track", tracks)
 	}
 
-	focus, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_focus", 
+	focus, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_focus",
 		"sphere":       "work",
 		"track":        "software-compilers",
 		"project_path": "brain/commitments/compiler.md",

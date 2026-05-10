@@ -16,7 +16,7 @@ func TestBrainLinksResolveToolRejectsGuardrail(t *testing.T) {
 	secretPath := filepath.Join("personal", "secret.md")
 	writeMCPBrainFile(t, filepath.Join(tmp, "work", secretPath), "secret\n")
 	s := NewServer(t.TempDir())
-	_, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "links_resolve", 
+	_, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "links_resolve",
 		"config_path": configPath,
 		"sphere":      "work",
 		"path":        secretPath,
@@ -39,7 +39,7 @@ func TestBrainLinksResolveToolResolvesValidRelativeLink(t *testing.T) {
 	writeMCPBrainFile(t, filepath.Join(tmp, "work", targetPath), "# Ada\n")
 
 	s := NewServer(t.TempDir())
-	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "links_resolve", 
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "links_resolve",
 		"config_path": configPath,
 		"sphere":      "work",
 		"path":        sourcePath,
@@ -114,7 +114,7 @@ enjoyment: 3
 `)
 
 	s := NewServer(t.TempDir())
-	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "vault_validate", 
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "vault_validate",
 		"config_path": configPath,
 		"sphere":      "work",
 	})
@@ -140,7 +140,7 @@ func TestBrainSearchToolReturnsStructuredResults(t *testing.T) {
 	writeMCPBrainFile(t, filepath.Join(tmp, "work", "personal", "secret.md"), "needle\n")
 
 	s := NewServer(t.TempDir())
-	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "search", 
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "search",
 		"config_path": configPath,
 		"sphere":      "work",
 		"query":       "needle",
@@ -163,7 +163,7 @@ func TestBrainBacklinksToolFindsLinks(t *testing.T) {
 	writeMCPBrainFile(t, filepath.Join(tmp, "work", "brain", "projects", "project.md"), "[Alice](../people/alice.md)\n")
 
 	s := NewServer(t.TempDir())
-	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "backlinks", 
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "backlinks",
 		"config_path": configPath,
 		"sphere":      "work",
 		"target":      "people/alice.md",
@@ -191,7 +191,7 @@ Intro prose.
 `)
 
 	s := NewServer(t.TempDir())
-	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "note_write", 
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "note_write",
 		"config_path": configPath,
 		"sphere":      "work",
 		"path":        notePath,
@@ -231,7 +231,7 @@ func TestBrainNoteWriteToolAppendsNewSection(t *testing.T) {
 	configPath := writeMCPBrainConfig(t, tmp)
 	notePath := filepath.Join("brain", "notes", "alpha.md")
 	writeMCPBrainFile(t, filepath.Join(tmp, "work", notePath), "---\ntitle: Alpha\n---\nIntro.\n\n## Details\n- one\n")
-	got, err := NewServer(t.TempDir()).callTool("sloppy_brain", map[string]interface{}{"action": "note_write", 
+	got, err := NewServer(t.TempDir()).callTool("sloppy_brain", map[string]interface{}{"action": "note_write",
 		"config_path": configPath, "sphere": "work", "path": notePath,
 		"fields": map[string]interface{}{"sections": map[string]interface{}{"Backlog": "First backlog entry."}},
 	})
@@ -289,7 +289,7 @@ Send the reply.
 `)
 
 	s := NewServer(t.TempDir())
-	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_write", 
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_write",
 		"config_path": configPath,
 		"sphere":      "work",
 		"path":        notePath,
@@ -315,7 +315,7 @@ Send the reply.
 	if !strings.Contains(string(updated), "Intro prose.") || !strings.Contains(string(updated), "outcome: Reply sent") {
 		t.Fatalf("updated GTD note lost prose or outcome:\n%s", string(updated))
 	}
-	resurface, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_resurface", 
+	resurface, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_resurface",
 		"config_path": configPath,
 		"sphere":      "work",
 		"path":        notePath,
@@ -402,7 +402,7 @@ Ignore this.
 `)
 
 	s := NewServer(t.TempDir())
-	organized, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_organize", 
+	organized, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_organize",
 		"config_path": configPath,
 		"sphere":      "work",
 	})
@@ -420,7 +420,7 @@ Ignore this.
 	if diags := brain.ValidateMarkdownNote(string(orgData), brain.MarkdownParseOptions{}); len(diags) != 0 {
 		t.Fatalf("organize output invalid: %#v\n%s", diags, string(orgData))
 	}
-	dashboard, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_dashboard", 
+	dashboard, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_dashboard",
 		"config_path": configPath,
 		"sphere":      "work",
 		"name":        "Ada",
@@ -439,7 +439,7 @@ Ignore this.
 	if diags := brain.ValidateMarkdownNote(string(dashData), brain.MarkdownParseOptions{}); len(diags) != 0 {
 		t.Fatalf("dashboard output invalid: %#v\n%s", diags, string(dashData))
 	}
-	reviewBatch, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_review_batch", 
+	reviewBatch, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_review_batch",
 		"config_path": configPath,
 		"sphere":      "work",
 		"q":           "Ada",
@@ -462,7 +462,7 @@ Ignore this.
 		t.Fatalf("review batch output invalid: %#v\n%s", diags, string(reviewData))
 	}
 	for _, source := range []string{"meetings", "mail", "todoist", "github", "gitlab", "evernote"} {
-		ingested, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_ingest", 
+		ingested, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_ingest",
 			"config_path": configPath,
 			"sphere":      "work",
 			"source":      source,

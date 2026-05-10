@@ -389,4 +389,3 @@ func removeRequired(schema map[string]interface{}, field string) {
 	}
 	schema["required"] = filtered
 }
-

@@ -28,7 +28,7 @@ func TestCalendarEventRespondPassesInviteResponse(t *testing.T) {
 	s.newCalendarProvider = func(context.Context, store.ExternalAccount) (tabcalendar.Provider, error) {
 		return stub, nil
 	}
-	got, err := s.callTool("sloppy_calendar", map[string]interface{}{"action": "event_respond", 
+	got, err := s.callTool("sloppy_calendar", map[string]interface{}{"action": "event_respond",
 		"event_id": "evt-1", "response": "accepted", "comment": "I'll be there",
 	})
 	if err != nil {
@@ -64,7 +64,7 @@ func TestCalendarEventRespondCapabilityUnsupported(t *testing.T) {
 	s.newCalendarProvider = func(context.Context, store.ExternalAccount) (tabcalendar.Provider, error) {
 		return stub, nil
 	}
-	_, err = s.callTool("sloppy_calendar", map[string]interface{}{"action": "event_respond", 
+	_, err = s.callTool("sloppy_calendar", map[string]interface{}{"action": "event_respond",
 		"event_id": "evt-1", "response": "accepted",
 	})
 	if err == nil {
@@ -91,7 +91,7 @@ func TestCalendarEventRespondInvalidResponse(t *testing.T) {
 	s.newCalendarProvider = func(context.Context, store.ExternalAccount) (tabcalendar.Provider, error) {
 		return stub, nil
 	}
-	_, err = s.callTool("sloppy_calendar", map[string]interface{}{"action": "event_respond", 
+	_, err = s.callTool("sloppy_calendar", map[string]interface{}{"action": "event_respond",
 		"event_id": "evt-1", "response": "maybe",
 	})
 	if err == nil {
