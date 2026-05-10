@@ -14,25 +14,19 @@ import (
 	"github.com/sloppy-org/sloptools/internal/brain/routing"
 )
 
-// selfResolveOne runs a free opencode self-resolve pass over a bulk-
-// tier report that the classifier flagged. The agent reads its own
-// prior draft plus the original packet and produces a refined report
-// that either resolves the flagged items with citations or marks them
-// `- needs paid review:` for the next pass. The new body overwrites
-// the report file; ledger gets a second entry tagged with the
-// self-resolve stage. Returns the new body so the caller can re-
-// classify it. Non-fatal errors are returned so the caller can decide
-// whether to fall through to paid escalation.
-func selfResolveOne(ctx context.Context, opts RunOpts, p Pick, originalPacket, bulkReport, reason, reportPath string, passNum int) (string, stageRecord, error) {
+// selfResolveOne runs a free self-resolve pass over a bulk-tier report
+// that the classifier flagged. resolvePick is the pre-fetched ValueLocal
+// routing decision (qwen27b via llamacpp). The agent reads its own prior
+// draft plus the original packet and produces a refined report that either
+// resolves flagged items with citations or marks them `- needs paid review:`
+// for the escalation pass. The new body overwrites the report file; ledger
+// gets a second entry tagged with the self-resolve stage. Returns the new
+// body so the caller can re-classify it. Non-fatal errors are returned so
+// the caller can decide whether to fall through to paid escalation.
+func selfResolveOne(ctx context.Context, opts RunOpts, p Pick, originalPacket, bulkReport, reason, reportPath string, passNum int, resolvePick routing.Pick) (string, stageRecord, error) {
 	var rec stageRecord
-	pick, err := opts.Router.Pick(routing.StageScout)
-	if err != nil {
-		return "", rec, fmt.Errorf("router pick scout: %w", err)
-	}
-	be, err := backendForID(pick.BackendID)
-	if err != nil {
-		return "", rec, fmt.Errorf("backendForID: %w", err)
-	}
+	pick := resolvePick
+	be := backendForPick(pick)
 	stagePrompt, err := writeSelfResolvePrompt()
 	if err != nil {
 		return "", rec, fmt.Errorf("write self-resolve prompt: %w", err)
@@ -53,6 +47,7 @@ func selfResolveOne(ctx context.Context, opts RunOpts, p Pick, originalPacket, b
 		Model:            pick.Model,
 		Reasoning:        pick.Reasoning,
 		AllowEdits:       false,
+		MCPAllowList:     scoutMCPTools,
 		Sandbox:          sb,
 	})
 	if err != nil {

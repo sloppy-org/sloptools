@@ -73,12 +73,13 @@ type Choice struct {
 
 // StageConfig binds a stage to its tier and the eligible model choices.
 type StageConfig struct {
-	Stage    Stage
-	Tier     Tier
-	Bulk     Choice   // local primary (always OpencodeQwenModel)
-	Medium   []Choice // even-split round-robin pool (one OpenAI + one Anthropic)
-	Hard     []Choice // even-split round-robin pool (one OpenAI + one Anthropic)
-	Fallback Choice   // when all paid providers are saturated
+	Stage      Stage
+	Tier       Tier
+	Bulk       Choice   // local primary
+	ValueLocal Choice   // resolve-pass local model; zero means reuse Bulk
+	Medium     []Choice // even-split round-robin pool (one OpenAI + one Anthropic)
+	Hard       []Choice // even-split round-robin pool (one OpenAI + one Anthropic)
+	Fallback   Choice   // when all paid providers are saturated
 }
 
 // Router holds the loaded stage configs, the ledger, and the per-stage
@@ -154,6 +155,22 @@ func (r *Router) Pick(s Stage) (Pick, error) {
 		return choiceToPick(s, cfg.Tier, cfg.Bulk), nil
 	}
 	return r.roundRobin(s, cfg, pool), nil
+}
+
+// PickValueLocal returns the resolve-tier pick for a stage. When
+// StageConfig.ValueLocal is zero, falls back to Bulk.
+func (r *Router) PickValueLocal(s Stage) (Pick, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	cfg, ok := r.cfg[s]
+	if !ok {
+		return Pick{}, fmt.Errorf("routing: unknown stage %s", s)
+	}
+	c := cfg.ValueLocal
+	if c.BackendID == "" {
+		c = cfg.Bulk
+	}
+	return choiceToPick(s, cfg.Tier, c), nil
 }
 
 func (r *Router) poolForTier(cfg StageConfig) []Choice {
@@ -278,12 +295,13 @@ func DefaultStageConfigs() map[Stage]StageConfig {
 }
 
 func bulkStage(s Stage) StageConfig {
-	bulk := OpencodeQwenHigh()
+	bulk := LlamacppMoEBulk()
 	return StageConfig{
-		Stage:    s,
-		Tier:     TierBulk,
-		Bulk:     bulk,
-		Fallback: bulk,
+		Stage:      s,
+		Tier:       TierBulk,
+		Bulk:       bulk,
+		ValueLocal: LlamacppValueResolve(),
+		Fallback:   bulk,
 	}
 }
 
@@ -322,11 +340,41 @@ const (
 	// slopcode-infra and intentionally stay separate.
 	OpencodeQwenModel = "llamacpp/qwen27b"
 	OpencodeQwenLabel = "opencode/qwen3.6-27B"
+
+	// LlamacppMoEModel routes to slopgate's qwen3-MoE alias (fast, ~0.3s/token).
+	LlamacppMoEModel     = "llamacpp-moe/qwen"
+	LlamacppMoELabel     = "llamacpp/qwen3-MoE"
+	LlamacppMoEBackendID = "llamacpp"
 )
 
 func OpencodeQwenHigh() Choice {
 	return Choice{
 		BackendID: "opencode",
+		Provider:  backend.ProviderLocal,
+		Model:     OpencodeQwenModel,
+		Reasoning: backend.ReasoningHigh,
+		Label:     OpencodeQwenLabel,
+	}
+}
+
+// LlamacppMoEBulk returns a Choice for the fast MoE bulk pass via direct
+// HTTP (no opencode subprocess overhead).
+func LlamacppMoEBulk() Choice {
+	return Choice{
+		BackendID: LlamacppMoEBackendID,
+		Provider:  backend.ProviderLocal,
+		Model:     LlamacppMoEModel,
+		Reasoning: backend.ReasoningHigh,
+		Label:     LlamacppMoELabel,
+	}
+}
+
+// LlamacppValueResolve returns a Choice for the resolve pass (qwen27b via
+// direct HTTP). Heavier than MoE but still free; used for self-resolve
+// before paid escalation.
+func LlamacppValueResolve() Choice {
+	return Choice{
+		BackendID: LlamacppMoEBackendID,
 		Provider:  backend.ProviderLocal,
 		Model:     OpencodeQwenModel,
 		Reasoning: backend.ReasoningHigh,

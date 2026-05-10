@@ -26,26 +26,51 @@ func newTestRouter(t *testing.T, ov Overrides) (*Router, *ledger.Ledger, string)
 	return r, l, dir
 }
 
-func TestPickBulkStage_OpencodeAlways(t *testing.T) {
+func TestPickBulkStage_LlamacppMoE(t *testing.T) {
 	r, _, _ := newTestRouter(t, Overrides{})
 	p, err := r.Pick(StageFolderNote)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.BackendID != "opencode" {
-		t.Fatalf("bulk stage wanted opencode, got %s", p.BackendID)
+	if p.BackendID != LlamacppMoEBackendID {
+		t.Fatalf("bulk stage wanted %s, got %s", LlamacppMoEBackendID, p.BackendID)
 	}
 	if p.Provider != backend.ProviderLocal {
 		t.Fatalf("bulk provider wanted local, got %s", p.Provider)
 	}
-	if p.Model != OpencodeQwenModel {
-		t.Fatalf("bulk model wanted %s, got %s", OpencodeQwenModel, p.Model)
-	}
-	if p.Label != OpencodeQwenLabel {
-		t.Fatalf("bulk label wanted %s, got %s", OpencodeQwenLabel, p.Label)
+	if p.Model != LlamacppMoEModel {
+		t.Fatalf("bulk model wanted %s, got %s", LlamacppMoEModel, p.Model)
 	}
 	if p.Reasoning != backend.ReasoningHigh {
 		t.Fatalf("bulk reasoning wanted high, got %s", p.Reasoning)
+	}
+}
+
+func TestDefaultBulkUsesLlamacppMoE(t *testing.T) {
+	r, _, _ := newTestRouter(t, Overrides{})
+	p, err := r.Pick(StageScout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.BackendID != LlamacppMoEBackendID {
+		t.Fatalf("scout bulk wanted backendID=%s, got %s", LlamacppMoEBackendID, p.BackendID)
+	}
+	if p.Model != LlamacppMoEModel {
+		t.Fatalf("scout bulk wanted model=%s, got %s", LlamacppMoEModel, p.Model)
+	}
+}
+
+func TestPickValueLocal_ScoutReturnsQwen27b(t *testing.T) {
+	r, _, _ := newTestRouter(t, Overrides{})
+	p, err := r.PickValueLocal(StageScout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.BackendID != LlamacppMoEBackendID {
+		t.Fatalf("value-local backendID wanted %s, got %s", LlamacppMoEBackendID, p.BackendID)
+	}
+	if p.Model != OpencodeQwenModel {
+		t.Fatalf("value-local model wanted %s, got %s", OpencodeQwenModel, p.Model)
 	}
 }
 
@@ -160,8 +185,8 @@ func TestOverride_ForceLocal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.BackendID != "opencode" {
-		t.Fatalf("ForceLocal failed: %+v", p)
+	if p.Provider != backend.ProviderLocal {
+		t.Fatalf("ForceLocal: expected local provider, got %+v", p)
 	}
 }
 

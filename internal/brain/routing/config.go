@@ -31,10 +31,11 @@ type PlanFile struct {
 
 // StageFile overrides one stage's tier and pool.
 type StageFile struct {
-	Tier   string       `toml:"tier"`
-	Bulk   ChoiceFile   `toml:"bulk"`
-	Medium []ChoiceFile `toml:"medium"`
-	Hard   []ChoiceFile `toml:"hard"`
+	Tier       string       `toml:"tier"`
+	Bulk       ChoiceFile   `toml:"bulk"`
+	ValueLocal ChoiceFile   `toml:"value_local"`
+	Medium     []ChoiceFile `toml:"medium"`
+	Hard       []ChoiceFile `toml:"hard"`
 }
 
 // ChoiceFile is one choice in a tier pool.
@@ -125,6 +126,13 @@ func (c *FileConfig) ApplyStages(defaults map[Stage]StageConfig) (map[Stage]Stag
 			}
 			base.Bulk = c
 			base.Fallback = c
+		}
+		if !isZero(sf.ValueLocal) {
+			c, err := sf.ValueLocal.toChoice()
+			if err != nil {
+				return nil, fmt.Errorf("stage %s.value_local: %w", name, err)
+			}
+			base.ValueLocal = c
 		}
 		if len(sf.Medium) > 0 {
 			pool, err := toPool(sf.Medium)

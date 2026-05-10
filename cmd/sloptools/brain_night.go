@@ -18,6 +18,59 @@ import (
 	"github.com/sloppy-org/sloptools/internal/brain/textbook"
 )
 
+// scoutCursor tracks which picks have been processed recently so large
+// vaults cycle through all entities across multiple nights rather than
+// always re-processing the highest-scored ones.
+type scoutCursor struct {
+	Processed []scoutCursorEntry `json:"processed"`
+}
+
+type scoutCursorEntry struct {
+	Path        string    `json:"path"`
+	ProcessedAt time.Time `json:"processed_at"`
+}
+
+func scoutCursorPath(sphere string) string {
+	xdgConfig := os.Getenv("XDG_CONFIG_HOME")
+	if xdgConfig == "" {
+		home, _ := os.UserHomeDir()
+		xdgConfig = filepath.Join(home, ".config")
+	}
+	return filepath.Join(xdgConfig, "sloptools", "scout-cursor-"+sphere+".json")
+}
+
+func loadScoutCursor(path string) scoutCursor {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return scoutCursor{}
+	}
+	var c scoutCursor
+	if err := json.Unmarshal(body, &c); err != nil {
+		return scoutCursor{}
+	}
+	// Drop entries older than 7 days.
+	cutoff := time.Now().UTC().Add(-7 * 24 * time.Hour)
+	fresh := c.Processed[:0]
+	for _, e := range c.Processed {
+		if e.ProcessedAt.After(cutoff) {
+			fresh = append(fresh, e)
+		}
+	}
+	c.Processed = fresh
+	return c
+}
+
+func saveScoutCursor(path string, c scoutCursor) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	body, err := json.MarshalIndent(c, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, body, 0o600)
+}
+
 func encodeIndentJSON(v any) ([]byte, error) {
 	return json.MarshalIndent(v, "", "  ")
 }
@@ -43,6 +96,7 @@ func cmdBrainNight(args []string) int {
 	brainTOMLPath := fs.String("brain-toml", "", "override brain.toml path (default ~/.config/sloptools/brain.toml)")
 	escalateOnConflict := fs.Bool("escalate-on-conflict", true, "after each bulk-tier scout report, run free opencode self-resolve passes (--self-resolve-passes) and only then escalate to a paid medium-tier reviewer if the classifier still flags the report (default true; pass --escalate-on-conflict=false to skip the self-resolve and paid-escalation path)")
 	selfResolvePasses := fs.Int("self-resolve-passes", 1, "number of free opencode self-resolve passes between the bulk pass and a paid escalation, 0-3 (default 1, only applies when --escalate-on-conflict is true)")
+	maxScoutItems := fs.Int("max-scout-items", 20, "maximum scout picks to process per run (0 = unlimited); unprocessed picks roll over to the next run")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -115,7 +169,7 @@ func cmdBrainNight(args []string) int {
 	}
 
 	if stage == "" || stage == "scout" {
-		if err := runScoutStage(vault, ldg, router, runID, *dryRun, *escalateOnConflict, *selfResolvePasses, report); err != nil {
+		if err := runScoutStage(vault, ldg, router, runID, *dryRun, *escalateOnConflict, *selfResolvePasses, *maxScoutItems, string(*sphere), report); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
 		}
@@ -220,32 +274,56 @@ func runTextbookScan(vault brain.Vault, report *nightReport) error {
 	return nil
 }
 
-// runScoutStage picks the top stale-or-uncertain canonical entities
-// and runs the scout evidence pass over each. Reports land under
+// runScoutStage picks the top stale-or-uncertain canonical entities and
+// runs the scout evidence pass over each. Reports land under
 // <brain>/reports/scout/<run-id>/<slug>.md. The scout never edits
-// canonical Markdown; suggestions are surfaced in the report payload
-// and persisted in the per-pick evidence files for the judge stage to
-// pick up.
-func runScoutStage(vault brain.Vault, ldg *ledger.Ledger, router *routing.Router, runID string, dryRun, escalateOnConflict bool, selfResolvePasses int, report *nightReport) error {
-	picks, err := scout.PickEntities(scout.PickerOpts{
+// canonical Markdown; suggestions are surfaced in the report payload and
+// persisted in the per-pick evidence files for the judge stage to pick up.
+//
+// maxItems caps how many picks are processed this run (0 = unlimited).
+// A cursor file under ~/.config/sloptools/ tracks recently-processed paths
+// so large vaults cycle through all entities across nightly runs instead of
+// always re-processing the top-scored subset.
+func runScoutStage(vault brain.Vault, ldg *ledger.Ledger, router *routing.Router, runID string, dryRun, escalateOnConflict bool, selfResolvePasses, maxItems int, sphere string, report *nightReport) error {
+	allPicks, err := scout.PickEntities(scout.PickerOpts{
 		BrainRoot: vault.BrainRoot(),
 		Now:       time.Now().UTC(),
-		TopN:      10,
+		TopN:      200, // large pool; cursor + maxItems cap below
 	})
 	if err != nil {
 		return fmt.Errorf("scout pick: %w", err)
 	}
+
+	cursorPath := scoutCursorPath(sphere)
+	cursor := loadScoutCursor(cursorPath)
+	recentlyProcessed := make(map[string]bool, len(cursor.Processed))
+	for _, e := range cursor.Processed {
+		recentlyProcessed[e.Path] = true
+	}
+
+	// Filter out recently-processed paths and apply the per-run cap.
+	picks := make([]scout.Pick, 0, len(allPicks))
+	for _, p := range allPicks {
+		if recentlyProcessed[p.Path] {
+			continue
+		}
+		picks = append(picks, p)
+	}
+	if maxItems > 0 && len(picks) > maxItems {
+		picks = picks[:maxItems]
+	}
+
 	report.Scout = &scoutSummary{
 		Status:     "ok",
 		Candidates: len(picks),
 	}
 	if len(picks) == 0 {
-		report.Scout.Notes = "no stale entities scored"
+		report.Scout.Notes = "no stale entities scored (all recently processed or none available)"
 		return nil
 	}
 	res, err := scout.Run(context.Background(), scout.RunOpts{
 		BrainRoot:          vault.BrainRoot(),
-		Sphere:             string(vault.Sphere),
+		Sphere:             sphere,
 		Picks:              picks,
 		Router:             router,
 		Ledger:             ldg,
@@ -271,6 +349,23 @@ func runScoutStage(vault brain.Vault, ldg *ledger.Ledger, router *routing.Router
 	if dryRun {
 		report.Scout.Status = "dry-run"
 	}
+
+	// Persist cursor for picks that were actually processed (not skipped).
+	if !dryRun {
+		now := time.Now().UTC()
+		for _, e := range res.Reports {
+			if !e.Skipped && e.ReportPath != "" {
+				cursor.Processed = append(cursor.Processed, scoutCursorEntry{
+					Path:        e.Path,
+					ProcessedAt: now,
+				})
+			}
+		}
+		if saveErr := saveScoutCursor(cursorPath, cursor); saveErr != nil {
+			fmt.Fprintf(os.Stderr, "scout cursor save: %v\n", saveErr)
+		}
+	}
+
 	return nil
 }
 

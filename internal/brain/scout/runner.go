@@ -13,6 +13,16 @@ import (
 	"github.com/sloppy-org/sloptools/internal/brain/routing"
 )
 
+// scoutMCPTools is the curated MCP tool allowlist for both the bulk and
+// resolve scout passes. Helpy web/PDF/Zotero/TUGonline + sloppy brain only;
+// full-surface calls stay with the paid codex escalation path.
+var scoutMCPTools = []string{
+	"sloppy_brain",
+	"helpy_web_search", "helpy_web_fetch", "helpy_pdf_read",
+	"helpy_zotero_packets", "helpy_tugonline_exam_search", "helpy_tu4u_search",
+	"helpy_ics_events",
+}
+
 // RunOpts is the input to Run.
 type RunOpts struct {
 	BrainRoot string
@@ -169,12 +179,7 @@ func runOnePick(ctx context.Context, opts RunOpts, reportsDir, stagePrompt strin
 		entry.Reason = "dry-run"
 		return entry
 	}
-	be, err := backendForID(pick.BackendID)
-	if err != nil {
-		entry.Skipped = true
-		entry.Reason = err.Error()
-		return entry
-	}
+	be := backendForPick(pick)
 	stage := "scout-" + sanitize(p.Path)
 	sb, err := backend.NewSandbox(opts.RunID, stage, stagePrompt, backend.DefaultMCPConfig())
 	if err != nil {
@@ -191,6 +196,7 @@ func runOnePick(ctx context.Context, opts RunOpts, reportsDir, stagePrompt strin
 		Model:            pick.Model,
 		Reasoning:        pick.Reasoning,
 		AllowEdits:       false,
+		MCPAllowList:     scoutMCPTools,
 		Sandbox:          sb,
 	}
 	bulkStartedAt := time.Now().UTC()
@@ -258,9 +264,13 @@ func runOnePick(ctx context.Context, opts RunOpts, reportsDir, stagePrompt strin
 			if passes > 3 {
 				passes = 3
 			}
+			resolvePick, resolvePickErr := opts.Router.PickValueLocal(routing.StageScout)
 			for i := 0; i < passes && d.Escalate; i++ {
+				if resolvePickErr != nil {
+					break
+				}
 				resolveTrigger := d.Reason
-				newBody, rec, err := selfResolveOne(ctx, opts, p, packet, body, d.Reason, rpath, i+1)
+				newBody, rec, err := selfResolveOne(ctx, opts, p, packet, body, d.Reason, rpath, i+1, resolvePick)
 				if err != nil {
 					// Self-resolve failed: leave bulk body in place and fall
 					// through to paid escalation below.
