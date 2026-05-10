@@ -15,7 +15,7 @@ import (
 const (
 	// LlamacppBaseURL is the slopgate HTTP endpoint.
 	LlamacppBaseURL   = "http://10.77.0.20:8080"
-	llamacppMaxRounds = 15
+	llamacppMaxRounds = 30
 	llamacppMaxTokens = 4096
 )
 
