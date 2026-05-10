@@ -22,7 +22,7 @@ import (
 // CLI backend handles the call.
 type ModelSpec struct {
 	Provider  backend.Provider
-	BackendID string // "claude", "codex", "opencode"
+	BackendID string // "claude", "codex", "llamacpp"
 	Model     string // CLI model identifier
 	Reasoning backend.Reasoning
 	Label     string // short label used in the report
@@ -31,16 +31,11 @@ type ModelSpec struct {
 // DefaultModelMatrix is the v1 cell list. Every cell carries an
 // explicit Reasoning value: medium for the medium tier (cheap, fast,
 // the GPT-5.5 documented "balanced starting point"), high for the
-// hard-tier paid models, high for opencode (its --variant maps to
-// provider-specific reasoning depth and Qwen benefits from it for
-// structured output tasks). Never xhigh by default — that is
+// hard-tier paid models. Never xhigh by default — that is
 // for the hardest asynchronous agentic evals, not the brain night.
-//
-// Opencode uses routing.OpencodeQwenModel so the bench matrix follows
-// the same brain-tools default as ingest, scout, sleep, and dream.
 func DefaultModelMatrix() []ModelSpec {
 	return []ModelSpec{
-		{ProviderLocal(), "opencode", routing.OpencodeQwenModel, backend.ReasoningHigh, routing.OpencodeQwenLabel},
+		{ProviderLocal(), "llamacpp", routing.LlamacppQwen27bModel, backend.ReasoningHigh, routing.LlamacppQwen27bLabel},
 		{ProviderOpenAI(), "codex", "gpt-5.4-mini", backend.ReasoningMedium, "codex/gpt-5.4-mini@medium"},
 		{ProviderOpenAI(), "codex", "gpt-5.5", backend.ReasoningHigh, "codex/gpt-5.5@high"},
 		{ProviderAnthropic(), "claude", "claude-haiku-4-5", backend.ReasoningMedium, "claude-haiku-4-5@medium"},
@@ -255,8 +250,8 @@ func newBackendByID(id string) (backend.Backend, error) {
 		return backend.ClaudeBackend{}, nil
 	case "codex":
 		return backend.CodexBackend{}, nil
-	case "opencode":
-		return backend.OpencodeBackend{}, nil
+	case "llamacpp":
+		return backend.LlamacppBackend{}, nil
 	}
 	return nil, fmt.Errorf("bench: unknown backend id: %s", id)
 }

@@ -100,7 +100,7 @@ type Router struct {
 type Overrides struct {
 	ClaudeTier string // "haiku" | "sonnet" | "opus" — force Anthropic + tier
 	OpenAITier string // "mini"  | "full"  | "pro"   — force OpenAI    + tier
-	ForceLocal bool   // pin every stage to OpencodeQwenModel
+	ForceLocal bool   // pin every stage to LlamacppQwen27bModel
 }
 
 // New builds a Router with the default stage configs.
@@ -243,9 +243,9 @@ func (r *Router) applyOpenAIOverride(cfg StageConfig) (Choice, bool) {
 // DefaultStageConfigs returns the stage→tier map. Evidence and rationale:
 //
 //   - folder-note (bulk): text-only synthesis from attached files; no
-//     external evidence needed; deterministic from inputs. Opencode/Qwen.
+//     external evidence needed; deterministic from inputs. LlamacppMoE.
 //   - scout (bulk): live web + Zotero + TUGonline + vault verification.
-//     The 2026-05-07 first nightly proved opencode/Qwen with helpy +
+//     The 2026-05-07 first nightly proved llamacpp/qwen3-MoE with helpy +
 //     sloppy MCP produces research-grade evidence reports. Bulk only,
 //     with `--escalate-on-conflict` (default true) routing flagged
 //     reports through a free self-resolve pass and then a paid medium
@@ -300,14 +300,22 @@ var folderNoteDefaultMCPTools = []string{
 	"web_fetch", "pdf_read", "image_read", "helpy_office",
 }
 
+// sleepJudgeFullAutonomyTools is the curated allowlist for sleep-judge when
+// AllowEdits=true. Includes sloppy_brain (action=note_write for vault edits)
+// and helpy tools for external fact confirmation.
+var sleepJudgeFullAutonomyTools = []string{
+	"sloppy_brain",
+	"web_search", "web_fetch", "pdf_read",
+}
+
 func DefaultStageConfigs() map[Stage]StageConfig {
 	return map[Stage]StageConfig{
 		StageFolderNote:  bulkStage(StageFolderNote, folderNoteDefaultMCPTools),
 		StageScout:       bulkStage(StageScout, scoutDefaultMCPTools),
-		StageTriage:      mediumStage(StageTriage),
-		StageSleepJudge:  mediumStage(StageSleepJudge),
-		StageCompress:    hardStage(StageCompress),
-		StageEntityWrite: hardStage(StageEntityWrite),
+		StageTriage:      mediumStage(StageTriage, nil),
+		StageSleepJudge:  mediumStage(StageSleepJudge, sleepJudgeFullAutonomyTools),
+		StageCompress:    hardStage(StageCompress, nil),
+		StageEntityWrite: hardStage(StageEntityWrite, nil),
 	}
 }
 
@@ -317,64 +325,75 @@ func bulkStage(s Stage, tools []string) StageConfig {
 		Stage:      s,
 		Tier:       TierBulk,
 		Bulk:       bulk,
-		ValueLocal: LlamacppValueResolve(),
+		ValueLocal: LlamacppQwenHigh(),
 		Fallback:   bulk,
 		MCPTools:   tools,
 	}
 }
 
-func mediumStage(s Stage) StageConfig {
-	bulk := OpencodeQwenHigh()
+func mediumStage(s Stage, tools []string) StageConfig {
+	bulk := LlamacppQwenHigh()
 	return StageConfig{
-		Stage: s,
-		Tier:  TierMedium,
-		Bulk:  bulk,
-		Medium: []Choice{
-			CodexMiniMedium(),
-		},
+		Stage:    s,
+		Tier:     TierMedium,
+		Bulk:     bulk,
+		Medium:   []Choice{CodexMiniMedium()},
 		Fallback: bulk,
+		MCPTools: tools,
 	}
 }
 
-func hardStage(s Stage) StageConfig {
-	bulk := OpencodeQwenHigh()
+func hardStage(s Stage, tools []string) StageConfig {
+	bulk := LlamacppQwenHigh()
 	return StageConfig{
-		Stage: s,
-		Tier:  TierHard,
-		Bulk:  bulk,
-		Hard: []Choice{
-			CodexFullHigh(),
-		},
+		Stage:    s,
+		Tier:     TierHard,
+		Bulk:     bulk,
+		Hard:     []Choice{CodexFullHigh()},
 		Fallback: bulk,
+		MCPTools: tools,
 	}
+}
+
+// MCPToolsFor returns the configured MCP tool allowlist for a stage,
+// or nil when the stage has none. Used by callsites that build their
+// own Choice instead of going through Pick (sleep-judge runBulk).
+func (r *Router) MCPToolsFor(s Stage) []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.cfg[s].MCPTools
 }
 
 // Choice constructors. Reasoning is mandatory; never xhigh by default.
 
 const (
-	// OpencodeQwenModel is the qwen27b model id used by opencode and by
-	// LlamacppBackend for resolve passes (heavier, more accurate than MoE).
-	OpencodeQwenModel = "llamacpp/qwen27b"
-	OpencodeQwenLabel = "opencode/qwen3.6-27B"
+	// LlamacppQwen27bModel is the qwen27b model id served by slopgate.
+	// Used for full-autonomy sleep-judge and as the saturation fallback
+	// for medium / hard stages.
+	LlamacppQwen27bModel = "llamacpp/qwen27b"
+	LlamacppQwen27bLabel = "llamacpp/qwen3.6-27B"
 
 	// LlamacppMoEModel routes to slopgate's qwen3-MoE alias (fast, ~0.3s/token).
 	LlamacppMoEModel     = "llamacpp-moe/qwen"
-	LlamacppMoELabel     = "opencode/qwen3-MoE"
+	LlamacppMoELabel     = "llamacpp/qwen3-MoE"
 	LlamacppMoEBackendID = "llamacpp"
 )
 
-func OpencodeQwenHigh() Choice {
+// LlamacppQwenHigh returns the heavy local Choice (qwen27b via direct HTTP
+// to slopgate). Used for sleep-judge full-autonomy, scout self-resolve, and
+// as the saturation fallback for medium / hard stages.
+func LlamacppQwenHigh() Choice {
 	return Choice{
-		BackendID: "opencode",
+		BackendID: LlamacppMoEBackendID,
 		Provider:  backend.ProviderLocal,
-		Model:     OpencodeQwenModel,
+		Model:     LlamacppQwen27bModel,
 		Reasoning: backend.ReasoningHigh,
-		Label:     OpencodeQwenLabel,
+		Label:     LlamacppQwen27bLabel,
 	}
 }
 
 // LlamacppMoEBulk returns a Choice for the fast MoE bulk pass via direct
-// HTTP (no opencode subprocess overhead).
+// HTTP (no subprocess overhead).
 func LlamacppMoEBulk() Choice {
 	return Choice{
 		BackendID: LlamacppMoEBackendID,
@@ -382,19 +401,6 @@ func LlamacppMoEBulk() Choice {
 		Model:     LlamacppMoEModel,
 		Reasoning: backend.ReasoningHigh,
 		Label:     LlamacppMoELabel,
-	}
-}
-
-// LlamacppValueResolve returns a Choice for the resolve pass (qwen27b via
-// direct HTTP). Heavier than MoE but still free; used for self-resolve
-// before paid escalation.
-func LlamacppValueResolve() Choice {
-	return Choice{
-		BackendID: LlamacppMoEBackendID,
-		Provider:  backend.ProviderLocal,
-		Model:     OpencodeQwenModel,
-		Reasoning: backend.ReasoningHigh,
-		Label:     OpencodeQwenLabel,
 	}
 }
 

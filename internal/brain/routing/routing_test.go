@@ -69,8 +69,8 @@ func TestPickValueLocal_ScoutReturnsQwen27b(t *testing.T) {
 	if p.BackendID != LlamacppMoEBackendID {
 		t.Fatalf("value-local backendID wanted %s, got %s", LlamacppMoEBackendID, p.BackendID)
 	}
-	if p.Model != OpencodeQwenModel {
-		t.Fatalf("value-local model wanted %s, got %s", OpencodeQwenModel, p.Model)
+	if p.Model != LlamacppQwen27bModel {
+		t.Fatalf("value-local model wanted %s, got %s", LlamacppQwen27bModel, p.Model)
 	}
 }
 
@@ -160,11 +160,11 @@ func TestLedgerGuard_FallsBackToBulkWhenBothSaturated(t *testing.T) {
 	if pick.Provider != backend.ProviderLocal {
 		t.Fatalf("expected fallback to local, got %s", pick.Provider)
 	}
-	if pick.BackendID != "opencode" {
-		t.Fatalf("expected opencode fallback, got %s", pick.BackendID)
+	if pick.BackendID != "llamacpp" {
+		t.Fatalf("expected llamacpp fallback, got %s", pick.BackendID)
 	}
-	if pick.Model != OpencodeQwenModel {
-		t.Fatalf("expected fallback model %s, got %s", OpencodeQwenModel, pick.Model)
+	if pick.Model != LlamacppQwen27bModel {
+		t.Fatalf("expected fallback model %s, got %s", LlamacppQwen27bModel, pick.Model)
 	}
 }
 

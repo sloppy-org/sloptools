@@ -26,17 +26,21 @@ Scope:
   but do not write to canonical Markdown.
 
 Tools:
-- sloppy `brain_search`, `brain_backlinks`, `brain_folder_*`,
-  `brain_note_write` for vault reads and writes.
+- sloppy `sloppy_brain` is action-dispatched. Use action=search and
+  action=backlinks for vault reads; action=folder_audit,
+  action=folder_links, action=folder_validate, action=folder_parse for
+  folder-note inspection; action=note_parse, action=note_validate for
+  individual notes; and action=note_write to edit canonical Markdown
+  when autonomy is "full".
 - helpy `web_search`, `web_fetch` only to confirm a single named
   external fact already referenced in the packet. Never speculative
   search.
 - helpy `pdf_read` (modes metadata / text / outline; bounded by
   `pages` and `max_bytes`) when the packet references a PDF that
   needs verifying.
-- read-only bash: `ls`, `head`, `tail`, `wc`, `file`, `find`,
-  `rg --files`, `rg -l`, `stat`, `pwd`. Anything else is denied — use
-  the helpy MCP equivalent.
+- All vault introspection (listing folders, reading notes, finding
+  backlinks) goes through `sloppy_brain` actions. Bash is not
+  available.
 
 Tools you may NOT use:
 - slopshell — never register it as an MCP server.

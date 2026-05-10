@@ -140,19 +140,21 @@ func RunJudge(ctx context.Context, opts JudgeOpts) (*JudgeResult, error) {
 }
 
 // runBulk runs the bulk editorial pass and returns the StageRecord plus the
-// cleaned body. When opts.AllowEdits is false (plan-only autonomy), uses
-// LlamacppBackend (fast, no tools). When opts.AllowEdits is true (full
-// autonomy), uses OpencodeBackend so brain_note_write can edit vault files.
+// cleaned body. Both autonomy modes use LlamacppBackend (direct HTTP to
+// slopgate, no subprocess). Plan-only uses the fast MoE alias with no tools;
+// full-autonomy uses qwen27b with the curated sleep-judge allowlist so
+// sloppy_brain action=note_write can edit vault files.
 func runBulk(ctx context.Context, opts JudgeOpts) (*audit.StageRecord, string, error) {
 	var bulkPick routing.Choice
-	var be backend.Backend
+	var allowList []string
 	if opts.AllowEdits {
-		bulkPick = routing.OpencodeQwenHigh()
-		be = backend.OpencodeBackend{}
+		bulkPick = routing.LlamacppQwenHigh()
+		allowList = opts.Router.MCPToolsFor(routing.StageSleepJudge)
 	} else {
 		bulkPick = routing.LlamacppMoEBulk()
-		be = backend.LlamacppBackend{}
+		// plan-only: pure text, no tools
 	}
+	be := backend.LlamacppBackend{}
 	stage := opts.Stage + "-bulk"
 	sb, err := backend.NewSandbox(opts.RunID, stage, opts.SystemPromptPath, backend.DefaultMCPConfig())
 	if err != nil {
@@ -166,7 +168,7 @@ func runBulk(ctx context.Context, opts JudgeOpts) (*audit.StageRecord, string, e
 		Model:            bulkPick.Model,
 		Reasoning:        bulkPick.Reasoning,
 		AllowEdits:       opts.AllowEdits,
-		MCPAllowList:     nil, // plan-only: pure text, no tools
+		MCPAllowList:     allowList,
 		Affinity:         backend.AffinityForPick(opts.RunID, opts.Sphere, stage),
 		Sandbox:          sb,
 		WorkDir:          opts.BrainRoot,
@@ -281,8 +283,8 @@ func backendForID(id string) (backend.Backend, error) {
 		return backend.ClaudeBackend{}, nil
 	case "codex":
 		return backend.CodexBackend{}, nil
-	case "opencode":
-		return backend.OpencodeBackend{}, nil
+	case "llamacpp":
+		return backend.LlamacppBackend{}, nil
 	}
 	return nil, fmt.Errorf("unknown backend id %q", id)
 }
