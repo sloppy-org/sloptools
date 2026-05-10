@@ -55,7 +55,7 @@ type JudgeResult struct {
 //     directly. The 167 KB qwen context-window collapse that motivated
 //     this gate is non-recoverable — the bulk model returns trigram
 //     spam, not a report.
-//  2. Bulk pass: local OpenCode Qwen with the sleep-judge system prompt and
+//  2. Bulk pass: local llamacpp qwen with the sleep-judge system prompt and
 //     the packet on stdin. Output goes through cleanup.CleanReport.
 //  3. Classifier: classifySleepJudgeOutput inspects the cleaned body
 //     and returns a Decision. Signals: parse-error wrapper, leaked

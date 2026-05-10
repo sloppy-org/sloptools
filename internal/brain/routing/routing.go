@@ -55,7 +55,7 @@ const (
 type Pick struct {
 	Stage     Stage
 	Tier      Tier
-	BackendID string // "claude" | "codex" | "opencode" | "llamacpp"
+	BackendID string // "claude" | "codex" | "llamacpp"
 	Provider  backend.Provider
 	Model     string
 	Reasoning backend.Reasoning

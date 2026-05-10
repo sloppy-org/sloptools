@@ -104,7 +104,7 @@ func writeEscalatePrompt(runID string) (string, error) {
 	body := strings.Join([]string{
 		"You are a paid reviewer for Christopher Albert's brain vault.",
 		"",
-		"You receive a scout packet, plus a bulk-tier local OpenCode Qwen evidence",
+		"You receive a scout packet, plus a bulk-tier llamacpp evidence",
 		"report that flagged conflicts or open questions. Resolve each conflict",
 		"using sloppy and helpy MCP tools. Do not just rewrite the bulk report:",
 		"address each conflict and each open question with a fresh, traceable",
@@ -136,7 +136,7 @@ func buildEscalatePacket(p Pick, originalPacket, bulkReport, reason string) stri
 	fmt.Fprintf(&b, "Bulk-tier flagged for escalation because: %s\n\n", reason)
 	b.WriteString("## Original scout packet\n\n")
 	b.WriteString(originalPacket)
-	b.WriteString("\n\n## Bulk-tier (opencode) report\n\n")
+	b.WriteString("\n\n## Bulk-tier report\n\n")
 	b.WriteString(bulkReport)
 	b.WriteString("\n\n## Your task\n\n")
 	b.WriteString("Resolve each conflict and each open question listed in the bulk report. Output a refined Markdown report with the same section structure. Cite sources per claim.\n")

@@ -25,12 +25,12 @@ type RunOpts struct {
 	DryRun    bool
 	// EscalateOnConflict, when true, feeds bulk-tier scout reports
 	// through a deterministic classifier. Flagged reports get a free
-	// opencode self-resolve pass (up to SelfResolvePasses times), and
+	// llamacpp self-resolve pass (up to SelfResolvePasses times), and
 	// only when the self-resolve cannot clear the flags do they reach
 	// the paid medium tier. Pattern: bulk → self-resolve (free) → paid
 	// (only if still flagged).
 	EscalateOnConflict bool
-	// SelfResolvePasses is the number of opencode self-resolve passes
+	// SelfResolvePasses is the number of llamacpp self-resolve passes
 	// to attempt between the bulk pass and the paid escalation. Default
 	// when EscalateOnConflict is true and this is zero is 1 — one
 	// targeted close-the-gaps pass before paid. Capped at 3.
@@ -41,7 +41,7 @@ type RunOpts struct {
 // picks fed in (deterministic picker output); Written is the number of
 // evidence reports actually produced (zero in dry-run, can be smaller
 // than Candidates when the ledger guard or backend skips a pick).
-// SelfResolved counts picks where a free opencode self-resolve pass
+// SelfResolved counts picks where a free llamacpp self-resolve pass
 // cleared the classifier without needing paid escalation. Escalated
 // counts picks that reached the paid medium tier after the
 // self-resolve passes did not clear them.
@@ -69,7 +69,7 @@ type ReportEntry struct {
 	Skipped    bool    `json:"skipped,omitempty"`
 	Reason     string  `json:"reason,omitempty"`
 	WallMS     int64   `json:"wall_ms,omitempty"`
-	// SelfResolveCount is the number of free opencode self-resolve
+	// SelfResolveCount is the number of free llamacpp self-resolve
 	// passes that ran on this pick after the bulk pass triggered the
 	// classifier. Zero means the bulk pass was clean (or the pick
 	// short-circuited).
@@ -88,7 +88,7 @@ type ReportEntry struct {
 
 // Run executes the scout pass over the picks. Per pick:
 //  1. ledger guard skips a pick whose tier is saturated;
-//  2. the bulk tier (local OpenCode Qwen) builds an evidence report from a
+//  2. the bulk tier (local llamacpp qwen) builds an evidence report from a
 //     packet that names the entity + its locally-known anchors and
 //     prompts the agent to verify against helpy MCP web/Zotero/TUGonline;
 //  3. the report lands at <brain>/reports/scout/<run-id>/<slug>.md.

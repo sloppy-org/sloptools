@@ -78,7 +78,7 @@ func encodeIndentJSON(v any) ([]byte, error) {
 // cmdBrainNight dispatches `sloptools brain night`, the unified
 // sweep → scout → judge orchestrator. Each stage is independently
 // invokable via --only-stage. Routing is even-split round-robin across
-// OpenAI ↔ Anthropic for medium / hard tiers; bulk is local OpenCode Qwen.
+// OpenAI ↔ Anthropic for medium / hard tiers; bulk is local llamacpp qwen.
 // brain.toml at ~/.config/sloptools/brain.toml overrides the defaults.
 func cmdBrainNight(args []string) int {
 	fs := flag.NewFlagSet("brain night", flag.ContinueOnError)
@@ -87,15 +87,15 @@ func cmdBrainNight(args []string) int {
 	onlyStage := fs.String("only-stage", "", "sweep | scout | judge (default: all)")
 	claudeTier := fs.String("claude-tier", "", "force Anthropic at tier: haiku | sonnet | opus")
 	openaiTier := fs.String("openai-tier", "", "force OpenAI at tier: mini | full")
-	forceLocal := fs.Bool("force-local", false, "pin every stage to the configured local OpenCode Qwen model")
+	forceLocal := fs.Bool("force-local", false, "pin every stage to the configured local llamacpp model")
 	autonomy := fs.String("autonomy", brain.SleepDefaultAutonomy, "full or plan-only")
 	budget := fs.Int("budget", brain.SleepDefaultBudget, "REM notes to dream over (judge stage)")
 	nremBudget := fs.Int("nrem-budget", brain.SleepDefaultNREMBudget, "NREM consolidation rows to replay")
 	coverageBudget := fs.Int("coverage-budget", brain.SleepDefaultCoverageBudget, "folder coverage changes before NREM")
 	dryRun := fs.Bool("dry-run", false, "skip LLM, do not apply prune-links, do not write report file")
 	brainTOMLPath := fs.String("brain-toml", "", "override brain.toml path (default ~/.config/sloptools/brain.toml)")
-	escalateOnConflict := fs.Bool("escalate-on-conflict", true, "after each bulk-tier scout report, run free opencode self-resolve passes (--self-resolve-passes) and only then escalate to a paid medium-tier reviewer if the classifier still flags the report (default true; pass --escalate-on-conflict=false to skip the self-resolve and paid-escalation path)")
-	selfResolvePasses := fs.Int("self-resolve-passes", 1, "number of free opencode self-resolve passes between the bulk pass and a paid escalation, 0-3 (default 1, only applies when --escalate-on-conflict is true)")
+	escalateOnConflict := fs.Bool("escalate-on-conflict", true, "after each bulk-tier scout report, run free llamacpp self-resolve passes (--self-resolve-passes) and only then escalate to a paid medium-tier reviewer if the classifier still flags the report (default true; pass --escalate-on-conflict=false to skip the self-resolve and paid-escalation path)")
+	selfResolvePasses := fs.Int("self-resolve-passes", 1, "number of free llamacpp self-resolve passes between the bulk pass and a paid escalation, 0-3 (default 1, only applies when --escalate-on-conflict is true)")
 	maxScoutItems := fs.Int("max-scout-items", 20, "maximum scout picks to process per run (0 = unlimited); unprocessed picks roll over to the next run")
 	if err := fs.Parse(args); err != nil {
 		return 2
