@@ -89,7 +89,7 @@ func TestCalendarListUsesGmailFallback(t *testing.T) {
 	s.newCalendarProvider = func(context.Context, store.ExternalAccount) (tabcalendar.Provider, error) {
 		return stub, nil
 	}
-	got, err := s.callTool("calendar_list", map[string]interface{}{})
+	got, err := s.callTool("sloppy_calendar", map[string]interface{}{"action": "list"})
 	if err != nil {
 		t.Fatalf("calendar_list failed: %v", err)
 	}
@@ -119,7 +119,7 @@ func TestCalendarEventsReturnsStructuredEvents(t *testing.T) {
 	s.newCalendarProvider = func(context.Context, store.ExternalAccount) (tabcalendar.Provider, error) {
 		return stub, nil
 	}
-	got, err := s.callTool("calendar_events", map[string]interface{}{"calendar_id": "work", "days": 7, "limit": 10})
+	got, err := s.callTool("sloppy_calendar", map[string]interface{}{"action": "events", "calendar_id": "work", "days": 7, "limit": 10})
 	if err != nil {
 		t.Fatalf("calendar_events failed: %v", err)
 	}
@@ -166,7 +166,7 @@ func TestCalendarEventsAcceptsPastRange(t *testing.T) {
 	s.newCalendarProvider = func(context.Context, store.ExternalAccount) (tabcalendar.Provider, error) {
 		return stub, nil
 	}
-	got, err := s.callTool("calendar_events", map[string]interface{}{"calendar_id": "work", "start": "2021-01-01", "end": "2022-01-01", "query": "Master", "limit": 10})
+	got, err := s.callTool("sloppy_calendar", map[string]interface{}{"action": "events", "calendar_id": "work", "start": "2021-01-01", "end": "2022-01-01", "query": "Master", "limit": 10})
 	if err != nil {
 		t.Fatalf("calendar_events failed: %v", err)
 	}
@@ -198,7 +198,7 @@ func TestCalendarEventCreateUsesPreferredSphereCalendar(t *testing.T) {
 	s.newCalendarProvider = func(context.Context, store.ExternalAccount) (tabcalendar.Provider, error) {
 		return stub, nil
 	}
-	got, err := s.callTool("calendar_event_create", map[string]interface{}{"sphere": store.SpherePrivate, "summary": "Masterprüfung David Obermeier", "start": "2026-04-20T16:00:00+02:00", "duration_minutes": 60})
+	got, err := s.callTool("sloppy_calendar", map[string]interface{}{"action": "event_create", "sphere": store.SpherePrivate, "summary": "Masterprüfung David Obermeier", "start": "2026-04-20T16:00:00+02:00", "duration_minutes": 60})
 	if err != nil {
 		t.Fatalf("calendar_event_create failed: %v", err)
 	}
@@ -240,14 +240,14 @@ func TestCalendarListRoutesByAccountID(t *testing.T) {
 		callsByID[account.ID]++
 		return &stubCalendarProvider{calendars: []providerdata.Calendar{{ID: fmt.Sprintf("cal-%d", account.ID), Name: account.Label}}}, nil
 	}
-	if _, err := s.callTool("calendar_list", map[string]interface{}{"account_id": privateAcct.ID}); err != nil {
+	if _, err := s.callTool("sloppy_calendar", map[string]interface{}{"action": "list", "account_id": privateAcct.ID}); err != nil {
 		t.Fatalf("calendar_list(private) failed: %v", err)
 	}
 	if callsByID[privateAcct.ID] != 1 || callsByID[workAcct.ID] != 0 {
 		t.Fatalf("account_id routing missed: private=%d work=%d", callsByID[privateAcct.ID], callsByID[workAcct.ID])
 	}
 	callsByID = make(map[int64]int)
-	if _, err := s.callTool("calendar_list", map[string]interface{}{}); err != nil {
+	if _, err := s.callTool("sloppy_calendar", map[string]interface{}{"action": "list"}); err != nil {
 		t.Fatalf("calendar_list(default) failed: %v", err)
 	}
 	if callsByID[privateAcct.ID] == 0 || callsByID[workAcct.ID] == 0 {
@@ -290,7 +290,7 @@ func TestWorkspaceTools(t *testing.T) {
 	if _, err := st.CreateItem("Done item", store.ItemOptions{State: store.ItemStateDone, WorkspaceID: &alpha.ID}); err != nil {
 		t.Fatalf("CreateItem(done) error: %v", err)
 	}
-	listed, err := s.callTool("workspace_list", map[string]interface{}{})
+	listed, err := s.callTool("sloppy_workspace", map[string]interface{}{"action": "list"})
 	if err != nil {
 		t.Fatalf("workspace_list failed: %v", err)
 	}
@@ -301,7 +301,7 @@ func TestWorkspaceTools(t *testing.T) {
 	if got, _ := listed["active_workspace_id"].(int64); got != beta.ID {
 		t.Fatalf("active_workspace_id = %d, want %d", got, beta.ID)
 	}
-	activated, err := s.callTool("workspace_activate", map[string]interface{}{"workspace_id": alpha.ID})
+	activated, err := s.callTool("sloppy_workspace", map[string]interface{}{"action": "activate", "workspace_id": alpha.ID})
 	if err != nil {
 		t.Fatalf("workspace_activate failed: %v", err)
 	}
@@ -309,7 +309,7 @@ func TestWorkspaceTools(t *testing.T) {
 	if workspace.ID != alpha.ID || !workspace.IsActive {
 		t.Fatalf("workspace_activate returned %+v", workspace)
 	}
-	got, err := s.callTool("workspace_get", map[string]interface{}{"workspace_id": alpha.ID})
+	got, err := s.callTool("sloppy_workspace", map[string]interface{}{"action": "get", "workspace_id": alpha.ID})
 	if err != nil {
 		t.Fatalf("workspace_get failed: %v", err)
 	}
@@ -342,7 +342,7 @@ func TestItemToolsRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateArtifact() error: %v", err)
 	}
-	created, err := s.callTool("item_create", map[string]interface{}{"title": "Read paper", "workspace_id": workspace.ID, "artifact_id": artifact.ID, "sphere": store.SphereWork})
+	created, err := s.callTool("sloppy_workspace", map[string]interface{}{"action": "item_create", "title": "Read paper", "workspace_id": workspace.ID, "artifact_id": artifact.ID, "sphere": store.SphereWork})
 	if err != nil {
 		t.Fatalf("item_create failed: %v", err)
 	}
@@ -350,7 +350,7 @@ func TestItemToolsRoundTrip(t *testing.T) {
 	if item.State != store.ItemStateInbox {
 		t.Fatalf("created state = %q, want %q", item.State, store.ItemStateInbox)
 	}
-	assigned, err := s.callTool("item_assign", map[string]interface{}{"item_id": item.ID, "actor_id": actor.ID})
+	assigned, err := s.callTool("sloppy_workspace", map[string]interface{}{"action": "item_assign", "item_id": item.ID, "actor_id": actor.ID})
 	if err != nil {
 		t.Fatalf("item_assign failed: %v", err)
 	}
@@ -359,7 +359,7 @@ func TestItemToolsRoundTrip(t *testing.T) {
 		t.Fatalf("assigned item = %+v", item)
 	}
 	followUp := "2026-03-09T10:11:12Z"
-	updated, err := s.callTool("item_update", map[string]interface{}{"item_id": item.ID, "title": "Read paper carefully", "follow_up_at": followUp})
+	updated, err := s.callTool("sloppy_workspace", map[string]interface{}{"action": "item_update", "item_id": item.ID, "title": "Read paper carefully", "follow_up_at": followUp})
 	if err != nil {
 		t.Fatalf("item_update failed: %v", err)
 	}
@@ -367,7 +367,7 @@ func TestItemToolsRoundTrip(t *testing.T) {
 	if item.Title != "Read paper carefully" || item.FollowUpAt == nil || *item.FollowUpAt != followUp {
 		t.Fatalf("updated item = %+v", item)
 	}
-	listed, err := s.callTool("item_list", map[string]interface{}{"state": store.ItemStateWaiting, "workspace_id": workspace.ID})
+	listed, err := s.callTool("sloppy_workspace", map[string]interface{}{"action": "item_list", "state": store.ItemStateWaiting, "workspace_id": workspace.ID})
 	if err != nil {
 		t.Fatalf("item_list failed: %v", err)
 	}
@@ -375,7 +375,7 @@ func TestItemToolsRoundTrip(t *testing.T) {
 	if len(items) != 1 || items[0].ID != item.ID {
 		t.Fatalf("item_list items = %+v", items)
 	}
-	got, err := s.callTool("item_get", map[string]interface{}{"item_id": item.ID})
+	got, err := s.callTool("sloppy_workspace", map[string]interface{}{"action": "item_get", "item_id": item.ID})
 	if err != nil {
 		t.Fatalf("item_get failed: %v", err)
 	}
@@ -392,7 +392,7 @@ func TestItemToolsRoundTrip(t *testing.T) {
 	if len(artifacts) != 1 || artifacts[0].Artifact.ID != artifact.ID || artifacts[0].Role != "source" {
 		t.Fatalf("item_get artifacts = %+v", artifacts)
 	}
-	triaged, err := s.callTool("item_triage", map[string]interface{}{"item_id": item.ID, "action": "later", "visible_after": "2026-03-10T09:00:00Z"})
+	triaged, err := s.callTool("sloppy_workspace", map[string]interface{}{"action": "item_triage", "item_id": item.ID, "triage_action": "later", "visible_after": "2026-03-10T09:00:00Z"})
 	if err != nil {
 		t.Fatalf("item_triage failed: %v", err)
 	}
@@ -408,7 +408,7 @@ func TestArtifactAndActorTools(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateWorkspace() error: %v", err)
 	}
-	createdActor, err := s.callTool("actor_create", map[string]interface{}{"name": "Codex", "kind": store.ActorKindAgent})
+	createdActor, err := s.callTool("sloppy_workspace", map[string]interface{}{"action": "actor_create", "name": "Codex", "kind": store.ActorKindAgent})
 	if err != nil {
 		t.Fatalf("actor_create failed: %v", err)
 	}
@@ -416,7 +416,7 @@ func TestArtifactAndActorTools(t *testing.T) {
 	if actor.Name != "Codex" || actor.Kind != store.ActorKindAgent {
 		t.Fatalf("actor_create returned %+v", actor)
 	}
-	listedActors, err := s.callTool("actor_list", map[string]interface{}{})
+	listedActors, err := s.callTool("sloppy_workspace", map[string]interface{}{"action": "actor_list"})
 	if err != nil {
 		t.Fatalf("actor_list failed: %v", err)
 	}
@@ -441,7 +441,7 @@ func TestArtifactAndActorTools(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateItem() error: %v", err)
 	}
-	listedArtifacts, err := s.callTool("artifact_list", map[string]interface{}{"workspace_id": workspace.ID, "kind": string(store.ArtifactKindMarkdown)})
+	listedArtifacts, err := s.callTool("sloppy_workspace", map[string]interface{}{"action": "artifact_list", "workspace_id": workspace.ID, "kind": string(store.ArtifactKindMarkdown)})
 	if err != nil {
 		t.Fatalf("artifact_list failed: %v", err)
 	}
@@ -449,7 +449,7 @@ func TestArtifactAndActorTools(t *testing.T) {
 	if len(artifacts) != 1 || artifacts[0].ID != artifact.ID {
 		t.Fatalf("artifact_list returned %+v", artifacts)
 	}
-	gotArtifact, err := s.callTool("artifact_get", map[string]interface{}{"artifact_id": artifact.ID})
+	gotArtifact, err := s.callTool("sloppy_workspace", map[string]interface{}{"action": "artifact_get", "artifact_id": artifact.ID})
 	if err != nil {
 		t.Fatalf("artifact_get failed: %v", err)
 	}
@@ -468,7 +468,7 @@ func TestWorkspaceWatchTools(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateWorkspace() error: %v", err)
 	}
-	started, err := s.callTool("workspace_watch_start", map[string]interface{}{"workspace_id": workspace.ID, "poll_interval_seconds": 15, "config_json": `{"worker":"codex"}`})
+	started, err := s.callTool("sloppy_workspace", map[string]interface{}{"action": "watch_start", "workspace_id": workspace.ID, "poll_interval_seconds": 15, "config_json": `{"worker":"codex"}`})
 	if err != nil {
 		t.Fatalf("workspace_watch_start failed: %v", err)
 	}
@@ -476,14 +476,14 @@ func TestWorkspaceWatchTools(t *testing.T) {
 	if !watch.Enabled || watch.PollIntervalSeconds != 15 {
 		t.Fatalf("workspace_watch_start returned %+v", watch)
 	}
-	status, err := s.callTool("workspace_watch_status", map[string]interface{}{"workspace_id": workspace.ID})
+	status, err := s.callTool("sloppy_workspace", map[string]interface{}{"action": "watch_status", "workspace_id": workspace.ID})
 	if err != nil {
 		t.Fatalf("workspace_watch_status failed: %v", err)
 	}
 	if got, _ := status["watch"].(store.WorkspaceWatch); got.WorkspaceID != workspace.ID {
 		t.Fatalf("workspace_watch_status returned %+v", got)
 	}
-	stopped, err := s.callTool("workspace_watch_stop", map[string]interface{}{"workspace_id": workspace.ID})
+	stopped, err := s.callTool("sloppy_workspace", map[string]interface{}{"action": "watch_stop", "workspace_id": workspace.ID})
 	if err != nil {
 		t.Fatalf("workspace_watch_stop failed: %v", err)
 	}

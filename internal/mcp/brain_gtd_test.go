@@ -228,7 +228,7 @@ func TestTaskListListRoutesByAccountID(t *testing.T) {
 		return nil, fmt.Errorf("unexpected account: %d", account.ID)
 	}
 
-	got, err := s.callTool("task_list_list", map[string]interface{}{"account_id": work.ID})
+	got, err := s.callTool("sloppy_tasks", map[string]interface{}{"action": "list_lists", "account_id": work.ID})
 	if err != nil {
 		t.Fatalf("task_list_list: %v", err)
 	}
@@ -273,7 +273,7 @@ func TestTaskListEnumeratesTasks(t *testing.T) {
 		return provider, nil
 	}
 
-	got, err := s.callTool("task_list", map[string]interface{}{"account_id": account.ID, "list_id": "list-1"})
+	got, err := s.callTool("sloppy_tasks", map[string]interface{}{"action": "list", "account_id": account.ID, "list_id": "list-1"})
 	if err != nil {
 		t.Fatalf("task_list: %v", err)
 	}
@@ -313,7 +313,7 @@ func TestTaskGetReturnsPayload(t *testing.T) {
 		return provider, nil
 	}
 
-	got, err := s.callTool("task_get", map[string]interface{}{"account_id": account.ID, "list_id": "list-1", "id": "t-1"})
+	got, err := s.callTool("sloppy_tasks", map[string]interface{}{"action": "get", "account_id": account.ID, "list_id": "list-1", "id": "t-1"})
 	if err != nil {
 		t.Fatalf("task_get: %v", err)
 	}
@@ -371,7 +371,7 @@ func TestTaskGetIncludesTodoistMetadata(t *testing.T) {
 		return provider, nil
 	}
 
-	got, err := s.callTool("task_get", map[string]interface{}{"account_id": account.ID, "list_id": "proj-1", "id": "task-1"})
+	got, err := s.callTool("sloppy_tasks", map[string]interface{}{"action": "get", "account_id": account.ID, "list_id": "proj-1", "id": "task-1"})
 	if err != nil {
 		t.Fatalf("task_get: %v", err)
 	}
@@ -417,7 +417,7 @@ func TestTaskListListPicksFirstEnabledAccountForSphere(t *testing.T) {
 		return enabledProvider, nil
 	}
 
-	got, err := s.callTool("task_list_list", map[string]interface{}{"sphere": "private"})
+	got, err := s.callTool("sloppy_tasks", map[string]interface{}{"action": "list_lists", "sphere": "private"})
 	if err != nil {
 		t.Fatalf("task_list_list(sphere=private): %v", err)
 	}
@@ -450,7 +450,7 @@ func TestTaskListListKeepsTodoistWorkScoped(t *testing.T) {
 		return workProvider, nil
 	}
 
-	got, err := s.callTool("task_list_list", map[string]interface{}{"sphere": "work"})
+	got, err := s.callTool("sloppy_tasks", map[string]interface{}{"action": "list_lists", "sphere": "work"})
 	if err != nil {
 		t.Fatalf("task_list_list(sphere=work): %v", err)
 	}
@@ -461,7 +461,7 @@ func TestTaskListListKeepsTodoistWorkScoped(t *testing.T) {
 
 func TestTaskListListWithoutAnyTasksAccountErrors(t *testing.T) {
 	s, _, _ := newDomainServerForTest(t)
-	if _, err := s.callTool("task_list_list", map[string]interface{}{}); err == nil {
+	if _, err := s.callTool("sloppy_tasks", map[string]interface{}{"action": "list_lists"}); err == nil {
 		t.Fatal("task_list_list without any tasks-capable account should error")
 	}
 }
@@ -472,7 +472,7 @@ func TestTasksProviderForToolRejectsUnsupportedProvider(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateExternalAccount(imap): %v", err)
 	}
-	_, err = s.callTool("task_list_list", map[string]interface{}{"account_id": imap.ID})
+	_, err = s.callTool("sloppy_tasks", map[string]interface{}{"action": "list_lists", "account_id": imap.ID})
 	if err == nil {
 		t.Fatal("task_list_list with imap account should error: imap is not tasks-capable")
 	}

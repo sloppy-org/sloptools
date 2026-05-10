@@ -147,7 +147,7 @@ func TestInboxSourceListIncludesGoogleTasksInboxAndBareFileSource(t *testing.T) 
 		}
 		return provider, nil
 	}
-	got, err := s.callTool("inbox.source_list", map[string]interface{}{"sphere": "private"})
+	got, err := s.callTool("sloppy_inbox", map[string]interface{}{"action": "source_list", "sphere": "private"})
 	if err != nil {
 		t.Fatalf("inbox.source_list: %v", err)
 	}
@@ -177,7 +177,7 @@ func TestInboxPlansAndAcknowledgesTaskAndFile(t *testing.T) {
 		}
 		return provider, nil
 	}
-	planned, err := s.callTool("inbox.item_plan", map[string]interface{}{"source_id": "google_tasks:private:1:inbox", "id": "milk"})
+	planned, err := s.callTool("sloppy_inbox", map[string]interface{}{"action": "item_plan", "source_id": "google_tasks:private:1:inbox", "id": "milk"})
 	if err != nil {
 		t.Fatalf("task inbox.item_plan: %v", err)
 	}
@@ -185,23 +185,23 @@ func TestInboxPlansAndAcknowledgesTaskAndFile(t *testing.T) {
 	if plan["kind"] != "shopping" || plan["language"] != "de" {
 		t.Fatalf("task plan = %#v", plan)
 	}
-	if _, err := s.callTool("inbox.item_ack", map[string]interface{}{"source_id": "google_tasks:private:1:inbox", "id": "milk"}); err == nil {
+	if _, err := s.callTool("sloppy_inbox", map[string]interface{}{"action": "item_ack", "source_id": "google_tasks:private:1:inbox", "id": "milk"}); err == nil {
 		t.Fatal("task ack without target_ref should fail")
 	}
-	if _, err := s.callTool("inbox.item_ack", map[string]interface{}{"source_id": "google_tasks:private:1:inbox", "id": "milk", "target_ref": "brain:private:shopping"}); err != nil {
+	if _, err := s.callTool("sloppy_inbox", map[string]interface{}{"action": "item_ack", "source_id": "google_tasks:private:1:inbox", "id": "milk", "target_ref": "brain:private:shopping"}); err != nil {
 		t.Fatalf("task inbox.item_ack: %v", err)
 	}
 	if provider.completeCalls != 1 {
 		t.Fatalf("completeCalls = %d, want 1", provider.completeCalls)
 	}
-	filePlan, err := s.callTool("inbox.item_plan", map[string]interface{}{"source_id": "file:private:INBOX", "id": "receipt.pdf"})
+	filePlan, err := s.callTool("sloppy_inbox", map[string]interface{}{"action": "item_plan", "source_id": "file:private:INBOX", "id": "receipt.pdf"})
 	if err != nil {
 		t.Fatalf("file inbox.item_plan: %v", err)
 	}
 	if filePlan["plan"].(map[string]interface{})["kind"] != "scan_or_document" {
 		t.Fatalf("file plan = %#v", filePlan)
 	}
-	acked, err := s.callTool("inbox.item_ack", map[string]interface{}{"source_id": "file:private:INBOX", "id": "receipt.pdf", "target_ref": "file:private:Documents/receipt.pdf", "target_path": "Documents/receipt.pdf"})
+	acked, err := s.callTool("sloppy_inbox", map[string]interface{}{"action": "item_ack", "source_id": "file:private:INBOX", "id": "receipt.pdf", "target_ref": "file:private:Documents/receipt.pdf", "target_path": "Documents/receipt.pdf"})
 	if err != nil {
 		t.Fatalf("file inbox.item_ack: %v", err)
 	}
@@ -262,7 +262,7 @@ func TestMeetingShareCreateCallsOCSWhenNoURLProvided(t *testing.T) {
 		return fake, nil
 	}
 
-	created, err := server.callTool("meeting.share.create", map[string]interface{}{
+	created, err := server.callTool("sloppy_meeting", map[string]interface{}{"action": "share_create", 
 		"config_path":    configPath,
 		"sources_config": sourcesPath,
 		"sphere":         "work",
@@ -318,7 +318,7 @@ func TestMeetingShareCreateRequiresNextcloudOrURL(t *testing.T) {
 	sourcesPath := writeMeetingsSummarySources(t, tmp, meetingsRoot, nil, "")
 
 	server := NewServer(t.TempDir())
-	if _, err := server.callTool("meeting.share.create", map[string]interface{}{
+	if _, err := server.callTool("sloppy_meeting", map[string]interface{}{"action": "share_create", 
 		"config_path":    configPath,
 		"sources_config": sourcesPath,
 		"sphere":         "work",
@@ -343,7 +343,7 @@ func TestMeetingShareRevokeCallsOCSDeleteWhenIDRecorded(t *testing.T) {
 		return fake, nil
 	}
 
-	if _, err := server.callTool("meeting.share.create", map[string]interface{}{
+	if _, err := server.callTool("sloppy_meeting", map[string]interface{}{"action": "share_create", 
 		"config_path":    configPath,
 		"sources_config": sourcesPath,
 		"sphere":         "work",
@@ -352,7 +352,7 @@ func TestMeetingShareRevokeCallsOCSDeleteWhenIDRecorded(t *testing.T) {
 		t.Fatalf("share.create: %v", err)
 	}
 
-	out, err := server.callTool("meeting.share.revoke", map[string]interface{}{
+	out, err := server.callTool("sloppy_meeting", map[string]interface{}{"action": "share_revoke", 
 		"config_path":    configPath,
 		"sources_config": sourcesPath,
 		"sphere":         "work",
@@ -388,7 +388,7 @@ func TestMeetingShareRevokeReportsLiveDeleteFailure(t *testing.T) {
 		return fake, nil
 	}
 
-	if _, err := server.callTool("meeting.share.create", map[string]interface{}{
+	if _, err := server.callTool("sloppy_meeting", map[string]interface{}{"action": "share_create", 
 		"config_path":    configPath,
 		"sources_config": sourcesPath,
 		"sphere":         "work",
@@ -397,7 +397,7 @@ func TestMeetingShareRevokeReportsLiveDeleteFailure(t *testing.T) {
 		t.Fatalf("share.create: %v", err)
 	}
 
-	if _, err := server.callTool("meeting.share.revoke", map[string]interface{}{
+	if _, err := server.callTool("sloppy_meeting", map[string]interface{}{"action": "share_revoke", 
 		"config_path":    configPath,
 		"sources_config": sourcesPath,
 		"sphere":         "work",

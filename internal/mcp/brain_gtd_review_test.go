@@ -42,7 +42,7 @@ func TestBrainGTDReviewListMailBranchIsLive(t *testing.T) {
 		},
 	}
 	s.newEmailProvider = func(context.Context, store.ExternalAccount) (email.EmailProvider, error) { return provider, nil }
-	got, err := s.callTool("brain.gtd.review_list", map[string]interface{}{
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_review_list", 
 		"sphere":  "work",
 		"sources": []interface{}{"mail"},
 	})
@@ -112,7 +112,7 @@ func TestBrainGTDReviewListDefaultSourcesExcludeTasks(t *testing.T) {
 		called++
 		return nil, fmt.Errorf("tasks provider must not be called")
 	}
-	got, err := s.callTool("brain.gtd.review_list", map[string]interface{}{
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_review_list", 
 		"config_path": configPath,
 		"sphere":      "work",
 	})
@@ -128,7 +128,7 @@ func TestBrainGTDReviewListDefaultSourcesExcludeTasks(t *testing.T) {
 			t.Fatalf("default review_list should not emit tasks deprecation: %v", errs)
 		}
 	}
-	got, err = s.callTool("brain.gtd.review_list", map[string]interface{}{
+	got, err = s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_review_list", 
 		"config_path": configPath,
 		"sphere":      "work",
 		"sources":     []interface{}{"tasks"},
@@ -200,7 +200,7 @@ wip_limit = 2
 		writeTrackedCommitment(t, tmp, fmt.Sprintf("brain/gtd/research-%d.md", i), title, statuses[i], "research")
 	}
 	s := NewServer(t.TempDir())
-	got, err := s.callTool("brain.gtd.tracks", map[string]interface{}{
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_tracks", 
 		"config_path": configPath,
 		"gtd_config":  gtdConfig,
 		"sphere":      "work",
@@ -252,7 +252,7 @@ wip_limit = 5
 	writeTrackedCommitment(t, tmp, "brain/gtd/research-waiting.md", "Wait", "waiting", "research")
 	writeTrackedCommitment(t, tmp, "brain/gtd/teaching-1.md", "Teach", "next", "teaching")
 	s := NewServer(t.TempDir())
-	got, err := s.callTool("brain.gtd.review_list", map[string]interface{}{
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_review_list", 
 		"config_path": configPath,
 		"gtd_config":  gtdConfig,
 		"sphere":      "work",
@@ -272,7 +272,7 @@ func TestBrainGTDReviewListOverWIPEmptyWhenNoConfig(t *testing.T) {
 	configPath := writeMCPBrainConfig(t, tmp)
 	writeTrackedCommitment(t, tmp, "brain/gtd/x.md", "X", "next", "research")
 	s := NewServer(t.TempDir())
-	got, err := s.callTool("brain.gtd.review_list", map[string]interface{}{
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_review_list", 
 		"config_path": configPath,
 		"gtd_config":  filepath.Join(tmp, "missing.toml"),
 		"sphere":      "work",
@@ -329,7 +329,7 @@ func TestBrainGTDReviewListExcludesShadowMailMarkdown(t *testing.T) {
 	writeDedupCommitment(t, tmp, "work", "brain/commitments/mail/m1.md", "Reply to Ada", "mail", "m1")
 	writeDedupCommitment(t, tmp, "work", "brain/gtd/manual.md", "Manual commitment", "manual", "m1")
 	s := NewServer(t.TempDir())
-	got, err := s.callTool("brain.gtd.review_list", map[string]interface{}{
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_review_list", 
 		"config_path": configPath,
 		"sphere":      "work",
 		"sources":     []interface{}{"markdown"},
@@ -361,7 +361,7 @@ func TestBrainGTDTodayCapsAtEightAndPersists(t *testing.T) {
 			"manual", fmt.Sprintf("ref-%02d", i))
 	}
 	s := NewServer(t.TempDir())
-	got, err := s.callTool("brain.gtd.today", map[string]interface{}{
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_today", 
 		"config_path": configPath,
 		"sphere":      "work",
 		"date":        "2026-05-04",
@@ -399,7 +399,7 @@ func TestBrainGTDTodayClosesTheListForLateAdditions(t *testing.T) {
 	writeDedupCommitment(t, tmp, "work", "brain/gtd/early-2.md", "Early two", "manual", "ref-2")
 
 	s := NewServer(t.TempDir())
-	first, err := s.callTool("brain.gtd.today", map[string]interface{}{
+	first, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_today", 
 		"config_path": configPath,
 		"sphere":      "work",
 		"date":        "2026-05-04",
@@ -413,7 +413,7 @@ func TestBrainGTDTodayClosesTheListForLateAdditions(t *testing.T) {
 
 	writeDedupCommitment(t, tmp, "work", "brain/gtd/late.md", "Late arrival", "manual", "ref-3")
 
-	second, err := s.callTool("brain.gtd.today", map[string]interface{}{
+	second, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_today", 
 		"config_path": configPath,
 		"sphere":      "work",
 		"date":        "2026-05-04",
@@ -434,7 +434,7 @@ func TestBrainGTDTodayClosesTheListForLateAdditions(t *testing.T) {
 		}
 	}
 
-	refreshed, err := s.callTool("brain.gtd.today", map[string]interface{}{
+	refreshed, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_today", 
 		"config_path": configPath,
 		"sphere":      "work",
 		"date":        "2026-05-04",
@@ -460,7 +460,7 @@ func TestBrainGTDTodayHonoursPinnedPathsAndFamilyFloor(t *testing.T) {
 	writeDedupCommitment(t, tmp, "work", "brain/gtd/pinned.md", "Pinned outcome", "manual", "ref-pin")
 
 	s := NewServer(t.TempDir())
-	got, err := s.callTool("brain.gtd.today", map[string]interface{}{
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_today", 
 		"config_path":          configPath,
 		"sphere":               "work",
 		"date":                 "2026-05-04",

@@ -196,7 +196,7 @@ func TestContactListRoutesByAccountID(t *testing.T) {
 		return nil, fmt.Errorf("unexpected account: %d", account.ID)
 	}
 
-	got, err := s.callTool("contact_list", map[string]interface{}{"account_id": work.ID})
+	got, err := s.callTool("sloppy_contacts", map[string]interface{}{"action": "list", "account_id": work.ID})
 	if err != nil {
 		t.Fatalf("contact_list: %v", err)
 	}
@@ -248,7 +248,7 @@ func TestContactListPicksFirstEnabledAccountForSphere(t *testing.T) {
 		return enabledProvider, nil
 	}
 
-	got, err := s.callTool("contact_list", map[string]interface{}{"sphere": "private"})
+	got, err := s.callTool("sloppy_contacts", map[string]interface{}{"action": "list", "sphere": "private"})
 	if err != nil {
 		t.Fatalf("contact_list(sphere=private): %v", err)
 	}
@@ -262,7 +262,7 @@ func TestContactListPicksFirstEnabledAccountForSphere(t *testing.T) {
 
 func TestContactListWithoutAnyContactsAccountErrors(t *testing.T) {
 	s, _, _ := newDomainServerForTest(t)
-	if _, err := s.callTool("contact_list", map[string]interface{}{}); err == nil {
+	if _, err := s.callTool("sloppy_contacts", map[string]interface{}{"action": "list"}); err == nil {
 		t.Fatal("contact_list without any contacts-capable account should error")
 	}
 }
@@ -273,7 +273,7 @@ func TestContactListRejectsNonContactsAccount(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateExternalAccount(imap): %v", err)
 	}
-	if _, err := s.callTool("contact_list", map[string]interface{}{"account_id": imap.ID}); err == nil {
+	if _, err := s.callTool("sloppy_contacts", map[string]interface{}{"action": "list", "account_id": imap.ID}); err == nil {
 		t.Fatal("contact_list with imap account should error: imap is not contacts-capable")
 	}
 }
@@ -289,7 +289,7 @@ func TestContactCreateUpdateDeleteRoundTrip(t *testing.T) {
 		return provider, nil
 	}
 
-	created, err := s.callTool("contact_create", map[string]interface{}{
+	created, err := s.callTool("sloppy_contacts", map[string]interface{}{"action": "create", 
 		"account_id": account.ID,
 		"contact": map[string]interface{}{
 			"name":         "Marie Curie",
@@ -319,7 +319,7 @@ func TestContactCreateUpdateDeleteRoundTrip(t *testing.T) {
 		t.Fatalf("birthday = %v, want 1867-11-07", contact["birthday"])
 	}
 
-	updated, err := s.callTool("contact_update", map[string]interface{}{
+	updated, err := s.callTool("sloppy_contacts", map[string]interface{}{"action": "update", 
 		"account_id": account.ID,
 		"contact": map[string]interface{}{
 			"provider_ref": providerRef,
@@ -341,7 +341,7 @@ func TestContactCreateUpdateDeleteRoundTrip(t *testing.T) {
 		t.Fatalf("updated name = %v", updatedContact["name"])
 	}
 
-	got, err := s.callTool("contact_get", map[string]interface{}{"account_id": account.ID, "id": providerRef})
+	got, err := s.callTool("sloppy_contacts", map[string]interface{}{"action": "get", "account_id": account.ID, "id": providerRef})
 	if err != nil {
 		t.Fatalf("contact_get: %v", err)
 	}
@@ -349,7 +349,7 @@ func TestContactCreateUpdateDeleteRoundTrip(t *testing.T) {
 		t.Fatalf("get returned stale contact")
 	}
 
-	deleted, err := s.callTool("contact_delete", map[string]interface{}{"account_id": account.ID, "id": providerRef})
+	deleted, err := s.callTool("sloppy_contacts", map[string]interface{}{"action": "delete", "account_id": account.ID, "id": providerRef})
 	if err != nil {
 		t.Fatalf("contact_delete: %v", err)
 	}
@@ -374,10 +374,10 @@ func TestContactCreateRequiresContactArg(t *testing.T) {
 	s.newContactsProvider = func(_ context.Context, _ store.ExternalAccount) (contacts.Provider, error) {
 		return provider, nil
 	}
-	if _, err := s.callTool("contact_create", map[string]interface{}{"account_id": account.ID}); err == nil {
+	if _, err := s.callTool("sloppy_contacts", map[string]interface{}{"action": "create", "account_id": account.ID}); err == nil {
 		t.Fatal("contact_create without contact arg should error")
 	}
-	if _, err := s.callTool("contact_create", map[string]interface{}{"account_id": account.ID, "contact": map[string]interface{}{}}); err == nil {
+	if _, err := s.callTool("sloppy_contacts", map[string]interface{}{"action": "create", "account_id": account.ID, "contact": map[string]interface{}{}}); err == nil {
 		t.Fatal("contact_create with empty contact should error")
 	}
 	if provider.createCalls != 0 {
@@ -394,7 +394,7 @@ func TestContactUpdateRequiresProviderRef(t *testing.T) {
 	s.newContactsProvider = func(_ context.Context, _ store.ExternalAccount) (contacts.Provider, error) {
 		return &fakeContactsProvider{name: "exchange_ews_contacts"}, nil
 	}
-	if _, err := s.callTool("contact_update", map[string]interface{}{"account_id": account.ID, "contact": map[string]interface{}{"name": "Anon"}}); err == nil {
+	if _, err := s.callTool("sloppy_contacts", map[string]interface{}{"action": "update", "account_id": account.ID, "contact": map[string]interface{}{"name": "Anon"}}); err == nil {
 		t.Fatal("contact_update without provider_ref should error")
 	}
 }

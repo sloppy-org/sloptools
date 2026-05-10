@@ -176,19 +176,9 @@ func (s *Server) dispatchToolCall(params map[string]interface{}) (map[string]int
 }
 
 func (s *Server) callTool(name string, args map[string]interface{}) (map[string]interface{}, error) {
-	sid := strArg(args, "session_id")
-	for _, dispatch := range []func(string, string, map[string]interface{}) toolDispatchResult{
-		s.callCanvasTool,
-		s.callCoreTool,
-		s.callCalendarTool,
-		s.callMailTool,
-		s.callContactTool,
-		s.callAuxTool,
-	} {
-		result := dispatch(sid, name, args)
-		if result.ok {
-			return result.payload, result.err
-		}
+	result := s.callConsolidatedTool(name, args)
+	if result.ok {
+		return result.payload, result.err
 	}
 	return nil, errors.New("unknown tool: " + name)
 }

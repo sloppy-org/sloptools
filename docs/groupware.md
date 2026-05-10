@@ -61,6 +61,19 @@ Authoritative interface declarations (Go file:line):
 
 Key: `✓` = fully supported, `partial` = supported with limitations, `✗` = not supported, `—` = not applicable.
 
+## Consolidated MCP tools
+
+Groupware functions are exposed through consolidated action-dispatched tools. Pass `action` to select the operation.
+
+- `sloppy_mail` — mail operations (account_list, message_list, send, reply, flag_set, flag_clear, categories_set, oof_get, oof_set, delegate_list, commitment_list, commitment_close, …)
+- `sloppy_calendar` — calendar operations (list, events, event_create, event_get, event_update, freebusy, …)
+- `sloppy_contacts` — contacts operations (list, get, search, create, update, delete, group_list, photo_get)
+- `sloppy_tasks` — tasks operations (list_lists, list, get, create, update, complete, delete, …)
+- `sloppy_evernote` — Evernote operations (notebook_list, note_search, note_get)
+- `sloppy_inbox` — inbox capture operations (source_list, item_list, item_plan, item_ack)
+
+The sections below document the underlying operations available via each consolidated tool.
+
 ## Mail tools
 
 ### `mail_account_list`

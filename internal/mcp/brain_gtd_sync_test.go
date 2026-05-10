@@ -20,7 +20,7 @@ func TestBrainGTDSetStatusAutomaticallySyncsCommitment(t *testing.T) {
 	writeGTDSyncMeeting(t, root, "[ ] Send alpha budget <!-- gtd:alpha -->")
 	writeGTDSyncCommitment(t, root, "next")
 
-	got, err := s.callTool("brain.gtd.set_status", map[string]interface{}{"config_path": configPath, "sources_config": sourcesPath, "sphere": "work", "path": "brain/gtd/sync.md", "status": "closed", "closed_at": "2026-04-29T14:00:00Z"})
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_set_status", "config_path": configPath, "sources_config": sourcesPath, "sphere": "work", "path": "brain/gtd/sync.md", "status": "closed", "closed_at": "2026-04-29T14:00:00Z"})
 	if err != nil {
 		t.Fatalf("brain.gtd.set_status: %v", err)
 	}
@@ -34,7 +34,7 @@ func TestBrainGTDSetStatusAutomaticallySyncsCommitment(t *testing.T) {
 	if mailProvider.markReadCalls != 1 || taskProvider.completeCalls != 1 {
 		t.Fatalf("provider calls mail=%d todoist=%d, want 1 each", mailProvider.markReadCalls, taskProvider.completeCalls)
 	}
-	parsed, err := s.callTool("brain.note.parse", map[string]interface{}{"config_path": configPath, "sphere": "work", "path": "brain/gtd/sync.md"})
+	parsed, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "note_parse", "config_path": configPath, "sphere": "work", "path": "brain/gtd/sync.md"})
 	if err != nil {
 		t.Fatalf("parse status commitment: %v", err)
 	}
@@ -53,7 +53,7 @@ func TestBrainGTDSyncRequiresSourcesConfigWriteableOptIn(t *testing.T) {
 	writeGTDSyncMeeting(t, root, "[ ] Send alpha budget <!-- gtd:alpha -->")
 	writeGTDSyncCommitment(t, root, "closed")
 
-	got, err := s.callTool("brain.gtd.sync", map[string]interface{}{"config_path": configPath, "sphere": "work"})
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_sync", "config_path": configPath, "sphere": "work"})
 	if err != nil {
 		t.Fatalf("brain.gtd.sync without sources config: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestBrainGTDSyncPeriodicReadsGitHubAndGitLabBindings(t *testing.T) {
 	})
 	defer restore()
 
-	got, err := s.callTool("brain.gtd.sync", map[string]interface{}{"config_path": configPath, "sources_config": sourcesPath, "sphere": "work", "periodic": true})
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_sync", "config_path": configPath, "sources_config": sourcesPath, "sphere": "work", "periodic": true})
 	if err != nil {
 		t.Fatalf("brain.gtd.sync periodic issue bindings: %v", err)
 	}
@@ -120,7 +120,7 @@ func TestBrainGTDSyncPushesIssueBindingsAndManualNoop(t *testing.T) {
 	})
 	defer restore()
 
-	got, err := s.callTool("brain.gtd.sync", map[string]interface{}{"config_path": configPath, "sources_config": sourcesPath, "sphere": "work"})
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_sync", "config_path": configPath, "sources_config": sourcesPath, "sphere": "work"})
 	if err != nil {
 		t.Fatalf("brain.gtd.sync issue push: %v", err)
 	}

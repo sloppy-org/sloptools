@@ -5,10 +5,245 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/sloppy-org/sloptools/internal/email"
-	"github.com/sloppy-org/sloptools/internal/providerdata"
 	"github.com/sloppy-org/sloptools/internal/store"
 )
+
+func (s *Server) callConsolidatedTool(name string, args map[string]interface{}) toolDispatchResult {
+	action := strings.TrimSpace(strArg(args, "action"))
+	sid := strArg(args, "session_id")
+	switch name {
+	case "sloppy_mail":
+		switch action {
+		case "account_list":
+			return handledTool(s.mailAccountList(args))
+		case "label_list":
+			return handledTool(s.mailLabelList(args))
+		case "message_list":
+			return handledTool(s.mailMessageList(args))
+		case "message_get":
+			return handledTool(s.mailMessageGet(args))
+		case "attachment_get":
+			return handledTool(s.mailAttachmentGet(args))
+		case "send":
+			return handledTool(s.mailSend(args))
+		case "draft_send":
+			return handledTool(s.mailDraftSend(args))
+		case "reply":
+			return handledTool(s.mailReply(args))
+		case "mail_action":
+			return handledTool(s.mailAction(args))
+		case "message_copy":
+			return handledTool(s.mailMessageCopy(args))
+		case "flag_set":
+			return handledTool(s.mailFlagSet(args))
+		case "flag_clear":
+			return handledTool(s.mailFlagClear(args))
+		case "categories_set":
+			return handledTool(s.mailCategoriesSet(args))
+		case "server_filter_list":
+			return handledTool(s.mailServerFilterList(args))
+		case "server_filter_upsert":
+			return handledTool(s.mailServerFilterUpsert(args))
+		case "server_filter_delete":
+			return handledTool(s.mailServerFilterDelete(args))
+		case "oof_get":
+			return handledTool(s.callMailboxSettingsTool("mail_oof_get", args))
+		case "oof_set":
+			return handledTool(s.callMailboxSettingsTool("mail_oof_set", args))
+		case "delegate_list":
+			return handledTool(s.callMailboxSettingsTool("mail_delegate_list", args))
+		case "commitment_list":
+			return handledTool(s.mailCommitmentList(args))
+		case "commitment_close":
+			return handledTool(s.mailCommitmentClose(args))
+		default:
+			return handledTool(nil, fmt.Errorf("sloppy_mail: unknown action %q", action))
+		}
+	case "sloppy_calendar":
+		switch action {
+		case "list":
+			return handledTool(s.calendarList(args))
+		case "events":
+			return handledTool(s.calendarEvents(args))
+		case "event_create":
+			return handledTool(s.calendarEventCreate(args))
+		case "freebusy":
+			return handledTool(s.calendarFreeBusy(args))
+		case "event_get":
+			return handledTool(s.dispatchCalendarEvent("calendar_event_get", args))
+		case "event_update":
+			return handledTool(s.dispatchCalendarEvent("calendar_event_update", args))
+		case "event_delete":
+			return handledTool(s.dispatchCalendarEvent("calendar_event_delete", args))
+		case "event_respond":
+			return handledTool(s.dispatchCalendarEvent("calendar_event_respond", args))
+		case "event_ics_export":
+			return handledTool(s.dispatchCalendarEvent("calendar_event_ics_export", args))
+		default:
+			return handledTool(nil, fmt.Errorf("sloppy_calendar: unknown action %q", action))
+		}
+	case "sloppy_tasks":
+		switch action {
+		case "list_lists":
+			return handledTool(s.dispatchTasks("task_list_list", args))
+		case "list_create":
+			return handledTool(s.dispatchTasks("task_list_create", args))
+		case "list_delete":
+			return handledTool(s.dispatchTasks("task_list_delete", args))
+		case "list":
+			return handledTool(s.dispatchTasks("task_list", args))
+		case "get":
+			return handledTool(s.dispatchTasks("task_get", args))
+		case "create":
+			return handledTool(s.dispatchTasks("task_create", args))
+		case "update":
+			return handledTool(s.dispatchTasks("task_update", args))
+		case "complete":
+			return handledTool(s.dispatchTasks("task_complete", args))
+		case "delete":
+			return handledTool(s.dispatchTasks("task_delete", args))
+		default:
+			return handledTool(nil, fmt.Errorf("sloppy_tasks: unknown action %q", action))
+		}
+	case "sloppy_contacts":
+		switch action {
+		case "list":
+			return handledTool(s.contactList(args))
+		case "get":
+			return handledTool(s.contactGet(args))
+		case "search":
+			return handledTool(s.contactSearch(args))
+		case "create":
+			return handledTool(s.contactCreate(args))
+		case "update":
+			return handledTool(s.contactUpdate(args))
+		case "delete":
+			return handledTool(s.contactDelete(args))
+		case "group_list":
+			return handledTool(s.contactGroupList(args))
+		case "photo_get":
+			return handledTool(s.contactPhotoGet(args))
+		default:
+			return handledTool(nil, fmt.Errorf("sloppy_contacts: unknown action %q", action))
+		}
+	case "sloppy_brain":
+		brainMethod := brainActionToMethod(action)
+		if brainMethod == "" {
+			return handledTool(nil, fmt.Errorf("sloppy_brain: unknown action %q", action))
+		}
+		return handledTool(s.dispatchBrain(brainMethod, args))
+	case "sloppy_workspace":
+		switch action {
+		case "list":
+			return handledTool(s.workspaceList(args))
+		case "activate":
+			return handledTool(s.workspaceActivate(args))
+		case "get":
+			return handledTool(s.workspaceGet(args))
+		case "watch_start":
+			return handledTool(s.workspaceWatchStart(args))
+		case "watch_stop":
+			return handledTool(s.workspaceWatchStop(args))
+		case "watch_status":
+			return handledTool(s.workspaceWatchStatus(args))
+		case "item_list":
+			return handledTool(s.itemList(args))
+		case "item_get":
+			return handledTool(s.itemGet(args))
+		case "item_create":
+			return handledTool(s.itemCreate(args))
+		case "item_triage":
+			return handledTool(s.itemTriage(args))
+		case "item_assign":
+			return handledTool(s.itemAssign(args))
+		case "item_update":
+			return handledTool(s.itemUpdate(args))
+		case "artifact_get":
+			return handledTool(s.artifactGet(args))
+		case "artifact_list":
+			return handledTool(s.artifactList(args))
+		case "actor_list":
+			return handledTool(s.actorList(args))
+		case "actor_create":
+			return handledTool(s.actorCreate(args))
+		default:
+			return handledTool(nil, fmt.Errorf("sloppy_workspace: unknown action %q", action))
+		}
+	case "sloppy_evernote":
+		switch action {
+		case "notebook_list":
+			return handledTool(s.dispatchEvernote("evernote_notebook_list", args))
+		case "note_search":
+			return handledTool(s.dispatchEvernote("evernote_note_search", args))
+		case "note_get":
+			return handledTool(s.dispatchEvernote("evernote_note_get", args))
+		default:
+			return handledTool(nil, fmt.Errorf("sloppy_evernote: unknown action %q", action))
+		}
+	case "sloppy_inbox":
+		switch action {
+		case "source_list":
+			return handledTool(s.dispatchInbox("inbox.source_list", args))
+		case "item_list":
+			return handledTool(s.dispatchInbox("inbox.item_list", args))
+		case "item_plan":
+			return handledTool(s.dispatchInbox("inbox.item_plan", args))
+		case "item_ack":
+			return handledTool(s.dispatchInbox("inbox.item_ack", args))
+		default:
+			return handledTool(nil, fmt.Errorf("sloppy_inbox: unknown action %q", action))
+		}
+	case "sloppy_meeting":
+		switch action {
+		case "summary_draft":
+			return handledTool(s.dispatchMeetingTool("meeting.summary.draft", args))
+		case "summary_send":
+			return handledTool(s.dispatchMeetingTool("meeting.summary.send", args))
+		case "share_create":
+			return handledTool(s.dispatchMeetingTool("meeting.share.create", args))
+		case "share_revoke":
+			return handledTool(s.dispatchMeetingTool("meeting.share.revoke", args))
+		default:
+			return handledTool(nil, fmt.Errorf("sloppy_meeting: unknown action %q", action))
+		}
+	case "sloppy_canvas":
+		switch action {
+		case "session_open":
+			return handledTool(s.dispatchCanvas(sid, "canvas_session_open", args))
+		case "artifact_show":
+			return handledTool(s.dispatchCanvas(sid, "canvas_artifact_show", args))
+		case "status":
+			return handledTool(s.dispatchCanvas(sid, "canvas_status", args))
+		case "import_handoff":
+			return handledTool(s.dispatchCanvas(sid, "canvas_import_handoff", args))
+		default:
+			return handledTool(nil, fmt.Errorf("sloppy_canvas: unknown action %q", action))
+		}
+	case "sloppy_handoff":
+		switch action {
+		case "create":
+			return handledTool(s.handoffCreate(args))
+		case "peek":
+			return handledTool(s.handoffPeek(args))
+		case "consume":
+			return handledTool(s.handoffConsume(args))
+		case "revoke":
+			return handledTool(s.handoffRevoke(args))
+		case "status":
+			return handledTool(s.handoffStatus(args))
+		case "temp_create":
+			return handledTool(s.tempFileCreate(args))
+		case "temp_remove":
+			return handledTool(s.tempFileRemove(args))
+		default:
+			return handledTool(nil, fmt.Errorf("sloppy_handoff: unknown action %q", action))
+		}
+	case "sloppy_tool_help":
+		return handledTool(toolHelpHandler(args))
+	default:
+		return unhandledTool()
+	}
+}
 
 type toolDispatchResult struct {
 	payload map[string]interface{}
@@ -22,170 +257,6 @@ func handledTool(payload map[string]interface{}, err error) toolDispatchResult {
 
 func unhandledTool() toolDispatchResult {
 	return toolDispatchResult{}
-}
-
-func (s *Server) callCanvasTool(sid, name string, args map[string]interface{}) toolDispatchResult {
-	switch name {
-	case "canvas_session_open", "canvas_activate", "canvas_artifact_show", "canvas_render_text", "canvas_render_image", "canvas_render_pdf", "canvas_clear", "canvas_status", "canvas_history", "canvas_import_handoff":
-		return handledTool(s.dispatchCanvas(sid, name, args))
-	default:
-		return unhandledTool()
-	}
-}
-
-func (s *Server) callCoreTool(_, name string, args map[string]interface{}) toolDispatchResult {
-	switch name {
-	case "handoff.create":
-		return handledTool(s.handoffCreate(args))
-	case "handoff.peek":
-		return handledTool(s.handoffPeek(args))
-	case "handoff.consume":
-		return handledTool(s.handoffConsume(args))
-	case "handoff.revoke":
-		return handledTool(s.handoffRevoke(args))
-	case "handoff.status":
-		return handledTool(s.handoffStatus(args))
-	case "temp_file_create":
-		return handledTool(s.tempFileCreate(args))
-	case "temp_file_remove":
-		return handledTool(s.tempFileRemove(args))
-	case "workspace_list":
-		return handledTool(s.workspaceList(args))
-	case "workspace_activate":
-		return handledTool(s.workspaceActivate(args))
-	case "workspace_get":
-		return handledTool(s.workspaceGet(args))
-	case "workspace_watch_start":
-		return handledTool(s.workspaceWatchStart(args))
-	case "workspace_watch_stop":
-		return handledTool(s.workspaceWatchStop(args))
-	case "workspace_watch_status":
-		return handledTool(s.workspaceWatchStatus(args))
-	case "item_list":
-		return handledTool(s.itemList(args))
-	case "item_get":
-		return handledTool(s.itemGet(args))
-	case "item_create":
-		return handledTool(s.itemCreate(args))
-	case "item_triage":
-		return handledTool(s.itemTriage(args))
-	case "item_assign":
-		return handledTool(s.itemAssign(args))
-	case "item_update":
-		return handledTool(s.itemUpdate(args))
-	case "artifact_get":
-		return handledTool(s.artifactGet(args))
-	case "artifact_list":
-		return handledTool(s.artifactList(args))
-	case "actor_list":
-		return handledTool(s.actorList(args))
-	case "actor_create":
-		return handledTool(s.actorCreate(args))
-	default:
-		return unhandledTool()
-	}
-}
-
-func (s *Server) callCalendarTool(_, name string, args map[string]interface{}) toolDispatchResult {
-	switch name {
-	case "calendar_list":
-		return handledTool(s.calendarList(args))
-	case "calendar_events":
-		return handledTool(s.calendarEvents(args))
-	case "calendar_event_create":
-		return handledTool(s.calendarEventCreate(args))
-	case "calendar_freebusy":
-		return handledTool(s.calendarFreeBusy(args))
-	case "calendar_event_get", "calendar_event_update", "calendar_event_delete", "calendar_event_respond", "calendar_event_ics_export":
-		return handledTool(s.dispatchCalendarEvent(name, args))
-	default:
-		return unhandledTool()
-	}
-}
-
-func (s *Server) callMailTool(_, name string, args map[string]interface{}) toolDispatchResult {
-	switch name {
-	case "mail_account_list":
-		return handledTool(s.mailAccountList(args))
-	case "mail_label_list":
-		return handledTool(s.mailLabelList(args))
-	case "mail_message_list":
-		return handledTool(s.mailMessageList(args))
-	case "mail_message_get":
-		return handledTool(s.mailMessageGet(args))
-	case "mail_commitment_list":
-		return handledTool(s.mailCommitmentList(args))
-	case "mail_commitment_close":
-		return handledTool(s.mailCommitmentClose(args))
-	case "mail_attachment_get":
-		return handledTool(s.mailAttachmentGet(args))
-	case "mail_action":
-		return handledTool(s.mailAction(args))
-	case "mail_send":
-		return handledTool(s.mailSend(args))
-	case "mail_draft_send":
-		return handledTool(s.mailDraftSend(args))
-	case "mail_reply":
-		return handledTool(s.mailReply(args))
-	case "mail_message_copy":
-		return handledTool(s.mailMessageCopy(args))
-	case "mail_server_filter_list":
-		return handledTool(s.mailServerFilterList(args))
-	case "mail_server_filter_upsert":
-		return handledTool(s.mailServerFilterUpsert(args))
-	case "mail_server_filter_delete":
-		return handledTool(s.mailServerFilterDelete(args))
-	case "mail_flag_set":
-		return handledTool(s.mailFlagSet(args))
-	case "mail_flag_clear":
-		return handledTool(s.mailFlagClear(args))
-	case "mail_categories_set":
-		return handledTool(s.mailCategoriesSet(args))
-	case "mail_oof_get", "mail_oof_set", "mail_delegate_list":
-		return handledTool(s.callMailboxSettingsTool(name, args))
-	default:
-		return unhandledTool()
-	}
-}
-
-func (s *Server) callContactTool(_, name string, args map[string]interface{}) toolDispatchResult {
-	switch name {
-	case "contact_list":
-		return handledTool(s.contactList(args))
-	case "contact_get":
-		return handledTool(s.contactGet(args))
-	case "contact_search":
-		return handledTool(s.contactSearch(args))
-	case "contact_create":
-		return handledTool(s.contactCreate(args))
-	case "contact_update":
-		return handledTool(s.contactUpdate(args))
-	case "contact_delete":
-		return handledTool(s.contactDelete(args))
-	case "contact_group_list":
-		return handledTool(s.contactGroupList(args))
-	case "contact_photo_get":
-		return handledTool(s.contactPhotoGet(args))
-	default:
-		return unhandledTool()
-	}
-}
-
-func (s *Server) callAuxTool(_, name string, args map[string]interface{}) toolDispatchResult {
-	switch name {
-	case "inbox.source_list", "inbox.item_list", "inbox.item_plan", "inbox.item_ack":
-		return handledTool(s.dispatchInbox(name, args))
-	case "task_list_list", "task_list_create", "task_list_delete", "task_list", "task_get", "task_create", "task_update", "task_complete", "task_delete":
-		return handledTool(s.dispatchTasks(name, args))
-	case "evernote_notebook_list", "evernote_note_search", "evernote_note_get":
-		return handledTool(s.dispatchEvernote(name, args))
-	case "brain.config.get", "brain.vault.list", "brain.note.parse", "brain.note.validate", "brain.note.write", "brain.vault.validate", "brain.links.resolve", "brain.folder.parse", "brain.folder.validate", "brain.folder.links", "brain.folder.audit", "brain.glossary.parse", "brain.glossary.validate", "brain.attention.parse", "brain.attention.validate", "brain.entities.candidates", "brain.gtd.parse", "brain.gtd.list", "brain.gtd.tracks", "brain.gtd.focus", "brain.projects.render", "brain.projects.list", "brain.gtd.write", "brain.gtd.bulk_link", "brain.gtd.organize", "brain.gtd.resurface", "brain.gtd.dashboard", "brain.gtd.today", "brain.gtd.review_batch", "brain.gtd.ingest", "brain.search", "brain.backlinks", "brain_search", "brain_backlinks", "brain.gtd.bind", "brain.gtd.dedup_scan", "brain.gtd.dedup_review_apply", "brain.gtd.dedup_history", "brain.gtd.review_list", "brain.gtd.set_status", "brain.gtd.sync", "brain.people.dashboard", "brain.people.render", "brain.people.brief", "brain.people.monthly_index", "brain.meeting.kickoff":
-		return handledTool(s.dispatchBrain(name, args))
-	case "meeting.summary.draft", "meeting.summary.send", "meeting.share.create", "meeting.share.revoke":
-		return handledTool(s.dispatchMeetingTool(name, args))
-	default:
-		return unhandledTool()
-	}
 }
 
 func firstCapableAccount(st *store.Store, sphere, capability string, isCapable func(string) bool) (store.ExternalAccount, error) {
@@ -319,172 +390,3 @@ func removeRequired(schema map[string]interface{}, field string) {
 	schema["required"] = filtered
 }
 
-type affectedRef struct {
-	Domain      string `json:"domain"`
-	Kind        string `json:"kind"`
-	Provider    string `json:"provider,omitempty"`
-	AccountID   int64  `json:"account_id,omitempty"`
-	ID          string `json:"id,omitempty"`
-	PreviousID  string `json:"previous_id,omitempty"`
-	ContainerID string `json:"container_id,omitempty"`
-	Path        string `json:"path,omitempty"`
-	Sphere      string `json:"sphere,omitempty"`
-}
-
-func withAffected(result map[string]interface{}, refs ...affectedRef) map[string]interface{} {
-	compact := compactAffectedRefs(refs...)
-	if len(compact) > 0 {
-		result["affected"] = compact
-	}
-	return result
-}
-
-func compactAffectedRefs(refs ...affectedRef) []affectedRef {
-	out := make([]affectedRef, 0, len(refs))
-	seen := map[string]struct{}{}
-	for _, ref := range refs {
-		ref.Domain = strings.TrimSpace(ref.Domain)
-		ref.Kind = strings.TrimSpace(ref.Kind)
-		ref.Provider = strings.TrimSpace(ref.Provider)
-		ref.ID = strings.TrimSpace(ref.ID)
-		ref.PreviousID = strings.TrimSpace(ref.PreviousID)
-		ref.ContainerID = strings.TrimSpace(ref.ContainerID)
-		ref.Path = strings.TrimSpace(ref.Path)
-		ref.Sphere = strings.TrimSpace(ref.Sphere)
-		if ref.Kind == "" || (ref.ID == "" && ref.Path == "") {
-			continue
-		}
-		key := strings.Join([]string{
-			ref.Domain,
-			ref.Kind,
-			ref.Provider,
-			ref.Sphere,
-			ref.Path,
-			ref.ContainerID,
-			ref.PreviousID,
-			ref.ID,
-		}, "\x00")
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		out = append(out, ref)
-	}
-	return out
-}
-
-func brainCommitmentAffectedRef(sphere, path string) affectedRef {
-	return affectedRef{
-		Domain:   "brain",
-		Kind:     "gtd_commitment",
-		Provider: "markdown",
-		ID:       path,
-		Path:     path,
-		Sphere:   sphere,
-	}
-}
-
-func brainCommitmentAffectedRefs(sphere string, paths []string) []affectedRef {
-	refs := make([]affectedRef, 0, len(paths))
-	for _, path := range paths {
-		refs = append(refs, brainCommitmentAffectedRef(sphere, path))
-	}
-	return compactAffectedRefs(refs...)
-}
-
-func mailMessageAffectedRefs(account store.ExternalAccount, messageIDs []string, resolutions []email.ActionResolution) []affectedRef {
-	refs := make([]affectedRef, 0, len(messageIDs)+len(resolutions))
-	provider := strings.TrimSpace(account.Provider)
-	skipIDs := map[string]struct{}{}
-	for _, resolution := range resolutions {
-		id := strings.TrimSpace(resolution.ResolvedMessageID)
-		if id == "" {
-			id = strings.TrimSpace(resolution.OriginalMessageID)
-		}
-		if id != "" {
-			skipIDs[id] = struct{}{}
-		}
-		if original := strings.TrimSpace(resolution.OriginalMessageID); original != "" {
-			skipIDs[original] = struct{}{}
-		}
-		refs = append(refs, affectedRef{
-			Domain:     "mail",
-			Kind:       "message",
-			Provider:   provider,
-			AccountID:  account.ID,
-			ID:         id,
-			PreviousID: resolution.OriginalMessageID,
-		})
-	}
-	for _, messageID := range messageIDs {
-		if _, ok := skipIDs[strings.TrimSpace(messageID)]; ok {
-			continue
-		}
-		refs = append(refs, affectedRef{
-			Domain:    "mail",
-			Kind:      "message",
-			Provider:  provider,
-			AccountID: account.ID,
-			ID:        messageID,
-		})
-	}
-	return compactAffectedRefs(refs...)
-}
-
-func taskAffectedRef(account store.ExternalAccount, providerName string, item providerdata.TaskItem) affectedRef {
-	id := strings.TrimSpace(item.ID)
-	if id == "" {
-		id = strings.TrimSpace(item.ProviderRef)
-	}
-	return affectedRef{
-		Domain:      "tasks",
-		Kind:        "task",
-		Provider:    strings.TrimSpace(providerName),
-		AccountID:   account.ID,
-		ID:          id,
-		ContainerID: strings.TrimSpace(item.ListID),
-	}
-}
-
-func taskAffectedRefByID(account store.ExternalAccount, providerName, listID, id string) affectedRef {
-	return affectedRef{
-		Domain:      "tasks",
-		Kind:        "task",
-		Provider:    strings.TrimSpace(providerName),
-		AccountID:   account.ID,
-		ID:          strings.TrimSpace(id),
-		ContainerID: strings.TrimSpace(listID),
-	}
-}
-
-func calendarEventAffectedRef(account store.ExternalAccount, providerName, sphere, calendarID, eventID string) affectedRef {
-	return affectedRef{
-		Domain:      "calendar",
-		Kind:        "event",
-		Provider:    strings.TrimSpace(providerName),
-		AccountID:   account.ID,
-		ID:          strings.TrimSpace(eventID),
-		ContainerID: strings.TrimSpace(calendarID),
-		Sphere:      strings.TrimSpace(sphere),
-	}
-}
-
-func calendarEventAffectedRefFromEvent(account store.ExternalAccount, providerName, sphere string, event providerdata.Event) affectedRef {
-	return calendarEventAffectedRef(account, providerName, sphere, event.CalendarID, event.ID)
-}
-
-func gtdSyncAffectedRefs(sphere string, actions []gtdSyncAction) []affectedRef {
-	paths := make([]string, 0, len(actions))
-	for _, action := range actions {
-		path := strings.TrimSpace(action.Path)
-		switch action.Action {
-		case "", "manual_noop", "upstream_already_closed":
-			continue
-		}
-		if path == "" || action.DryRun {
-			continue
-		}
-		paths = append(paths, path)
-	}
-	return brainCommitmentAffectedRefs(sphere, paths)
-}

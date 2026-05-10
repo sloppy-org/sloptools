@@ -164,8 +164,11 @@ func (s *Server) itemTriage(args map[string]interface{}) (map[string]interface{}
 	if err != nil {
 		return nil, err
 	}
-	action := strings.ToLower(strings.TrimSpace(strArg(args, "action")))
-	switch action {
+	triageAction := strings.ToLower(strings.TrimSpace(strArg(args, "triage_action")))
+	if triageAction == "" {
+		triageAction = strings.ToLower(strings.TrimSpace(strArg(args, "action")))
+	}
+	switch triageAction {
 	case "done":
 		err = st.TriageItemDone(itemID)
 	case "later":
@@ -181,12 +184,12 @@ func (s *Server) itemTriage(args map[string]interface{}) (map[string]interface{}
 	case "someday":
 		err = st.TriageItemSomeday(itemID)
 	default:
-		return nil, errors.New("action must be one of done, later, delegate, delete, someday")
+		return nil, errors.New("triage_action must be one of done, later, delegate, delete, someday")
 	}
 	if err != nil {
 		return nil, err
 	}
-	if action == "delete" {
+	if triageAction == "delete" {
 		return map[string]interface{}{"deleted": true, "item_id": itemID}, nil
 	}
 	item, err := st.GetItem(itemID)

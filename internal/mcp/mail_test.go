@@ -30,7 +30,7 @@ func TestMailHandoffLifecycle(t *testing.T) {
 	s.newEmailProvider = func(context.Context, store.ExternalAccount) (email.EmailProvider, error) {
 		return provider, nil
 	}
-	created, err := s.callTool("handoff.create", map[string]interface{}{"kind": "mail", "selector": map[string]interface{}{"account_id": account.ID, "message_ids": []interface{}{"m1", "m2"}}, "policy": map[string]interface{}{"max_consumes": 2}})
+	created, err := s.callTool("sloppy_handoff", map[string]interface{}{"action": "create", "kind": "mail", "selector": map[string]interface{}{"account_id": account.ID, "message_ids": []interface{}{"m1", "m2"}}, "policy": map[string]interface{}{"max_consumes": 2}})
 	if err != nil {
 		t.Fatalf("handoff.create failed: %v", err)
 	}
@@ -59,7 +59,7 @@ func TestMailHandoffLifecycle(t *testing.T) {
 	if got := intValue(t, policySummary["remaining_consumes"]); got != 2 {
 		t.Fatalf("remaining_consumes = %d", got)
 	}
-	peeked, err := s.callTool("handoff.peek", map[string]interface{}{"handoff_id": handoffID})
+	peeked, err := s.callTool("sloppy_handoff", map[string]interface{}{"action": "peek", "handoff_id": handoffID})
 	if err != nil {
 		t.Fatalf("handoff.peek failed: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestMailHandoffLifecycle(t *testing.T) {
 	if _, ok := peekMap["payload"]; ok {
 		t.Fatalf("handoff.peek payload = %#v, want none", peekMap["payload"])
 	}
-	consumed, err := s.callTool("handoff.consume", map[string]interface{}{"handoff_id": handoffID})
+	consumed, err := s.callTool("sloppy_handoff", map[string]interface{}{"action": "consume", "handoff_id": handoffID})
 	if err != nil {
 		t.Fatalf("handoff.consume failed: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestMailHandoffLifecycle(t *testing.T) {
 	if got := intValue(t, policyState["remaining_consumes"]); got != 1 {
 		t.Fatalf("remaining_consumes = %d", got)
 	}
-	status, err := s.callTool("handoff.status", map[string]interface{}{"handoff_id": handoffID})
+	status, err := s.callTool("sloppy_handoff", map[string]interface{}{"action": "status", "handoff_id": handoffID})
 	if err != nil {
 		t.Fatalf("handoff.status failed: %v", err)
 	}
@@ -116,7 +116,7 @@ func TestMailHandoffLifecycle(t *testing.T) {
 	if got := intValue(t, statusPolicy["consumed_count"]); got != 1 {
 		t.Fatalf("status consumed_count = %d", got)
 	}
-	revoked, err := s.callTool("handoff.revoke", map[string]interface{}{"handoff_id": handoffID})
+	revoked, err := s.callTool("sloppy_handoff", map[string]interface{}{"action": "revoke", "handoff_id": handoffID})
 	if err != nil {
 		t.Fatalf("handoff.revoke failed: %v", err)
 	}
@@ -124,7 +124,7 @@ func TestMailHandoffLifecycle(t *testing.T) {
 	if !boolValue(t, revokedMap["revoked"]) {
 		t.Fatalf("revoked = %#v", revokedMap["revoked"])
 	}
-	if _, err := s.callTool("handoff.consume", map[string]interface{}{"handoff_id": handoffID}); err == nil {
+	if _, err := s.callTool("sloppy_handoff", map[string]interface{}{"action": "consume", "handoff_id": handoffID}); err == nil {
 		t.Fatal("handoff.consume after revoke error = nil")
 	}
 }
@@ -139,15 +139,15 @@ func TestMailHandoffConsumeLimit(t *testing.T) {
 	s.newEmailProvider = func(context.Context, store.ExternalAccount) (email.EmailProvider, error) {
 		return provider, nil
 	}
-	created, err := s.callTool("handoff.create", map[string]interface{}{"kind": "mail", "selector": map[string]interface{}{"account_id": account.ID, "message_id": "m1"}})
+	created, err := s.callTool("sloppy_handoff", map[string]interface{}{"action": "create", "kind": "mail", "selector": map[string]interface{}{"account_id": account.ID, "message_id": "m1"}})
 	if err != nil {
 		t.Fatalf("handoff.create failed: %v", err)
 	}
 	handoffID := stringValue(t, normalizeMap(t, created)["handoff_id"])
-	if _, err := s.callTool("handoff.consume", map[string]interface{}{"handoff_id": handoffID}); err != nil {
+	if _, err := s.callTool("sloppy_handoff", map[string]interface{}{"action": "consume", "handoff_id": handoffID}); err != nil {
 		t.Fatalf("first handoff.consume failed: %v", err)
 	}
-	_, err = s.callTool("handoff.consume", map[string]interface{}{"handoff_id": handoffID})
+	_, err = s.callTool("sloppy_handoff", map[string]interface{}{"action": "consume", "handoff_id": handoffID})
 	if err == nil {
 		t.Fatal("second handoff.consume error = nil")
 	}
@@ -163,15 +163,15 @@ func TestHandoffToolDefinitions(t *testing.T) {
 		name, _ := def["name"].(string)
 		names[name] = def
 	}
-	for _, name := range []string{"handoff.create", "handoff.peek", "handoff.consume", "handoff.revoke", "handoff.status"} {
-		if names[name] == nil {
-			t.Fatalf("%s missing from tool definitions", name)
-		}
+	if names["sloppy_handoff"] == nil {
+		t.Fatal("sloppy_handoff missing from tool definitions")
 	}
-	schema, _ := names["handoff.create"]["inputSchema"].(map[string]interface{})
-	props, _ := schema["properties"].(map[string]interface{})
-	if props["selector"] == nil || props["policy"] == nil {
-		t.Fatalf("handoff.create properties = %#v", props)
+	// Verify sloppy_handoff description covers handoff actions.
+	desc, _ := names["sloppy_handoff"]["description"].(string)
+	for _, action := range []string{"create", "peek", "consume", "revoke", "status"} {
+		if !strings.Contains(desc, action) {
+			t.Errorf("sloppy_handoff description missing action %q", action)
+		}
 	}
 }
 
@@ -319,8 +319,8 @@ func setupComposeFixture(t *testing.T) (*Server, store.ExternalAccount, *fakeDra
 
 func TestMailSendDispatchBuildsMultipartAndSends(t *testing.T) {
 	s, account, provider := setupComposeFixture(t)
-	args := map[string]interface{}{"account_id": float64(account.ID), "to": []interface{}{"alice@example.com"}, "cc": []interface{}{"Bob <bob@example.com>"}, "subject": "Test", "body": "Hello there.", "attachments": []interface{}{map[string]interface{}{"filename": "hello.txt", "content_base64": base64.StdEncoding.EncodeToString([]byte("file-content")), "content_type": "text/plain"}}}
-	out, err := s.callTool("mail_send", args)
+	args := map[string]interface{}{"action": "send", "account_id": float64(account.ID), "to": []interface{}{"alice@example.com"}, "cc": []interface{}{"Bob <bob@example.com>"}, "subject": "Test", "body": "Hello there.", "attachments": []interface{}{map[string]interface{}{"filename": "hello.txt", "content_base64": base64.StdEncoding.EncodeToString([]byte("file-content")), "content_type": "text/plain"}}}
+	out, err := s.callTool("sloppy_mail", args)
 	if err != nil {
 		t.Fatalf("mail_send error: %v", err)
 	}
@@ -358,7 +358,7 @@ func TestMailSendDispatchBuildsMultipartAndSends(t *testing.T) {
 
 func TestMailSendDraftOnlyDoesNotSend(t *testing.T) {
 	s, account, provider := setupComposeFixture(t)
-	out, err := s.callTool("mail_send", map[string]interface{}{"account_id": float64(account.ID), "to": []interface{}{"alice@example.com"}, "subject": "Test", "body": "Hello.", "draft_only": true})
+	out, err := s.callTool("sloppy_mail", map[string]interface{}{"action": "send", "account_id": float64(account.ID), "to": []interface{}{"alice@example.com"}, "subject": "Test", "body": "Hello.", "draft_only": true})
 	if err != nil {
 		t.Fatalf("mail_send error: %v", err)
 	}
@@ -372,7 +372,7 @@ func TestMailSendDraftOnlyDoesNotSend(t *testing.T) {
 
 func TestMailReplyBottomPostDefault(t *testing.T) {
 	s, account, provider := setupComposeFixture(t)
-	out, err := s.callTool("mail_reply", map[string]interface{}{"account_id": float64(account.ID), "message_id": "m1", "body": "Confirmed, reverting."})
+	out, err := s.callTool("sloppy_mail", map[string]interface{}{"action": "reply", "account_id": float64(account.ID), "message_id": "m1", "body": "Confirmed, reverting."})
 	if err != nil {
 		t.Fatalf("mail_reply error: %v", err)
 	}
@@ -408,7 +408,7 @@ func TestMailReplyBottomPostDefault(t *testing.T) {
 
 func TestMailReplyTopPostBusinessStyle(t *testing.T) {
 	s, account, provider := setupComposeFixture(t)
-	out, err := s.callTool("mail_reply", map[string]interface{}{"account_id": float64(account.ID), "message_id": "m1", "body": "Thank you, attached.", "quote_style": "top_post"})
+	out, err := s.callTool("sloppy_mail", map[string]interface{}{"action": "reply", "account_id": float64(account.ID), "message_id": "m1", "body": "Thank you, attached.", "quote_style": "top_post"})
 	if err != nil {
 		t.Fatalf("mail_reply error: %v", err)
 	}
@@ -424,7 +424,7 @@ func TestMailReplyTopPostBusinessStyle(t *testing.T) {
 
 func TestMailReplyAllAddsOriginalRecipients(t *testing.T) {
 	s, account, provider := setupComposeFixture(t)
-	if _, err := s.callTool("mail_reply", map[string]interface{}{"account_id": float64(account.ID), "message_id": "m1", "body": "Thanks.", "reply_all": true}); err != nil {
+	if _, err := s.callTool("sloppy_mail", map[string]interface{}{"action": "reply", "account_id": float64(account.ID), "message_id": "m1", "body": "Thanks.", "reply_all": true}); err != nil {
 		t.Fatalf("mail_reply error: %v", err)
 	}
 	if len(provider.lastDraft.Cc) != 1 || provider.lastDraft.Cc[0] != "gcc-patches@gcc.gnu.org" {
@@ -452,7 +452,7 @@ func (p *minimalDraftProvider) SendDraft(_ context.Context, _ string, _ email.Dr
 
 func TestMailDraftSendDispatchesSendExistingDraft(t *testing.T) {
 	s, account, provider := setupComposeFixture(t)
-	out, err := s.callTool("mail_draft_send", map[string]interface{}{"account_id": float64(account.ID), "draft_id": "draft-abc"})
+	out, err := s.callTool("sloppy_mail", map[string]interface{}{"action": "draft_send", "account_id": float64(account.ID), "draft_id": "draft-abc"})
 	if err != nil {
 		t.Fatalf("mail_draft_send error: %v", err)
 	}
@@ -478,7 +478,7 @@ func TestMailDraftSendDispatchesSendExistingDraft(t *testing.T) {
 
 func TestMailDraftSendRequiresDraftID(t *testing.T) {
 	s, account, _ := setupComposeFixture(t)
-	if _, err := s.callTool("mail_draft_send", map[string]interface{}{"account_id": float64(account.ID)}); err == nil {
+	if _, err := s.callTool("sloppy_mail", map[string]interface{}{"action": "draft_send", "account_id": float64(account.ID)}); err == nil {
 		t.Fatalf("expected error when draft_id is missing")
 	}
 }

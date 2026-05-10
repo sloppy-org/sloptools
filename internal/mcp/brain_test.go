@@ -28,7 +28,7 @@ func TestCalendarEventRespondPassesInviteResponse(t *testing.T) {
 	s.newCalendarProvider = func(context.Context, store.ExternalAccount) (tabcalendar.Provider, error) {
 		return stub, nil
 	}
-	got, err := s.callTool("calendar_event_respond", map[string]interface{}{
+	got, err := s.callTool("sloppy_calendar", map[string]interface{}{"action": "event_respond", 
 		"event_id": "evt-1", "response": "accepted", "comment": "I'll be there",
 	})
 	if err != nil {
@@ -64,7 +64,7 @@ func TestCalendarEventRespondCapabilityUnsupported(t *testing.T) {
 	s.newCalendarProvider = func(context.Context, store.ExternalAccount) (tabcalendar.Provider, error) {
 		return stub, nil
 	}
-	_, err = s.callTool("calendar_event_respond", map[string]interface{}{
+	_, err = s.callTool("sloppy_calendar", map[string]interface{}{"action": "event_respond", 
 		"event_id": "evt-1", "response": "accepted",
 	})
 	if err == nil {
@@ -91,7 +91,7 @@ func TestCalendarEventRespondInvalidResponse(t *testing.T) {
 	s.newCalendarProvider = func(context.Context, store.ExternalAccount) (tabcalendar.Provider, error) {
 		return stub, nil
 	}
-	_, err = s.callTool("calendar_event_respond", map[string]interface{}{
+	_, err = s.callTool("sloppy_calendar", map[string]interface{}{"action": "event_respond", 
 		"event_id": "evt-1", "response": "maybe",
 	})
 	if err == nil {
@@ -118,7 +118,7 @@ func TestCalendarEventIcsExportUsesCapabilityWhenPresent(t *testing.T) {
 	s.newCalendarProvider = func(context.Context, store.ExternalAccount) (tabcalendar.Provider, error) {
 		return stub, nil
 	}
-	got, err := s.callTool("calendar_event_ics_export", map[string]interface{}{"event_id": "evt-1"})
+	got, err := s.callTool("sloppy_calendar", map[string]interface{}{"action": "event_ics_export", "event_id": "evt-1"})
 	if err != nil {
 		t.Fatalf("calendar_event_ics_export failed: %v", err)
 	}
@@ -155,7 +155,7 @@ func TestCalendarEventIcsExportSyntheticFallback(t *testing.T) {
 	s.newCalendarProvider = func(context.Context, store.ExternalAccount) (tabcalendar.Provider, error) {
 		return stub, nil
 	}
-	got, err := s.callTool("calendar_event_ics_export", map[string]interface{}{"event_id": "evt-1"})
+	got, err := s.callTool("sloppy_calendar", map[string]interface{}{"action": "event_ics_export", "event_id": "evt-1"})
 	if err != nil {
 		t.Fatalf("calendar_event_ics_export synthetic fallback failed: %v", err)
 	}
@@ -192,7 +192,7 @@ func TestCalendarEventIcsExportMissingEventID(t *testing.T) {
 	s.newCalendarProvider = func(context.Context, store.ExternalAccount) (tabcalendar.Provider, error) {
 		return &stubCalendarProvider{}, nil
 	}
-	_, err = s.callTool("calendar_event_ics_export", map[string]interface{}{})
+	_, err = s.callTool("sloppy_calendar", map[string]interface{}{"action": "event_ics_export"})
 	if err == nil {
 		t.Fatalf("expected error for missing event_id, got nil")
 	}
@@ -306,7 +306,7 @@ func TestCalendarEventRespondMissingFields(t *testing.T) {
 	s.newCalendarProvider = func(context.Context, store.ExternalAccount) (tabcalendar.Provider, error) {
 		return stub, nil
 	}
-	_, err = s.callTool("calendar_event_respond", map[string]interface{}{"event_id": "evt-1"})
+	_, err = s.callTool("sloppy_calendar", map[string]interface{}{"action": "event_respond", "event_id": "evt-1"})
 	if err == nil {
 		t.Fatalf("expected error for missing response, got nil")
 	}
@@ -331,7 +331,7 @@ func TestICSExporterReturnsError(t *testing.T) {
 	s.newCalendarProvider = func(context.Context, store.ExternalAccount) (tabcalendar.Provider, error) {
 		return stub, nil
 	}
-	_, err = s.callTool("calendar_event_ics_export", map[string]interface{}{"event_id": "evt-1"})
+	_, err = s.callTool("sloppy_calendar", map[string]interface{}{"action": "event_ics_export", "event_id": "evt-1"})
 	if err == nil {
 		t.Fatalf("expected error from ExportICS, got nil")
 	}

@@ -101,7 +101,7 @@ func TestMailDelegateListReturnsDelegatesAndSharedMailboxes(t *testing.T) {
 		return provider, nil
 	}
 
-	got, err := s.callTool("mail_delegate_list", map[string]interface{}{"account_id": account.ID})
+	got, err := s.callTool("sloppy_mail", map[string]interface{}{"action": "delegate_list", "account_id": account.ID})
 	if err != nil {
 		t.Fatalf("mail_delegate_list: %v", err)
 	}
@@ -153,7 +153,7 @@ func TestMailDelegateListReturnsCapabilityUnsupportedForNonDelegationProvider(t 
 		return &fakeOOFProvider{name: "fake_no_delegation"}, nil
 	}
 
-	got, err := s.callTool("mail_delegate_list", map[string]interface{}{"account_id": account.ID})
+	got, err := s.callTool("sloppy_mail", map[string]interface{}{"action": "delegate_list", "account_id": account.ID})
 	if err != nil {
 		t.Fatalf("mail_delegate_list: %v", err)
 	}
@@ -180,7 +180,7 @@ func TestMailDelegateListSurfacesUnsupportedErrorFromDelegatesListAsCapabilityCo
 		return provider, nil
 	}
 
-	got, err := s.callTool("mail_delegate_list", map[string]interface{}{"account_id": account.ID})
+	got, err := s.callTool("sloppy_mail", map[string]interface{}{"action": "delegate_list", "account_id": account.ID})
 	if err != nil {
 		t.Fatalf("mail_delegate_list: %v", err)
 	}
@@ -245,7 +245,7 @@ email: ada@example.com
 	sourcesPath := writeMeetingsSummarySources(t, tmp, meetingsRoot, map[string]string{"Charles Babbage": "babbage@example.com"}, "")
 
 	server := NewServer(t.TempDir())
-	got, err := server.callTool("meeting.summary.draft", map[string]interface{}{
+	got, err := server.callTool("sloppy_meeting", map[string]interface{}{"action": "summary_draft", 
 		"config_path":    configPath,
 		"sources_config": sourcesPath,
 		"sphere":         "work",
@@ -312,7 +312,7 @@ email: brain@example.com
 	sourcesPath := writeMeetingsSummarySources(t, tmp, meetingsRoot, map[string]string{"Ada Lovelace": "override@example.com"}, "")
 
 	server := NewServer(t.TempDir())
-	got, err := server.callTool("meeting.summary.draft", map[string]interface{}{
+	got, err := server.callTool("sloppy_meeting", map[string]interface{}{"action": "summary_draft", 
 		"config_path":    configPath,
 		"sources_config": sourcesPath,
 		"sphere":         "work",
@@ -345,7 +345,7 @@ func TestMeetingSummaryDraftEmitsNeedsRecipientWhenEmailMissing(t *testing.T) {
 	sourcesPath := writeMeetingsSummarySources(t, tmp, meetingsRoot, nil, "")
 
 	server := NewServer(t.TempDir())
-	got, err := server.callTool("meeting.summary.draft", map[string]interface{}{
+	got, err := server.callTool("sloppy_meeting", map[string]interface{}{"action": "summary_draft", 
 		"config_path":    configPath,
 		"sources_config": sourcesPath,
 		"sphere":         "work",
@@ -392,7 +392,7 @@ email: ada@example.com
 	sourcesPath := writeMeetingsSummarySources(t, tmp, meetingsRoot, nil, "https://cloud.example/s/{vault_relative_path}")
 
 	server := NewServer(t.TempDir())
-	got, err := server.callTool("meeting.summary.draft", map[string]interface{}{
+	got, err := server.callTool("sloppy_meeting", map[string]interface{}{"action": "summary_draft", 
 		"config_path":    configPath,
 		"sources_config": sourcesPath,
 		"sphere":         "work",
@@ -423,7 +423,7 @@ func TestMeetingShareCreateAndRevokeRoundTrip(t *testing.T) {
 	sourcesPath := writeMeetingsSummarySources(t, tmp, meetingsRoot, nil, "")
 
 	server := NewServer(t.TempDir())
-	created, err := server.callTool("meeting.share.create", map[string]interface{}{
+	created, err := server.callTool("sloppy_meeting", map[string]interface{}{"action": "share_create", 
 		"config_path":    configPath,
 		"sources_config": sourcesPath,
 		"sphere":         "work",
@@ -454,7 +454,7 @@ func TestMeetingShareCreateAndRevokeRoundTrip(t *testing.T) {
 	if state.URL != "https://cloud.example/s/AAA" || state.Permissions != "edit" {
 		t.Fatalf("state = %#v", state)
 	}
-	if _, err := server.callTool("meeting.share.revoke", map[string]interface{}{
+	if _, err := server.callTool("sloppy_meeting", map[string]interface{}{"action": "share_revoke", 
 		"config_path":    configPath,
 		"sources_config": sourcesPath,
 		"sphere":         "work",
