@@ -124,7 +124,7 @@ func newMailToolsFixture(t *testing.T) (*Server, store.ExternalAccount, *fakeMai
 
 func TestMailToolsActAndFilter(t *testing.T) {
 	s, account, provider := newMailToolsFixture(t)
-	acted, err := s.callTool("mail_action", map[string]interface{}{"account_id": account.ID, "action": "archive_label", "message_ids": []interface{}{"m1"}, "label": "project-x"})
+	acted, err := s.callTool("sloppy_mail", map[string]interface{}{"action": "mail_action", "account_id": account.ID, "mail_action": "archive_label", "message_ids": []interface{}{"m1"}, "label": "project-x"})
 	if err != nil {
 		t.Fatalf("mail_action failed: %v", err)
 	}
@@ -138,7 +138,7 @@ func TestMailToolsActAndFilter(t *testing.T) {
 	if affected.Domain != "mail" || affected.Kind != "message" || affected.ID != "m1" || affected.AccountID != account.ID {
 		t.Fatalf("affected = %#v", affected)
 	}
-	filters, err := s.callTool("mail_server_filter_list", map[string]interface{}{"account_id": account.ID})
+	filters, err := s.callTool("sloppy_mail", map[string]interface{}{"action": "server_filter_list", "account_id": account.ID})
 	if err != nil {
 		t.Fatalf("mail_server_filter_list failed: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestMailToolsActAndFilter(t *testing.T) {
 	if len(gotFilters) != 1 || gotFilters[0].ID != "f1" {
 		t.Fatalf("filters = %+v", gotFilters)
 	}
-	upserted, err := s.callTool("mail_server_filter_upsert", map[string]interface{}{"account_id": account.ID, "filter": map[string]interface{}{"name": "Archive updates", "enabled": true, "action": map[string]interface{}{"archive": true}}})
+	upserted, err := s.callTool("sloppy_mail", map[string]interface{}{"action": "server_filter_upsert", "account_id": account.ID, "filter": map[string]interface{}{"name": "Archive updates", "enabled": true, "action": map[string]interface{}{"archive": true}}})
 	if err != nil {
 		t.Fatalf("mail_server_filter_upsert failed: %v", err)
 	}
@@ -154,7 +154,7 @@ func TestMailToolsActAndFilter(t *testing.T) {
 	if gotFilter.ID == "" || gotFilter.Name != "Archive updates" {
 		t.Fatalf("filter = %+v", gotFilter)
 	}
-	deleted, err := s.callTool("mail_server_filter_delete", map[string]interface{}{"account_id": account.ID, "filter_id": "generated"})
+	deleted, err := s.callTool("sloppy_mail", map[string]interface{}{"action": "server_filter_delete", "account_id": account.ID, "filter_id": "generated"})
 	if err != nil {
 		t.Fatalf("mail_server_filter_delete failed: %v", err)
 	}
@@ -173,7 +173,7 @@ func TestMailActionResolvesTargetsFromQuery(t *testing.T) {
 	s.newEmailProvider = func(context.Context, store.ExternalAccount) (email.EmailProvider, error) {
 		return provider, nil
 	}
-	acted, err := s.callTool("mail_action", map[string]interface{}{"account_id": account.ID, "action": "archive", "query": "from:newsletter@example.com newer_than:7d", "limit": 2})
+	acted, err := s.callTool("sloppy_mail", map[string]interface{}{"action": "mail_action", "account_id": account.ID, "mail_action": "archive", "query": "from:newsletter@example.com newer_than:7d", "limit": 2})
 	if err != nil {
 		t.Fatalf("mail_action failed: %v", err)
 	}
@@ -219,7 +219,7 @@ func TestMailActionDeferResolvesTargetsFromQuery(t *testing.T) {
 	s.newEmailProvider = func(context.Context, store.ExternalAccount) (email.EmailProvider, error) {
 		return provider, nil
 	}
-	acted, err := s.callTool("mail_action", map[string]interface{}{"account_id": account.ID, "action": "defer", "query": "from:newsletter@example.com newer_than:7d", "limit": 2, "until": untilAt.Format(time.RFC3339)})
+	acted, err := s.callTool("sloppy_mail", map[string]interface{}{"action": "mail_action", "account_id": account.ID, "mail_action": "defer", "query": "from:newsletter@example.com newer_than:7d", "limit": 2, "until": untilAt.Format(time.RFC3339)})
 	if err != nil {
 		t.Fatalf("mail_action failed: %v", err)
 	}
@@ -268,7 +268,7 @@ func TestMailActionRejectsMissingIDsAndQuery(t *testing.T) {
 	s.newEmailProvider = func(context.Context, store.ExternalAccount) (email.EmailProvider, error) {
 		return &fakeMailProvider{}, nil
 	}
-	_, err = s.callTool("mail_action", map[string]interface{}{"account_id": account.ID, "action": "archive"})
+	_, err = s.callTool("sloppy_mail", map[string]interface{}{"action": "mail_action", "account_id": account.ID, "mail_action": "archive"})
 	if err == nil {
 		t.Fatal("mail_action error = nil, want missing target error")
 	}
@@ -285,7 +285,7 @@ func TestMailActionDeferRequiresUntil(t *testing.T) {
 	s.newEmailProvider = func(context.Context, store.ExternalAccount) (email.EmailProvider, error) {
 		return &fakeMailProvider{supportsDefer: true}, nil
 	}
-	_, err = s.callTool("mail_action", map[string]interface{}{"account_id": account.ID, "action": "defer", "message_ids": []interface{}{"m1"}})
+	_, err = s.callTool("sloppy_mail", map[string]interface{}{"action": "mail_action", "account_id": account.ID, "mail_action": "defer", "message_ids": []interface{}{"m1"}})
 	if err == nil {
 		t.Fatal("mail_action error = nil, want missing until error")
 	}
@@ -302,7 +302,7 @@ func TestMailActionDeferRejectsUnsupportedProvider(t *testing.T) {
 	s.newEmailProvider = func(context.Context, store.ExternalAccount) (email.EmailProvider, error) {
 		return &fakeMailProvider{}, nil
 	}
-	_, err = s.callTool("mail_action", map[string]interface{}{"account_id": account.ID, "action": "defer", "message_ids": []interface{}{"m1"}, "until": "2030-03-20T15:04:05Z"})
+	_, err = s.callTool("sloppy_mail", map[string]interface{}{"action": "mail_action", "account_id": account.ID, "mail_action": "defer", "message_ids": []interface{}{"m1"}, "until": "2030-03-20T15:04:05Z"})
 	if err == nil {
 		t.Fatal("mail_action error = nil, want unsupported defer error")
 	}
@@ -347,7 +347,7 @@ func TestMailActionLogsAndReconcilesExchangeBindings(t *testing.T) {
 	s.newEmailProvider = func(context.Context, store.ExternalAccount) (email.EmailProvider, error) {
 		return provider, nil
 	}
-	acted, err := s.callTool("mail_action", map[string]interface{}{"account_id": account.ID, "action": "trash", "message_ids": []interface{}{"m1"}})
+	acted, err := s.callTool("sloppy_mail", map[string]interface{}{"action": "mail_action", "account_id": account.ID, "mail_action": "trash", "message_ids": []interface{}{"m1"}})
 	if err != nil {
 		t.Fatalf("mail_action failed: %v", err)
 	}
@@ -408,7 +408,7 @@ func TestCanvasImportHandoffFileText(t *testing.T) {
 	projectDir := t.TempDir()
 	s := NewServer(projectDir)
 	s.SetAdapter(canvas.NewAdapter(projectDir, nil))
-	got, err := s.callTool("canvas_import_handoff", map[string]interface{}{"session_id": "s1", "handoff_id": "h1", "producer_mcp_url": producer.URL, "title": "Imported File"})
+	got, err := s.callTool("sloppy_canvas", map[string]interface{}{"action": "import_handoff", "session_id": "s1", "handoff_id": "h1", "producer_mcp_url": producer.URL, "title": "Imported File"})
 	if err != nil {
 		t.Fatalf("canvas_import_handoff failed: %v", err)
 	}

@@ -13,36 +13,24 @@ import (
 )
 
 func TestBrainSurfaceExportsLockedMutatingTools(t *testing.T) {
-	want := []string{
-		"brain.note.parse",
-		"brain.note.validate",
-		"brain.note.write",
-		"brain.vault.validate",
-		"brain.links.resolve",
-		"brain.search",
-		"brain.backlinks",
-		"brain.gtd.parse",
-		"brain.gtd.list",
-		"brain.gtd.tracks",
-		"brain.gtd.focus",
-		"brain.projects.render",
-		"brain.projects.list",
-		"brain.gtd.write",
-		"brain.gtd.bulk_link",
-		"brain.gtd.organize",
-		"brain.gtd.resurface",
-		"brain.gtd.dashboard",
-		"brain.gtd.review_batch",
-		"brain.gtd.ingest",
-		"brain.people.brief",
-	}
 	names := make(map[string]bool, len(surface.MCPTools))
 	for _, tool := range surface.MCPTools {
 		names[tool.Name] = true
 	}
-	for _, name := range want {
-		if !names[name] {
-			t.Fatalf("surface missing required brain tool %q", name)
+	if !names["sloppy_brain"] {
+		t.Fatal("surface missing sloppy_brain tool")
+	}
+	// Verify sloppy_brain description covers key brain actions.
+	var brainTool surface.Tool
+	for _, tool := range surface.MCPTools {
+		if tool.Name == "sloppy_brain" {
+			brainTool = tool
+			break
+		}
+	}
+	for _, action := range []string{"note_parse", "gtd_write", "people_brief", "gtd_focus"} {
+		if !strings.Contains(brainTool.Description, action) {
+			t.Errorf("sloppy_brain description missing action %q", action)
 		}
 	}
 }
@@ -62,7 +50,7 @@ func TestBrainPeopleDashboardAggregatesOpenLoops(t *testing.T) {
 	writePeopleCommitment(t, tmp, "other.md", "next", "Other person task", "", []string{"Other Person"}, "", recent)
 
 	s := NewServer(t.TempDir())
-	got, err := s.callTool("brain.people.dashboard", map[string]interface{}{
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "people_dashboard", 
 		"config_path": configPath,
 		"sphere":      "work",
 		"name":        "Ada",
@@ -85,7 +73,7 @@ func TestBrainPeopleDashboardResolvesFoldedParentheticalPerson(t *testing.T) {
 	writePeopleCommitment(t, tmp, "owe.md", "next", "Send outline", "", []string{"Zoe Example"}, "", "")
 
 	s := NewServer(t.TempDir())
-	got, err := s.callTool("brain.people.dashboard", map[string]interface{}{
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "people_dashboard", 
 		"config_path": configPath,
 		"sphere":      "work",
 		"name":        "Zoe",
@@ -107,7 +95,7 @@ func TestBrainPeopleRenderReplacesOnlyCurrentOpenLoops(t *testing.T) {
 	writePeopleCommitment(t, tmp, "owe.md", "next", "Send recommendation", "", []string{"Ada Example"}, "", "")
 
 	s := NewServer(t.TempDir())
-	got, err := s.callTool("brain.people.render", map[string]interface{}{
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "people_render", 
 		"config_path": configPath,
 		"sphere":      "work",
 		"name":        "Ada Example",
@@ -132,7 +120,7 @@ func TestBrainPeopleRenderReplacesOnlyCurrentOpenLoops(t *testing.T) {
 		t.Fatalf("rendered person note invalid: %#v\n%s", diags, rendered)
 	}
 	firstInfo := statPeopleFile(t, personPath)
-	second, err := s.callTool("brain.people.render", map[string]interface{}{
+	second, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "people_render", 
 		"config_path": configPath,
 		"sphere":      "work",
 		"name":        "Ada Example",
@@ -154,7 +142,7 @@ func TestBrainPeopleRenderEmptyAndMissingPerson(t *testing.T) {
 	personPath := writePersonNote(t, tmp, "Ada Example", "# Ada Example\n")
 
 	s := NewServer(t.TempDir())
-	got, err := s.callTool("brain.people.render", map[string]interface{}{
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "people_render", 
 		"config_path": configPath,
 		"sphere":      "work",
 		"name":        "Ada Example",
@@ -168,7 +156,7 @@ func TestBrainPeopleRenderEmptyAndMissingPerson(t *testing.T) {
 	if !strings.Contains(readPeopleFile(t, personPath), "## Current open loops\n\n_None at present._\n") {
 		t.Fatalf("missing empty state:\n%s", readPeopleFile(t, personPath))
 	}
-	missing, err := s.callTool("brain.people.render", map[string]interface{}{
+	missing, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "people_render", 
 		"config_path": configPath,
 		"sphere":      "work",
 		"name":        "Missing Person",
@@ -191,7 +179,7 @@ func TestBrainCatalogTools(t *testing.T) {
 		configPath := writeMCPBrainConfig(t, tmp)
 		s := NewServer(t.TempDir())
 
-		got, err := s.callTool("brain.vault.list", map[string]interface{}{
+		got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "vault_list", 
 			"config_path": configPath,
 		})
 		if err != nil {
@@ -238,7 +226,7 @@ Free prose.
 `)
 
 		s := NewServer(t.TempDir())
-		got, err := s.callTool("brain.folder.audit", map[string]interface{}{
+		got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "folder_audit", 
 			"config_path": configPath,
 			"sphere":      "work",
 		})
@@ -309,7 +297,7 @@ Neoclassical toroidal viscosity.
 `)
 
 		s := NewServer(t.TempDir())
-		got, err := s.callTool("brain.entities.candidates", map[string]interface{}{
+		got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "entities_candidates", 
 			"config_path": configPath,
 			"sphere":      "work",
 		})
@@ -353,7 +341,7 @@ Send the reply.
 `)
 
 		s := NewServer(t.TempDir())
-		parsed, err := s.callTool("brain.gtd.parse", map[string]interface{}{
+		parsed, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_parse", 
 			"config_path": configPath,
 			"sphere":      "work",
 		})
@@ -363,7 +351,7 @@ Send the reply.
 		if parsed["count"].(int) != 1 {
 			t.Fatalf("parse count = %#v", parsed["count"])
 		}
-		listed, err := s.callTool("brain.gtd.list", map[string]interface{}{
+		listed, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_list", 
 			"config_path": configPath,
 			"sphere":      "work",
 			"status":      "next",
@@ -400,21 +388,21 @@ match.people = ["Ada Example"]
 `)
 
 	s := NewServer(t.TempDir())
-	linked, err := s.callTool("brain.gtd.bulk_link", map[string]interface{}{"config_path": configPath, "sphere": "work", "rules": rulesPath})
+	linked, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_bulk_link", "config_path": configPath, "sphere": "work", "rules": rulesPath})
 	if err != nil {
 		t.Fatalf("brain.gtd.bulk_link: %v", err)
 	}
 	if linked["linked"] != 1 {
 		t.Fatalf("linked = %#v, want 1", linked["linked"])
 	}
-	rendered, err := s.callTool("brain.projects.render", map[string]interface{}{"config_path": configPath, "sphere": "work", "hub": "brain/projects/Alpha.md"})
+	rendered, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "projects_render", "config_path": configPath, "sphere": "work", "hub": "brain/projects/Alpha.md"})
 	if err != nil {
 		t.Fatalf("brain.projects.render: %v", err)
 	}
 	if rendered["changed"] != true {
 		t.Fatalf("changed = %#v, want true", rendered["changed"])
 	}
-	listed, err := s.callTool("brain.projects.list", map[string]interface{}{"config_path": configPath, "sphere": "work"})
+	listed, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "projects_list", "config_path": configPath, "sphere": "work"})
 	if err != nil {
 		t.Fatalf("brain.projects.list: %v", err)
 	}
@@ -427,14 +415,14 @@ func TestBrainPeopleMonthlyIndexDispatch(t *testing.T) {
 	tmp := t.TempDir()
 	configPath := writeMCPBrainConfig(t, tmp)
 	writeMCPBrainFile(t, filepath.Join(tmp, "work", "brain", "people", "Ada.md"), "# Ada\n## Log\n- 2026-04-12 — coffee\n")
-	args := map[string]interface{}{"config_path": configPath, "sphere": "work"}
+	args := map[string]interface{}{"action": "people_monthly_index", "config_path": configPath, "sphere": "work"}
 	s := NewServer(t.TempDir())
-	got, err := s.callTool("brain.people.monthly_index", args)
+	got, err := s.callTool("sloppy_brain", args)
 	want := "# 2026-04\n\n- [[Ada]] — coffee\n"
 	if err != nil || got["months"] != 1 || got["writes"] != 1 || readPeopleFile(t, filepath.Join(tmp, "work", "brain", "journal", "2026-04.md")) != want {
 		t.Fatalf("write: err=%v result=%#v", err, got)
 	}
-	if again, _ := s.callTool("brain.people.monthly_index", args); again["writes"] != 0 {
+	if again, _ := s.callTool("sloppy_brain", args); again["writes"] != 0 {
 		t.Fatalf("idempotency: %#v", again)
 	}
 }

@@ -22,9 +22,9 @@ func (s *Server) mailAction(args map[string]interface{}) (map[string]interface{}
 		return nil, err
 	}
 	defer provider.Close()
-	action := strings.TrimSpace(strings.ToLower(strArg(args, "action")))
+	action := strings.TrimSpace(strings.ToLower(strArg(args, "mail_action")))
 	if action == "" {
-		return nil, fmt.Errorf("action is required")
+		return nil, fmt.Errorf("mail_action is required")
 	}
 	untilAt, untilRaw, err := parseMailActionUntil(args, action)
 	if err != nil {

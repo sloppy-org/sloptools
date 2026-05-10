@@ -22,7 +22,7 @@ func TestMailDraftSendUnsupportedProvider(t *testing.T) {
 	s.newEmailProvider = func(context.Context, store.ExternalAccount) (email.EmailProvider, error) {
 		return &minimalDraftProvider{}, nil
 	}
-	_, err = s.callTool("mail_draft_send", map[string]interface{}{"account_id": float64(account.ID), "draft_id": "draft-abc"})
+	_, err = s.callTool("sloppy_mail", map[string]interface{}{"action": "draft_send", "account_id": float64(account.ID), "draft_id": "draft-abc"})
 	if err == nil {
 		t.Fatalf("expected error for provider without ExistingDraftSender")
 	}
@@ -251,7 +251,7 @@ func TestMailFlagSetRoutesThroughMutator(t *testing.T) {
 	s.newEmailProvider = func(context.Context, store.ExternalAccount) (email.EmailProvider, error) {
 		return newFullFlagProvider(stub), nil
 	}
-	got, err := s.callTool("mail_flag_set", map[string]interface{}{"account_id": account.ID, "message_ids": []interface{}{"m1", "m2"}, "status": "flagged"})
+	got, err := s.callTool("sloppy_mail", map[string]interface{}{"action": "flag_set", "account_id": account.ID, "message_ids": []interface{}{"m1", "m2"}, "status": "flagged"})
 	if err != nil {
 		t.Fatalf("mail_flag_set failed: %v", err)
 	}
@@ -273,7 +273,7 @@ func TestMailFlagSetCapabilityUnsupportedSurfaced(t *testing.T) {
 	s.newEmailProvider = func(context.Context, store.ExternalAccount) (email.EmailProvider, error) {
 		return newFullFlagProvider(stub), nil
 	}
-	got, err := s.callTool("mail_flag_set", map[string]interface{}{"account_id": account.ID, "message_ids": []interface{}{"m1"}, "status": "complete"})
+	got, err := s.callTool("sloppy_mail", map[string]interface{}{"action": "flag_set", "account_id": account.ID, "message_ids": []interface{}{"m1"}, "status": "complete"})
 	if err != nil {
 		t.Fatalf("mail_flag_set returned error: %v", err)
 	}
@@ -289,7 +289,7 @@ func TestMailFlagSetRejectsProviderWithoutMutator(t *testing.T) {
 	s.newEmailProvider = func(context.Context, store.ExternalAccount) (email.EmailProvider, error) {
 		return stub, nil
 	}
-	if _, err := s.callTool("mail_flag_set", map[string]interface{}{"account_id": account.ID, "message_ids": []interface{}{"m1"}, "status": "flagged"}); err == nil || !contains(err.Error(), "flag mutation is not supported") {
+	if _, err := s.callTool("sloppy_mail", map[string]interface{}{"action": "flag_set", "account_id": account.ID, "message_ids": []interface{}{"m1"}, "status": "flagged"}); err == nil || !contains(err.Error(), "flag mutation is not supported") {
 		t.Fatalf("expected capability error, got %v", err)
 	}
 }
@@ -301,7 +301,7 @@ func TestMailFlagClearDelegatesToProvider(t *testing.T) {
 	s.newEmailProvider = func(context.Context, store.ExternalAccount) (email.EmailProvider, error) {
 		return newFullFlagProvider(stub), nil
 	}
-	got, err := s.callTool("mail_flag_clear", map[string]interface{}{"account_id": account.ID, "message_ids": []interface{}{"m1", "m2", "m3"}})
+	got, err := s.callTool("sloppy_mail", map[string]interface{}{"action": "flag_clear", "account_id": account.ID, "message_ids": []interface{}{"m1", "m2", "m3"}})
 	if err != nil {
 		t.Fatalf("mail_flag_clear failed: %v", err)
 	}
@@ -320,7 +320,7 @@ func TestMailCategoriesSetDelegatesToProvider(t *testing.T) {
 	s.newEmailProvider = func(context.Context, store.ExternalAccount) (email.EmailProvider, error) {
 		return newFullFlagProvider(stub), nil
 	}
-	got, err := s.callTool("mail_categories_set", map[string]interface{}{"account_id": account.ID, "message_ids": []interface{}{"m1", "m2"}, "categories": []interface{}{"Clients", "Urgent"}})
+	got, err := s.callTool("sloppy_mail", map[string]interface{}{"action": "categories_set", "account_id": account.ID, "message_ids": []interface{}{"m1", "m2"}, "categories": []interface{}{"Clients", "Urgent"}})
 	if err != nil {
 		t.Fatalf("mail_categories_set failed: %v", err)
 	}

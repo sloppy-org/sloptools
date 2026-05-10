@@ -165,14 +165,17 @@ func (s *Server) mailCommitmentClose(args map[string]interface{}) (map[string]in
 	if messageID == "" {
 		return nil, fmt.Errorf("message_id is required")
 	}
-	action := strings.TrimSpace(strings.ToLower(strArg(args, "action")))
+	action := strings.TrimSpace(strings.ToLower(strArg(args, "close_action")))
 	if action == "" {
+		action = strings.TrimSpace(strings.ToLower(strArg(args, "action")))
+	}
+	if action == "" || action == "commitment_close" {
 		action = "archive"
 	}
 	actionArgs := map[string]interface{}{
 		"account_id":   args["account_id"],
 		"message_ids":  []interface{}{messageID},
-		"action":       action,
+		"mail_action":  action,
 		"source":       "mail_commitment_close",
 		"source_ref":   messageID,
 		"binding_sync": true,

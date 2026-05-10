@@ -24,7 +24,7 @@ func TestContactSearchSurfacesUnsupportedAsCapabilityCode(t *testing.T) {
 	s.newContactsProvider = func(_ context.Context, _ store.ExternalAccount) (contacts.Provider, error) {
 		return &readOnlyContactsProvider{name: "read_only_contacts"}, nil
 	}
-	got, err := s.callTool("contact_search", map[string]interface{}{"account_id": account.ID, "query": "alice"})
+	got, err := s.callTool("sloppy_contacts", map[string]interface{}{"action": "search", "account_id": account.ID, "query": "alice"})
 	if err != nil {
 		t.Fatalf("contact_search: %v", err)
 	}
@@ -56,7 +56,7 @@ labels:
 	t.Cleanup(func() { _ = st.Close() })
 	s := NewServerWithStore(t.TempDir(), st)
 
-	tracks, err := s.callTool("brain.gtd.tracks", map[string]interface{}{"config_path": configPath, "sphere": "work"})
+	tracks, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_tracks", "config_path": configPath, "sphere": "work"})
 	if err != nil {
 		t.Fatalf("brain.gtd.tracks: %v", err)
 	}
@@ -64,7 +64,7 @@ labels:
 		t.Fatalf("tracks = %#v, want one canonical label track", tracks)
 	}
 
-	focus, err := s.callTool("brain.gtd.focus", map[string]interface{}{
+	focus, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_focus", 
 		"sphere":       "work",
 		"track":        "software-compilers",
 		"project_path": "brain/commitments/compiler.md",
@@ -87,7 +87,7 @@ func TestContactCreateOnReadOnlyProviderReturnsCapabilityUnsupported(t *testing.
 	s.newContactsProvider = func(_ context.Context, _ store.ExternalAccount) (contacts.Provider, error) {
 		return &readOnlyContactsProvider{name: "read_only_contacts"}, nil
 	}
-	got, err := s.callTool("contact_create", map[string]interface{}{"account_id": account.ID, "contact": map[string]interface{}{"name": "Anon"}})
+	got, err := s.callTool("sloppy_contacts", map[string]interface{}{"action": "create", "account_id": account.ID, "contact": map[string]interface{}{"name": "Anon"}})
 	if err != nil {
 		t.Fatalf("contact_create: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestContactSearchSurfacesProviderUnsupportedError(t *testing.T) {
 	s.newContactsProvider = func(_ context.Context, _ store.ExternalAccount) (contacts.Provider, error) {
 		return &fakeContactsProvider{name: "exchange_ews_contacts", failSearchWith: fmt.Errorf("ews contacts search: %w", contacts.ErrUnsupported)}, nil
 	}
-	got, err := s.callTool("contact_search", map[string]interface{}{"account_id": account.ID, "query": "alice"})
+	got, err := s.callTool("sloppy_contacts", map[string]interface{}{"action": "search", "account_id": account.ID, "query": "alice"})
 	if err != nil {
 		t.Fatalf("contact_search: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestContactGroupListSurfacesUnsupportedForBackend(t *testing.T) {
 	s.newContactsProvider = func(_ context.Context, _ store.ExternalAccount) (contacts.Provider, error) {
 		return &readOnlyContactsProvider{name: "exchange_ews_contacts"}, nil
 	}
-	got, err := s.callTool("contact_group_list", map[string]interface{}{"account_id": account.ID})
+	got, err := s.callTool("sloppy_contacts", map[string]interface{}{"action": "group_list", "account_id": account.ID})
 	if err != nil {
 		t.Fatalf("contact_group_list: %v", err)
 	}
@@ -148,7 +148,7 @@ func TestContactGroupListReturnsGroupsForGoogleLikeProvider(t *testing.T) {
 	s.newContactsProvider = func(_ context.Context, _ store.ExternalAccount) (contacts.Provider, error) {
 		return provider, nil
 	}
-	got, err := s.callTool("contact_group_list", map[string]interface{}{"account_id": account.ID})
+	got, err := s.callTool("sloppy_contacts", map[string]interface{}{"action": "group_list", "account_id": account.ID})
 	if err != nil {
 		t.Fatalf("contact_group_list: %v", err)
 	}
@@ -174,7 +174,7 @@ func TestContactPhotoGetReturnsBase64ForCapableProvider(t *testing.T) {
 	s.newContactsProvider = func(_ context.Context, _ store.ExternalAccount) (contacts.Provider, error) {
 		return provider, nil
 	}
-	got, err := s.callTool("contact_photo_get", map[string]interface{}{"account_id": account.ID, "id": "people/c1"})
+	got, err := s.callTool("sloppy_contacts", map[string]interface{}{"action": "photo_get", "account_id": account.ID, "id": "people/c1"})
 	if err != nil {
 		t.Fatalf("contact_photo_get: %v", err)
 	}
@@ -199,7 +199,7 @@ func TestContactPhotoGetSurfacesUnsupportedForBackend(t *testing.T) {
 	s.newContactsProvider = func(_ context.Context, _ store.ExternalAccount) (contacts.Provider, error) {
 		return &readOnlyContactsProvider{name: "exchange_ews_contacts"}, nil
 	}
-	got, err := s.callTool("contact_photo_get", map[string]interface{}{"account_id": account.ID, "id": "ews:1"})
+	got, err := s.callTool("sloppy_contacts", map[string]interface{}{"action": "photo_get", "account_id": account.ID, "id": "ews:1"})
 	if err != nil {
 		t.Fatalf("contact_photo_get: %v", err)
 	}
@@ -220,7 +220,7 @@ func TestContactPhotoGetMissingPhotoSurfacesUnsupported(t *testing.T) {
 	s.newContactsProvider = func(_ context.Context, _ store.ExternalAccount) (contacts.Provider, error) {
 		return &fakeContactsProvider{name: "google_contacts", failPhotoWith: fmt.Errorf("contact %q has no photo: %w", "people/c1", contacts.ErrUnsupported)}, nil
 	}
-	got, err := s.callTool("contact_photo_get", map[string]interface{}{"account_id": account.ID, "id": "people/c1"})
+	got, err := s.callTool("sloppy_contacts", map[string]interface{}{"action": "photo_get", "account_id": account.ID, "id": "people/c1"})
 	if err != nil {
 		t.Fatalf("contact_photo_get: %v", err)
 	}
@@ -231,15 +231,25 @@ func TestContactPhotoGetMissingPhotoSurfacesUnsupported(t *testing.T) {
 
 func TestContactToolsAreRegisteredInToolDefinitions(t *testing.T) {
 	defs := toolDefinitions()
-	want := []string{"contact_list", "contact_get", "contact_search", "contact_create", "contact_update", "contact_delete", "contact_group_list", "contact_photo_get"}
 	have := map[string]bool{}
 	for _, d := range defs {
 		name, _ := d["name"].(string)
 		have[name] = true
 	}
-	for _, name := range want {
-		if !have[name] {
-			t.Fatalf("tool %q is not registered in toolDefinitions()", name)
+	if !have["sloppy_contacts"] {
+		t.Fatal("sloppy_contacts is not registered in toolDefinitions()")
+	}
+	// Verify sloppy_contacts description covers contact actions.
+	for _, d := range defs {
+		name, _ := d["name"].(string)
+		if name != "sloppy_contacts" {
+			continue
+		}
+		desc, _ := d["description"].(string)
+		for _, action := range []string{"list", "search", "create", "photo_get"} {
+			if !strings.Contains(desc, action) {
+				t.Errorf("sloppy_contacts description missing action %q", action)
+			}
 		}
 	}
 }
@@ -258,7 +268,7 @@ func TestContactSearchProviderTimingMaintained(t *testing.T) {
 		return provider, nil
 	}
 	start := time.Now()
-	got, err := s.callTool("contact_search", map[string]interface{}{"account_id": account.ID, "query": "albert"})
+	got, err := s.callTool("sloppy_contacts", map[string]interface{}{"action": "search", "account_id": account.ID, "query": "albert"})
 	if err != nil {
 		t.Fatalf("contact_search: %v", err)
 	}
@@ -327,7 +337,7 @@ Owned by Ada from this Friday.
 - None.
 `)
 	s := NewServer(t.TempDir())
-	got, err := s.callTool("brain.gtd.review_list", map[string]interface{}{"config_path": configPath, "sphere": "work"})
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_review_list", "config_path": configPath, "sphere": "work"})
 	if err != nil {
 		t.Fatalf("brain.gtd.review_list: %v", err)
 	}

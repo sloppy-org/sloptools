@@ -71,7 +71,7 @@ func TestMailCommitmentListDerivesCommitmentsWithBoundedBodyFetches(t *testing.T
 		return provider, nil
 	}
 
-	got, err := s.callTool("mail_commitment_list", map[string]interface{}{"account_id": account.ID, "limit": 4, "body_limit": 1, "project_config": projectConfig, "vault_config": vaultConfig, "writeable": true})
+	got, err := s.callTool("sloppy_mail", map[string]interface{}{"action": "commitment_list", "account_id": account.ID, "limit": 4, "body_limit": 1, "project_config": projectConfig, "vault_config": vaultConfig, "writeable": true})
 	if err != nil {
 		t.Fatalf("mail_commitment_list failed: %v", err)
 	}
@@ -151,10 +151,10 @@ func TestMailCommitmentCloseRequiresWriteableAndAppliesMailAction(t *testing.T) 
 	s.newEmailProvider = func(context.Context, store.ExternalAccount) (email.EmailProvider, error) {
 		return provider, nil
 	}
-	if _, err := s.callTool("mail_commitment_close", map[string]interface{}{"account_id": account.ID, "message_id": "m1"}); err == nil {
+	if _, err := s.callTool("sloppy_mail", map[string]interface{}{"action": "commitment_close", "account_id": account.ID, "message_id": "m1"}); err == nil {
 		t.Fatal("mail_commitment_close without writeable succeeded")
 	}
-	got, err := s.callTool("mail_commitment_close", map[string]interface{}{"account_id": account.ID, "message_id": "m1", "writeable": true})
+	got, err := s.callTool("sloppy_mail", map[string]interface{}{"action": "commitment_close", "account_id": account.ID, "message_id": "m1", "writeable": true})
 	if err != nil {
 		t.Fatalf("mail_commitment_close failed: %v", err)
 	}
@@ -290,7 +290,7 @@ func TestMailActionArchiveClosesBoundCommitment(t *testing.T) {
 	fix.provider.messages = map[string]*providerdata.EmailMessage{
 		"m1": {ID: "m1", Subject: "Topic", Folder: "Archive", Labels: []string{"Archive"}, IsRead: true, Date: time.Now().UTC()},
 	}
-	got, err := fix.s.callTool("mail_action", map[string]interface{}{"account_id": fix.account.ID, "action": "archive", "message_ids": []interface{}{"m1"}})
+	got, err := fix.s.callTool("sloppy_mail", map[string]interface{}{"action": "mail_action", "account_id": fix.account.ID, "mail_action": "archive", "message_ids": []interface{}{"m1"}})
 	if err != nil {
 		t.Fatalf("mail_action archive failed: %v", err)
 	}
@@ -312,7 +312,7 @@ func TestMailActionMoveBetweenInboxSubfoldersUpdatesLabels(t *testing.T) {
 	fix.provider.messages = map[string]*providerdata.EmailMessage{
 		"m1": {ID: "m1", Subject: "Topic", Folder: "INBOX", Labels: []string{"INBOX"}, IsRead: true, Date: time.Now().UTC()},
 	}
-	if _, err := fix.s.callTool("mail_action", map[string]interface{}{"account_id": fix.account.ID, "action": "move_to_inbox", "message_ids": []interface{}{"m1"}}); err != nil {
+	if _, err := fix.s.callTool("sloppy_mail", map[string]interface{}{"action": "mail_action", "account_id": fix.account.ID, "mail_action": "move_to_inbox", "message_ids": []interface{}{"m1"}}); err != nil {
 		t.Fatalf("mail_action move_to_inbox failed: %v", err)
 	}
 	commitment := readCommitmentFile(t, filepath.Join(fix.vaultRoot, filepath.FromSlash(fix.commitmentRel)))
@@ -334,7 +334,7 @@ func TestMailActionMoveIntoInboxSubfolderAddsTrackLabel(t *testing.T) {
 	fix.provider.messages = map[string]*providerdata.EmailMessage{
 		"m1": {ID: "m1", Subject: "Topic", Folder: "INBOX/RT-08", Labels: []string{"INBOX/RT-08"}, IsRead: true, Date: time.Now().UTC()},
 	}
-	if _, err := fix.s.callTool("mail_action", map[string]interface{}{"account_id": fix.account.ID, "action": "move_to_folder", "message_ids": []interface{}{"m1"}, "folder": "INBOX/RT-08"}); err != nil {
+	if _, err := fix.s.callTool("sloppy_mail", map[string]interface{}{"action": "mail_action", "account_id": fix.account.ID, "mail_action": "move_to_folder", "message_ids": []interface{}{"m1"}, "folder": "INBOX/RT-08"}); err != nil {
 		t.Fatalf("mail_action move_to_folder failed: %v", err)
 	}
 	commitment := readCommitmentFile(t, filepath.Join(fix.vaultRoot, filepath.FromSlash(fix.commitmentRel)))
@@ -356,7 +356,7 @@ func TestMailActionMoveFromSubfolderToArchiveClosesCommitment(t *testing.T) {
 	fix.provider.messages = map[string]*providerdata.EmailMessage{
 		"m1": {ID: "m1", Subject: "Topic", Folder: "Archive", Labels: []string{"Archive"}, IsRead: true, Date: time.Now().UTC()},
 	}
-	if _, err := fix.s.callTool("mail_action", map[string]interface{}{"account_id": fix.account.ID, "action": "move_to_folder", "message_ids": []interface{}{"m1"}, "folder": "Archive"}); err != nil {
+	if _, err := fix.s.callTool("sloppy_mail", map[string]interface{}{"action": "mail_action", "account_id": fix.account.ID, "mail_action": "move_to_folder", "message_ids": []interface{}{"m1"}, "folder": "Archive"}); err != nil {
 		t.Fatalf("mail_action move_to_folder failed: %v", err)
 	}
 	commitment := readCommitmentFile(t, filepath.Join(fix.vaultRoot, filepath.FromSlash(fix.commitmentRel)))
@@ -371,7 +371,7 @@ func TestMailFlagSetWithFutureDateDefersBoundCommitment(t *testing.T) {
 	fix.provider.messages = map[string]*providerdata.EmailMessage{
 		"m1": {ID: "m1", Subject: "Defer me", Folder: "INBOX", Labels: []string{"INBOX"}, IsRead: true, IsFlagged: true, FollowUpAt: &due, Date: time.Now().UTC()},
 	}
-	if _, err := fix.s.callTool("mail_flag_set", map[string]interface{}{"account_id": fix.account.ID, "message_ids": []interface{}{"m1"}, "status": "flagged", "due_at": due.Format(time.RFC3339)}); err != nil {
+	if _, err := fix.s.callTool("sloppy_mail", map[string]interface{}{"action": "flag_set", "account_id": fix.account.ID, "message_ids": []interface{}{"m1"}, "status": "flagged", "due_at": due.Format(time.RFC3339)}); err != nil {
 		t.Fatalf("mail_flag_set failed: %v", err)
 	}
 	commitment := readCommitmentFile(t, filepath.Join(fix.vaultRoot, filepath.FromSlash(fix.commitmentRel)))

@@ -49,7 +49,7 @@ func TestBrainGTDSyncRerunNoopsAlreadyClosedUpstream(t *testing.T) {
 	})
 	defer restore()
 
-	first, err := s.callTool("brain.gtd.sync", map[string]interface{}{"config_path": configPath, "sources_config": sourcesPath, "sphere": "work"})
+	first, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_sync", "config_path": configPath, "sources_config": sourcesPath, "sphere": "work"})
 	if err != nil {
 		t.Fatalf("first brain.gtd.sync: %v", err)
 	}
@@ -62,7 +62,7 @@ func TestBrainGTDSyncRerunNoopsAlreadyClosedUpstream(t *testing.T) {
 	task.Completed = true
 	taskProvider.getTaskByID["task-1"] = task
 
-	second, err := s.callTool("brain.gtd.sync", map[string]interface{}{"config_path": configPath, "sources_config": sourcesPath, "sphere": "work"})
+	second, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_sync", "config_path": configPath, "sources_config": sourcesPath, "sphere": "work"})
 	if err != nil {
 		t.Fatalf("second brain.gtd.sync: %v", err)
 	}
@@ -88,7 +88,7 @@ func TestBrainGTDSyncPushesClosedWriteableBindings(t *testing.T) {
 	writeGTDSyncMeeting(t, root, "[ ] Send alpha budget <!-- gtd:alpha -->")
 	writeGTDSyncCommitment(t, root, "closed")
 
-	got, err := s.callTool("brain.gtd.sync", map[string]interface{}{"config_path": configPath, "sources_config": sourcesPath, "sphere": "work", "path": "brain/gtd/sync.md"})
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_sync", "config_path": configPath, "sources_config": sourcesPath, "sphere": "work", "path": "brain/gtd/sync.md"})
 	if err != nil {
 		t.Fatalf("brain.gtd.sync: %v", err)
 	}
@@ -118,7 +118,7 @@ func TestBrainGTDSyncDryRunReportsWithoutWrites(t *testing.T) {
 	writeGTDSyncMeeting(t, root, "[ ] Send alpha budget <!-- gtd:alpha -->")
 	writeGTDSyncCommitment(t, root, "closed")
 
-	got, err := s.callTool("brain.gtd.sync", map[string]interface{}{"config_path": configPath, "sources_config": sourcesPath, "sphere": "work", "dry_run": true})
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_sync", "config_path": configPath, "sources_config": sourcesPath, "sphere": "work", "dry_run": true})
 	if err != nil {
 		t.Fatalf("brain.gtd.sync dry_run: %v", err)
 	}
@@ -143,14 +143,14 @@ func TestBrainGTDSyncPeriodicMeetingPullsClosedState(t *testing.T) {
 	writeGTDSyncMeeting(t, root, "[x] Send alpha budget <!-- gtd:alpha -->")
 	writeGTDSyncMeetingCommitment(t, root, "next")
 
-	got, err := s.callTool("brain.gtd.sync", map[string]interface{}{"config_path": configPath, "sources_config": sourcesPath, "sphere": "work", "periodic": true})
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_sync", "config_path": configPath, "sources_config": sourcesPath, "sphere": "work", "periodic": true})
 	if err != nil {
 		t.Fatalf("brain.gtd.sync periodic: %v", err)
 	}
 	if got["reconciled"] != 1 {
 		t.Fatalf("reconciled = %#v, want 1: %#v", got["reconciled"], got)
 	}
-	parsed, err := s.callTool("brain.note.parse", map[string]interface{}{"config_path": configPath, "sphere": "work", "path": "brain/gtd/sync.md"})
+	parsed, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "note_parse", "config_path": configPath, "sphere": "work", "path": "brain/gtd/sync.md"})
 	if err != nil {
 		t.Fatalf("parse synced commitment: %v", err)
 	}
@@ -168,7 +168,7 @@ func TestBrainGTDSyncPeriodicReportsConflict(t *testing.T) {
 	writeGTDSyncMeeting(t, root, "[ ] Send alpha budget <!-- gtd:alpha -->")
 	writeGTDSyncMeetingCommitment(t, root, "closed")
 
-	got, err := s.callTool("brain.gtd.sync", map[string]interface{}{"config_path": configPath, "sources_config": sourcesPath, "sphere": "work", "periodic": true})
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_sync", "config_path": configPath, "sources_config": sourcesPath, "sphere": "work", "periodic": true})
 	if err != nil {
 		t.Fatalf("brain.gtd.sync periodic: %v", err)
 	}
@@ -184,7 +184,7 @@ func TestBrainGTDSyncContinuesAfterProviderError(t *testing.T) {
 	writeGTDSyncMeeting(t, root, "[ ] Send alpha budget <!-- gtd:alpha -->")
 	writeGTDSyncCommitment(t, root, "closed")
 
-	got, err := s.callTool("brain.gtd.sync", map[string]interface{}{"config_path": configPath, "sources_config": sourcesPath, "sphere": "work"})
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_sync", "config_path": configPath, "sources_config": sourcesPath, "sphere": "work"})
 	if err != nil {
 		t.Fatalf("brain.gtd.sync: %v", err)
 	}
@@ -226,7 +226,7 @@ func setupMeetingsIngestVault(t *testing.T) (*Server, string, string) {
 
 func TestBrainGTDIngestMeetingsStampsIDsAndCreatesPerPersonCommitments(t *testing.T) {
 	s, root, configPath := setupMeetingsIngestVault(t)
-	got, err := s.callTool("brain.gtd.ingest", map[string]interface{}{
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_ingest", 
 		"config_path": configPath,
 		"sphere":      "work",
 		"source":      "meetings",
@@ -264,15 +264,16 @@ func TestBrainGTDIngestMeetingsStampsIDsAndCreatesPerPersonCommitments(t *testin
 func TestBrainGTDIngestMeetingsIsIdempotent(t *testing.T) {
 	s, _, configPath := setupMeetingsIngestVault(t)
 	args := map[string]interface{}{
+		"action":      "gtd_ingest",
 		"config_path": configPath,
 		"sphere":      "work",
 		"source":      "meetings",
 		"paths":       []interface{}{meetingsTestSourceRel},
 	}
-	if _, err := s.callTool("brain.gtd.ingest", args); err != nil {
+	if _, err := s.callTool("sloppy_brain", args); err != nil {
 		t.Fatalf("first ingest: %v", err)
 	}
-	got, err := s.callTool("brain.gtd.ingest", args)
+	got, err := s.callTool("sloppy_brain", args)
 	if err != nil {
 		t.Fatalf("second ingest: %v", err)
 	}
@@ -292,12 +293,13 @@ func TestBrainGTDIngestMeetingsIsIdempotent(t *testing.T) {
 func TestBrainGTDIngestMeetingsClosesCommitmentsOnHandEditedCheckmark(t *testing.T) {
 	s, root, configPath := setupMeetingsIngestVault(t)
 	args := map[string]interface{}{
+		"action":      "gtd_ingest",
 		"config_path": configPath,
 		"sphere":      "work",
 		"source":      "meetings",
 		"paths":       []interface{}{meetingsTestSourceRel},
 	}
-	first, err := s.callTool("brain.gtd.ingest", args)
+	first, err := s.callTool("sloppy_brain", args)
 	if err != nil {
 		t.Fatalf("first ingest: %v", err)
 	}
@@ -314,7 +316,7 @@ func TestBrainGTDIngestMeetingsClosesCommitmentsOnHandEditedCheckmark(t *testing
 	if err := os.WriteFile(sourcePath, []byte(flipped), 0o644); err != nil {
 		t.Fatalf("write flipped: %v", err)
 	}
-	second, err := s.callTool("brain.gtd.ingest", args)
+	second, err := s.callTool("sloppy_brain", args)
 	if err != nil {
 		t.Fatalf("second ingest: %v", err)
 	}
@@ -338,7 +340,7 @@ func TestBrainGTDIngestMeetingsClosesCommitmentsOnHandEditedCheckmark(t *testing
 func TestBrainGTDSyncFlipsMeetingsCheckboxByStableAnchor(t *testing.T) {
 	s, root, configPath := setupMeetingsIngestVault(t)
 	sourcesConfig := writeMeetingsSourcesConfig(t, root)
-	if _, err := s.callTool("brain.gtd.ingest", map[string]interface{}{
+	if _, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_ingest", 
 		"config_path": configPath,
 		"sphere":      "work",
 		"source":      "meetings",
@@ -351,7 +353,7 @@ func TestBrainGTDSyncFlipsMeetingsCheckboxByStableAnchor(t *testing.T) {
 		t.Fatalf("expected 2 commitments in ingest dir, got %d", len(created))
 	}
 	target := pickAdaCommitment(t, created)
-	got, err := s.callTool("brain.gtd.set_status", map[string]interface{}{
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_set_status", 
 		"config_path":    configPath,
 		"sphere":         "work",
 		"path":           relWorkPath(t, root, target),

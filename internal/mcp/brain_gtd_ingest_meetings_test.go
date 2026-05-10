@@ -21,7 +21,7 @@ func TestBrainGTDIngestMeetingsBackfillsConfiguredRootWhenNoPaths(t *testing.T) 
 
 	sourcesPath := writeMeetingsBackfillSourcesConfig(t, tmp, meetingsRoot, nil)
 	server := NewServer(t.TempDir())
-	got, err := server.callTool("brain.gtd.ingest", map[string]interface{}{
+	got, err := server.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_ingest", 
 		"config_path":    configPath,
 		"sphere":         "work",
 		"source":         "meetings",
@@ -52,7 +52,7 @@ func TestBrainGTDIngestMeetingsRequiresPathsOrConfiguredRoot(t *testing.T) {
 	emptySources := filepath.Join(tmp, "sources.toml")
 	writeMCPBrainFile(t, emptySources, "")
 	server := NewServer(t.TempDir())
-	_, err := server.callTool("brain.gtd.ingest", map[string]interface{}{
+	_, err := server.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_ingest", 
 		"config_path":    configPath,
 		"sphere":         "work",
 		"source":         "meetings",
@@ -86,7 +86,7 @@ title: Standup
 	sourcesPath := writeMeetingsBackfillSourcesConfig(t, tmp, "", map[string]string{"chris": "Christopher Albert"})
 
 	server := NewServer(t.TempDir())
-	got, err := server.callTool("brain.gtd.ingest", map[string]interface{}{
+	got, err := server.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_ingest", 
 		"config_path":    configPath,
 		"sphere":         "work",
 		"source":         "meetings",
@@ -125,7 +125,7 @@ title: Standup
 	writeMCPBrainFile(t, filepath.Join(tmp, "work", "brain", "people", "Charles Babbage.md"), "# Charles Babbage\n")
 
 	server := NewServer(t.TempDir())
-	got, err := server.callTool("brain.gtd.ingest", map[string]interface{}{
+	got, err := server.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_ingest", 
 		"config_path": configPath,
 		"sphere":      "work",
 		"source":      "meetings",
@@ -193,7 +193,7 @@ Legacy importer commitment.
 	writeMCPBrainFile(t, filepath.Join(tmp, "work", "brain", "gtd", "legacy", "ada.md"), legacyCommitment)
 
 	server := NewServer(t.TempDir())
-	got, err := server.callTool("brain.gtd.ingest", map[string]interface{}{
+	got, err := server.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_ingest", 
 		"config_path": configPath,
 		"sphere":      "work",
 		"source":      "meetings",

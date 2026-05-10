@@ -105,7 +105,7 @@ func TestToolsListJSONIncludesKnownTools(t *testing.T) {
 		}
 		names[name] = true
 	}
-	for _, want := range []string{"mail_send", "calendar_events", "handoff.create"} {
+	for _, want := range []string{"sloppy_mail", "sloppy_calendar", "sloppy_handoff"} {
 		if !names[want] {
 			t.Errorf("expected tool %q in list, got %d entries", want, len(names))
 		}
@@ -177,10 +177,10 @@ func TestToolsCallTempFileCreateProducesJSON(t *testing.T) {
 		t.Fatalf("mkdir project: %v", err)
 	}
 	stdout, stderr, code := captureRun(t, []string{
-		"tools", "call", "temp_file_create",
+		"tools", "call", "sloppy_handoff",
 		"--data-dir", filepath.Join(tmp, "data"),
 		"--project-dir", projectDir,
-		"--args", `{"name":"pi-test","content":"hello"}`,
+		"--args", `{"action":"temp_create","name":"pi-test","content":"hello"}`,
 	})
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr=%q", code, stderr)
@@ -261,9 +261,10 @@ func TestToolsCallArgPairsBuildIntegerThroughCLI(t *testing.T) {
 		t.Fatalf("mkdir: %v", err)
 	}
 	stdout, stderr, code := captureRun(t, []string{
-		"tools", "call", "temp_file_create",
+		"tools", "call", "sloppy_handoff",
 		"--data-dir", filepath.Join(tmp, "data"),
 		"--project-dir", projectDir,
+		"--arg", "action=temp_create",
 		"--arg", "prefix=pi",
 		"--arg", "n=3",
 	})
