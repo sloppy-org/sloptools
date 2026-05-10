@@ -169,12 +169,7 @@ func runOnePick(ctx context.Context, opts RunOpts, reportsDir, stagePrompt strin
 		entry.Reason = "dry-run"
 		return entry
 	}
-	be, err := backendForID(pick.BackendID)
-	if err != nil {
-		entry.Skipped = true
-		entry.Reason = err.Error()
-		return entry
-	}
+	be := backendForPick(pick)
 	stage := "scout-" + sanitize(p.Path)
 	sb, err := backend.NewSandbox(opts.RunID, stage, stagePrompt, backend.DefaultMCPConfig())
 	if err != nil {
@@ -191,6 +186,8 @@ func runOnePick(ctx context.Context, opts RunOpts, reportsDir, stagePrompt strin
 		Model:            pick.Model,
 		Reasoning:        pick.Reasoning,
 		AllowEdits:       false,
+		MCPAllowList:     pick.MCPTools,
+		Affinity:         backend.AffinityForPick(opts.RunID, p.Path, "scout"),
 		Sandbox:          sb,
 	}
 	bulkStartedAt := time.Now().UTC()

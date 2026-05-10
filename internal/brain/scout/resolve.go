@@ -26,10 +26,7 @@ import (
 func selfResolveOne(ctx context.Context, opts RunOpts, p Pick, originalPacket, bulkReport, reason, reportPath string, passNum int, resolvePick routing.Pick) (string, stageRecord, error) {
 	var rec stageRecord
 	pick := resolvePick
-	be, err := backendForID(pick.BackendID)
-	if err != nil {
-		return "", rec, fmt.Errorf("backend: %w", err)
-	}
+	be := backendForPick(pick)
 	stagePrompt, err := writeSelfResolvePrompt()
 	if err != nil {
 		return "", rec, fmt.Errorf("write self-resolve prompt: %w", err)
@@ -50,6 +47,8 @@ func selfResolveOne(ctx context.Context, opts RunOpts, p Pick, originalPacket, b
 		Model:            pick.Model,
 		Reasoning:        pick.Reasoning,
 		AllowEdits:       false,
+		MCPAllowList:     pick.MCPTools,
+		Affinity:         backend.AffinityForPick(opts.RunID, p.Path, "scout-resolve"),
 		Sandbox:          sb,
 	})
 	if err != nil {

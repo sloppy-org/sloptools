@@ -55,11 +55,12 @@ const (
 type Pick struct {
 	Stage     Stage
 	Tier      Tier
-	BackendID string // "claude" | "codex" | "opencode"
+	BackendID string // "claude" | "codex" | "opencode" | "llamacpp"
 	Provider  backend.Provider
 	Model     string
 	Reasoning backend.Reasoning
-	Label     string // "claude-sonnet-4-6@medium" etc.
+	Label     string   // "claude-sonnet-4-6@medium" etc.
+	MCPTools  []string // curated allowlist for LlamacppBackend; nil = all tools
 }
 
 // Choice is one eligible model for a tier slot.
@@ -80,6 +81,7 @@ type StageConfig struct {
 	Medium     []Choice // even-split round-robin pool (one OpenAI + one Anthropic)
 	Hard       []Choice // even-split round-robin pool (one OpenAI + one Anthropic)
 	Fallback   Choice   // when all paid providers are saturated
+	MCPTools   []string // default MCP tool allowlist; overridable by brain.toml
 }
 
 // Router holds the loaded stage configs, the ledger, and the per-stage
@@ -142,17 +144,17 @@ func (r *Router) Pick(s Stage) (Pick, error) {
 		return Pick{}, fmt.Errorf("routing: unknown stage %s", s)
 	}
 	if r.overrides.ForceLocal {
-		return choiceToPick(s, cfg.Tier, cfg.Bulk), nil
+		return choiceToPick(s, cfg.Tier, cfg.Bulk, cfg.MCPTools), nil
 	}
 	if c, ok := r.applyClaudeOverride(cfg); ok {
-		return choiceToPick(s, cfg.Tier, c), nil
+		return choiceToPick(s, cfg.Tier, c, cfg.MCPTools), nil
 	}
 	if c, ok := r.applyOpenAIOverride(cfg); ok {
-		return choiceToPick(s, cfg.Tier, c), nil
+		return choiceToPick(s, cfg.Tier, c, cfg.MCPTools), nil
 	}
 	pool := r.poolForTier(cfg)
 	if len(pool) == 0 {
-		return choiceToPick(s, cfg.Tier, cfg.Bulk), nil
+		return choiceToPick(s, cfg.Tier, cfg.Bulk, cfg.MCPTools), nil
 	}
 	return r.roundRobin(s, cfg, pool), nil
 }
@@ -170,7 +172,7 @@ func (r *Router) PickValueLocal(s Stage) (Pick, error) {
 	if c.BackendID == "" {
 		c = cfg.Bulk
 	}
-	return choiceToPick(s, cfg.Tier, c), nil
+	return choiceToPick(s, cfg.Tier, c, cfg.MCPTools), nil
 }
 
 func (r *Router) poolForTier(cfg StageConfig) []Choice {
@@ -198,12 +200,12 @@ func (r *Router) roundRobin(s Stage, cfg StageConfig, pool []Choice) Pick {
 			}
 		}
 		r.rr[s] = (idx + 1) % len(pool)
-		return choiceToPick(s, cfg.Tier, c)
+		return choiceToPick(s, cfg.Tier, c, cfg.MCPTools)
 	}
-	return choiceToPick(s, cfg.Tier, cfg.Fallback)
+	return choiceToPick(s, cfg.Tier, cfg.Fallback, cfg.MCPTools)
 }
 
-func choiceToPick(s Stage, t Tier, c Choice) Pick {
+func choiceToPick(s Stage, t Tier, c Choice, tools []string) Pick {
 	return Pick{
 		Stage:     s,
 		Tier:      t,
@@ -212,6 +214,7 @@ func choiceToPick(s Stage, t Tier, c Choice) Pick {
 		Model:     c.Model,
 		Reasoning: c.Reasoning,
 		Label:     c.Label,
+		MCPTools:  tools,
 	}
 }
 
@@ -283,10 +286,24 @@ func (r *Router) applyOpenAIOverride(cfg StageConfig) (Choice, bool) {
 // internal/brain/scout/artifacts.go are the foundation for extending
 // this to sleep-judge, compress, and entity-write once each stage has
 // a deterministic classifier.
+// scoutDefaultMCPTools is the curated tool allowlist for the scout stage.
+// Tool names must match what sloppy and helpy expose (flat names, no prefix).
+var scoutDefaultMCPTools = []string{
+	"sloppy_brain",
+	"web_search", "web_fetch", "pdf_read",
+	"helpy_zotero", "helpy_tugonline", "helpy_tu4u", "helpy_ics",
+}
+
+// folderNoteDefaultMCPTools is the curated tool allowlist for folder-note.
+var folderNoteDefaultMCPTools = []string{
+	"sloppy_brain",
+	"web_fetch", "pdf_read", "image_read", "helpy_office",
+}
+
 func DefaultStageConfigs() map[Stage]StageConfig {
 	return map[Stage]StageConfig{
-		StageFolderNote:  bulkStage(StageFolderNote),
-		StageScout:       bulkStage(StageScout),
+		StageFolderNote:  bulkStage(StageFolderNote, folderNoteDefaultMCPTools),
+		StageScout:       bulkStage(StageScout, scoutDefaultMCPTools),
 		StageTriage:      mediumStage(StageTriage),
 		StageSleepJudge:  mediumStage(StageSleepJudge),
 		StageCompress:    hardStage(StageCompress),
@@ -294,13 +311,15 @@ func DefaultStageConfigs() map[Stage]StageConfig {
 	}
 }
 
-func bulkStage(s Stage) StageConfig {
-	bulk := OpencodeQwenHigh()
+func bulkStage(s Stage, tools []string) StageConfig {
+	bulk := LlamacppMoEBulk()
 	return StageConfig{
-		Stage:    s,
-		Tier:     TierBulk,
-		Bulk:     bulk,
-		Fallback: bulk,
+		Stage:      s,
+		Tier:       TierBulk,
+		Bulk:       bulk,
+		ValueLocal: LlamacppValueResolve(),
+		Fallback:   bulk,
+		MCPTools:   tools,
 	}
 }
 
@@ -333,16 +352,45 @@ func hardStage(s Stage) StageConfig {
 // Choice constructors. Reasoning is mandatory; never xhigh by default.
 
 const (
-	// OpencodeQwenModel is the single brain-tools default for local
-	// OpenCode Qwen work. Slopgate's MoE alias is faster than the dense
-	// 27B model for bulk stages; use llamacpp-moe/qwen for the bulk slot.
-	OpencodeQwenModel = "llamacpp-moe/qwen"
-	OpencodeQwenLabel = "opencode/qwen3-MoE"
+	// OpencodeQwenModel is the qwen27b model id used by opencode and by
+	// LlamacppBackend for resolve passes (heavier, more accurate than MoE).
+	OpencodeQwenModel = "llamacpp/qwen27b"
+	OpencodeQwenLabel = "opencode/qwen3.6-27B"
+
+	// LlamacppMoEModel routes to slopgate's qwen3-MoE alias (fast, ~0.3s/token).
+	LlamacppMoEModel     = "llamacpp-moe/qwen"
+	LlamacppMoELabel     = "opencode/qwen3-MoE"
+	LlamacppMoEBackendID = "llamacpp"
 )
 
 func OpencodeQwenHigh() Choice {
 	return Choice{
 		BackendID: "opencode",
+		Provider:  backend.ProviderLocal,
+		Model:     OpencodeQwenModel,
+		Reasoning: backend.ReasoningHigh,
+		Label:     OpencodeQwenLabel,
+	}
+}
+
+// LlamacppMoEBulk returns a Choice for the fast MoE bulk pass via direct
+// HTTP (no opencode subprocess overhead).
+func LlamacppMoEBulk() Choice {
+	return Choice{
+		BackendID: LlamacppMoEBackendID,
+		Provider:  backend.ProviderLocal,
+		Model:     LlamacppMoEModel,
+		Reasoning: backend.ReasoningHigh,
+		Label:     LlamacppMoELabel,
+	}
+}
+
+// LlamacppValueResolve returns a Choice for the resolve pass (qwen27b via
+// direct HTTP). Heavier than MoE but still free; used for self-resolve
+// before paid escalation.
+func LlamacppValueResolve() Choice {
+	return Choice{
+		BackendID: LlamacppMoEBackendID,
 		Provider:  backend.ProviderLocal,
 		Model:     OpencodeQwenModel,
 		Reasoning: backend.ReasoningHigh,

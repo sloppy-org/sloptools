@@ -8,6 +8,7 @@ import (
 
 	"github.com/sloppy-org/sloptools/internal/brain/backend"
 	"github.com/sloppy-org/sloptools/internal/brain/glossary"
+	"github.com/sloppy-org/sloptools/internal/brain/routing"
 )
 
 // backendForID maps the routing.Pick BackendID to the concrete backend
@@ -21,8 +22,24 @@ func backendForID(id string) (backend.Backend, error) {
 		return backend.CodexBackend{}, nil
 	case "opencode":
 		return backend.OpencodeBackend{}, nil
+	case "llamacpp":
+		return backend.LlamacppBackend{}, nil
 	}
 	return nil, fmt.Errorf("scout: unknown backend id %q", id)
+}
+
+// backendForPick returns the Backend for a Pick without error; unknown ids
+// fall back to OpencodeBackend so callers do not need error handling for
+// routing-internal ids.
+func backendForPick(pick routing.Pick) backend.Backend {
+	switch pick.BackendID {
+	case "llamacpp":
+		return backend.LlamacppBackend{}
+	case "codex":
+		return backend.CodexBackend{}
+	default:
+		return backend.OpencodeBackend{}
+	}
 }
 
 // buildScoutPacket renders the packet sent to the scout agent. It names

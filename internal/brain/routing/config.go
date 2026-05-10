@@ -15,8 +15,17 @@ import (
 // FileConfig is the on-disk shape of ~/.config/sloptools/brain.toml. Any
 // field left zero falls back to the in-code default.
 type FileConfig struct {
-	Plan   PlanFile             `toml:"plan"`
-	Stages map[string]StageFile `toml:"stage"`
+	Plan     PlanFile             `toml:"plan"`
+	Llamacpp LlamacppFile         `toml:"llamacpp"`
+	Stages   map[string]StageFile `toml:"stage"`
+}
+
+// LlamacppFile carries optional llamacpp-specific config.
+type LlamacppFile struct {
+	// AffinityUUID overrides the x-session-affinity base UUID read from
+	// ~/.config/opencode/opencode.json. Useful for routing to a specific
+	// slopgate slot independent of the opencode config.
+	AffinityUUID string `toml:"affinity_uuid"`
 }
 
 // PlanFile carries weekly cap overrides per provider.
@@ -36,6 +45,7 @@ type StageFile struct {
 	ValueLocal ChoiceFile   `toml:"value_local"`
 	Medium     []ChoiceFile `toml:"medium"`
 	Hard       []ChoiceFile `toml:"hard"`
+	MCPTools   []string     `toml:"mcp_tools"`
 }
 
 // ChoiceFile is one choice in a tier pool.
@@ -147,6 +157,9 @@ func (c *FileConfig) ApplyStages(defaults map[Stage]StageConfig) (map[Stage]Stag
 				return nil, fmt.Errorf("stage %s.hard: %w", name, err)
 			}
 			base.Hard = pool
+		}
+		if len(sf.MCPTools) > 0 {
+			base.MCPTools = sf.MCPTools
 		}
 		out[s] = base
 	}

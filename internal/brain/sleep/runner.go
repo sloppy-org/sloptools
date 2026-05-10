@@ -140,11 +140,19 @@ func RunJudge(ctx context.Context, opts JudgeOpts) (*JudgeResult, error) {
 }
 
 // runBulk runs the bulk editorial pass and returns the StageRecord plus the
-// cleaned body. Always uses OpencodeBackend; full-autonomy runs also get
-// brain_note_write tool access for direct vault edits.
+// cleaned body. When opts.AllowEdits is false (plan-only autonomy), uses
+// LlamacppBackend (fast, no tools). When opts.AllowEdits is true (full
+// autonomy), uses OpencodeBackend so brain_note_write can edit vault files.
 func runBulk(ctx context.Context, opts JudgeOpts) (*audit.StageRecord, string, error) {
-	bulkPick := routing.OpencodeQwenHigh()
-	be := backend.Backend(backend.OpencodeBackend{})
+	var bulkPick routing.Choice
+	var be backend.Backend
+	if opts.AllowEdits {
+		bulkPick = routing.OpencodeQwenHigh()
+		be = backend.OpencodeBackend{}
+	} else {
+		bulkPick = routing.LlamacppMoEBulk()
+		be = backend.LlamacppBackend{}
+	}
 	stage := opts.Stage + "-bulk"
 	sb, err := backend.NewSandbox(opts.RunID, stage, opts.SystemPromptPath, backend.DefaultMCPConfig())
 	if err != nil {
@@ -158,7 +166,8 @@ func runBulk(ctx context.Context, opts JudgeOpts) (*audit.StageRecord, string, e
 		Model:            bulkPick.Model,
 		Reasoning:        bulkPick.Reasoning,
 		AllowEdits:       opts.AllowEdits,
-		MCPAllowList: nil,
+		MCPAllowList:     nil, // plan-only: pure text, no tools
+		Affinity:         backend.AffinityForPick(opts.RunID, opts.Sphere, stage),
 		Sandbox:          sb,
 		WorkDir:          opts.BrainRoot,
 	}

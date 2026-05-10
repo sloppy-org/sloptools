@@ -67,6 +67,11 @@ type Request struct {
 	MaxBudgetUSD     float64
 	Sandbox          *Sandbox
 	WorkDir          string
+	// Affinity is the x-session-affinity header value sent to slopgate.
+	// LlamacppBackend uses it to stay on the same upstream peer across
+	// tool-call rounds, keeping the KV prefix cache warm.
+	// Empty means no affinity header is sent.
+	Affinity string
 }
 
 // Response is the per-call output. Tokens / wall / cost are best-effort:
