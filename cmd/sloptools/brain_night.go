@@ -232,9 +232,11 @@ type scoutSummary struct {
 	Status       string   `json:"status"`
 	Candidates   int      `json:"candidates"`
 	Written      int      `json:"written"`
+	Skipped      int      `json:"skipped,omitempty"`
 	SelfResolved int      `json:"self_resolved"`
 	Escalated    int      `json:"escalated"`
 	Reports      []string `json:"reports,omitempty"`
+	Errors       []string `json:"errors,omitempty"`
 	Notes        string   `json:"notes,omitempty"`
 }
 
@@ -339,11 +341,15 @@ func runScoutStage(vault brain.Vault, ldg *ledger.Ledger, router *routing.Router
 	}
 	report.Scout.Candidates = res.Candidates
 	report.Scout.Written = res.Written
+	report.Scout.Skipped = res.Skipped
 	report.Scout.SelfResolved = res.SelfResolved
 	report.Scout.Escalated = res.Escalated
 	for _, e := range res.Reports {
 		if e.ReportPath != "" {
 			report.Scout.Reports = append(report.Scout.Reports, e.ReportPath)
+		}
+		if e.Skipped && e.Reason != "" {
+			report.Scout.Errors = append(report.Scout.Errors, e.Path+": "+e.Reason)
 		}
 	}
 	if dryRun {

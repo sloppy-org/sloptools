@@ -295,13 +295,12 @@ func DefaultStageConfigs() map[Stage]StageConfig {
 }
 
 func bulkStage(s Stage) StageConfig {
-	bulk := LlamacppMoEBulk()
+	bulk := OpencodeQwenHigh()
 	return StageConfig{
-		Stage:      s,
-		Tier:       TierBulk,
-		Bulk:       bulk,
-		ValueLocal: LlamacppValueResolve(),
-		Fallback:   bulk,
+		Stage:    s,
+		Tier:     TierBulk,
+		Bulk:     bulk,
+		Fallback: bulk,
 	}
 }
 
@@ -335,46 +334,15 @@ func hardStage(s Stage) StageConfig {
 
 const (
 	// OpencodeQwenModel is the single brain-tools default for local
-	// OpenCode Qwen work. OpenCode maps this model id to slopgate's
-	// qwen27b alias; platform/install defaults that serve 35B live in
-	// slopcode-infra and intentionally stay separate.
-	OpencodeQwenModel = "llamacpp/qwen27b"
-	OpencodeQwenLabel = "opencode/qwen3.6-27B"
-
-	// LlamacppMoEModel routes to slopgate's qwen3-MoE alias (fast, ~0.3s/token).
-	LlamacppMoEModel     = "llamacpp-moe/qwen"
-	LlamacppMoELabel     = "llamacpp/qwen3-MoE"
-	LlamacppMoEBackendID = "llamacpp"
+	// OpenCode Qwen work. Slopgate's MoE alias is faster than the dense
+	// 27B model for bulk stages; use llamacpp-moe/qwen for the bulk slot.
+	OpencodeQwenModel = "llamacpp-moe/qwen"
+	OpencodeQwenLabel = "opencode/qwen3-MoE"
 )
 
 func OpencodeQwenHigh() Choice {
 	return Choice{
 		BackendID: "opencode",
-		Provider:  backend.ProviderLocal,
-		Model:     OpencodeQwenModel,
-		Reasoning: backend.ReasoningHigh,
-		Label:     OpencodeQwenLabel,
-	}
-}
-
-// LlamacppMoEBulk returns a Choice for the fast MoE bulk pass via direct
-// HTTP (no opencode subprocess overhead).
-func LlamacppMoEBulk() Choice {
-	return Choice{
-		BackendID: LlamacppMoEBackendID,
-		Provider:  backend.ProviderLocal,
-		Model:     LlamacppMoEModel,
-		Reasoning: backend.ReasoningHigh,
-		Label:     LlamacppMoELabel,
-	}
-}
-
-// LlamacppValueResolve returns a Choice for the resolve pass (qwen27b via
-// direct HTTP). Heavier than MoE but still free; used for self-resolve
-// before paid escalation.
-func LlamacppValueResolve() Choice {
-	return Choice{
-		BackendID: LlamacppMoEBackendID,
 		Provider:  backend.ProviderLocal,
 		Model:     OpencodeQwenModel,
 		Reasoning: backend.ReasoningHigh,
