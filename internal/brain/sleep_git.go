@@ -168,7 +168,9 @@ func gitOutput(workTree string, args ...string) (string, error) {
 		}
 		return "", err
 	}
-	return string(out), nil
+	// Replace invalid UTF-8 sequences (binary file patches, etc.) so
+	// the packet is always valid for JSON encoding and LLM submission.
+	return strings.ToValidUTF8(string(out), "�"), nil
 }
 
 func trimSleepGitPacket(raw string) string {
