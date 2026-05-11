@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/sloppy-org/sloptools/internal/brain"
+	"github.com/sloppy-org/sloptools/internal/brain/activity"
 	"github.com/sloppy-org/sloptools/internal/brain/backend"
 	"github.com/sloppy-org/sloptools/internal/brain/ledger"
 	"github.com/sloppy-org/sloptools/internal/brain/routing"
@@ -157,6 +158,10 @@ func cmdBrainNight(args []string) int {
 		DryRun:    *dryRun,
 	}
 
+	if stage == "" || stage == "sync" || stage == "sweep" {
+		runSyncStage(brain.Sphere(*sphere), time.Now(), report)
+	}
+
 	if stage == "" || stage == "sweep" {
 		if err := runSweepStage(cfg, brain.Sphere(*sphere), *coverageBudget, *dryRun, report); err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -203,18 +208,19 @@ func cmdBrainNight(args []string) int {
 }
 
 type nightReport struct {
-	Sphere      string             `json:"sphere"`
-	StartedAt   time.Time          `json:"started_at"`
-	EndedAt     time.Time          `json:"ended_at,omitempty"`
-	RunID       string             `json:"run_id"`
-	OnlyStage   string             `json:"only_stage,omitempty"`
-	DryRun      bool               `json:"dry_run"`
-	Sweep       *brain.SleepResult `json:"sweep,omitempty"`
-	Textbook    *textbook.Summary  `json:"textbook,omitempty"`
-	Scout       *scoutSummary      `json:"scout,omitempty"`
-	Judge       *brain.SleepResult `json:"judge,omitempty"`
-	JudgeReport string             `json:"judge_report_path,omitempty"`
-	Spend       *spendSummary      `json:"spend,omitempty"`
+	Sphere         string             `json:"sphere"`
+	StartedAt      time.Time          `json:"started_at"`
+	EndedAt        time.Time          `json:"ended_at,omitempty"`
+	RunID          string             `json:"run_id"`
+	OnlyStage      string             `json:"only_stage,omitempty"`
+	DryRun         bool               `json:"dry_run"`
+	ActivityDigest string             `json:"activity_digest,omitempty"`
+	Sweep          *brain.SleepResult `json:"sweep,omitempty"`
+	Textbook       *textbook.Summary  `json:"textbook,omitempty"`
+	Scout          *scoutSummary      `json:"scout,omitempty"`
+	Judge          *brain.SleepResult `json:"judge,omitempty"`
+	JudgeReport    string             `json:"judge_report_path,omitempty"`
+	Spend          *spendSummary      `json:"spend,omitempty"`
 }
 
 // spendSummary records the plan-share spent during this nightly run, in
@@ -238,6 +244,18 @@ type scoutSummary struct {
 	Reports      []string `json:"reports,omitempty"`
 	Errors       []string `json:"errors,omitempty"`
 	Notes        string   `json:"notes,omitempty"`
+}
+
+// runSyncStage builds the activity digest from groupware (calendar + mail)
+// and stores it in the night report. Errors are non-fatal: a missing digest
+// means the judge has less context but the night can still proceed.
+func runSyncStage(sphere brain.Sphere, now time.Time, report *nightReport) {
+	digest, err := activity.Build(string(sphere), now)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "sync: activity digest: %v\n", err)
+		return
+	}
+	report.ActivityDigest = digest.Format()
 }
 
 // runSweepStage runs the deterministic, zero-LLM portion of sleep:

@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/sloppy-org/sloptools/internal/brain/backend"
+	"github.com/sloppy-org/sloptools/internal/brain/evidence"
 	"github.com/sloppy-org/sloptools/internal/brain/ledger"
 	"github.com/sloppy-org/sloptools/internal/brain/prompts"
 	"github.com/sloppy-org/sloptools/internal/brain/routing"
@@ -153,9 +155,33 @@ func Run(ctx context.Context, opts RunOpts) (*RunReport, error) {
 	return report, nil
 }
 
+// sparseBodyThreshold is the minimum note body length (after stripping
+// frontmatter) required to spawn a scout agent. Notes below this threshold
+// have no web-searchable anchors and consistently time out without output.
+const sparseBodyThreshold = 200
+
 func runOnePick(ctx context.Context, opts RunOpts, reportsDir, stagePrompt string, p Pick) ReportEntry {
 	startedAt := time.Now().UTC()
 	entry := ReportEntry{Path: p.Path, Score: p.Score}
+
+	// Pre-filter: skip notes whose body is too sparse to scout usefully.
+	if !opts.DryRun && opts.BrainRoot != "" {
+		body, _ := os.ReadFile(filepath.Join(opts.BrainRoot, p.Path))
+		stripped := stripFrontmatter(string(body))
+		if len(strings.TrimSpace(stripped)) < sparseBodyThreshold {
+			entry.Skipped = true
+			entry.Reason = "note too sparse for scout"
+			_ = evidence.Append(opts.BrainRoot, []evidence.Entry{{
+				TS:      startedAt,
+				RunID:   opts.RunID,
+				Entity:  p.Path,
+				Claim:   "note body < 200 chars after stripping frontmatter",
+				Verdict: evidence.VerdictSkipped,
+			}})
+			return entry
+		}
+	}
+
 	pick, err := opts.Router.Pick(routing.StageScout)
 	if err != nil {
 		entry.Skipped = true
@@ -290,6 +316,11 @@ func runOnePick(ctx context.Context, opts RunOpts, reportsDir, stagePrompt strin
 			}
 		}
 	}
+	// Write evidence log entries from the final (possibly escalated) report.
+	if entries := evidence.ParseBullets(opts.RunID, p.Path, body, startedAt); len(entries) > 0 {
+		_ = evidence.Append(opts.BrainRoot, entries)
+	}
+
 	_ = writeAuditFile(rpath, auditFile{
 		Path:         p.Path,
 		Title:        p.Title,
@@ -304,6 +335,21 @@ func runOnePick(ctx context.Context, opts RunOpts, reportsDir, stagePrompt strin
 		Stages:       stages,
 	})
 	return entry
+}
+
+// stripFrontmatter removes the YAML frontmatter block (--- ... ---) from a
+// Markdown note body. Used by the sparse-pick pre-filter.
+func stripFrontmatter(body string) string {
+	body = strings.TrimSpace(body)
+	if !strings.HasPrefix(body, "---") {
+		return body
+	}
+	rest := body[3:]
+	idx := strings.Index(rest, "\n---")
+	if idx < 0 {
+		return body
+	}
+	return strings.TrimSpace(rest[idx+4:])
 }
 
 // selfResolveOne, buildScoutPacket, sanitize, and backendForID live in
