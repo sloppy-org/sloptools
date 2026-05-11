@@ -280,7 +280,7 @@ func brainActionToMethod(action string) string {
 func toolHelpHandler(args map[string]interface{}) (map[string]interface{}, error) {
 	tool := strings.TrimSpace(strArg(args, "tool"))
 	help := map[string][]string{
-		"mail":      {"account_list", "label_list", "message_list", "message_get", "attachment_get", "send", "draft_send", "reply", "mail_action", "message_copy", "flag_set", "flag_clear", "categories_set", "server_filter_list", "server_filter_upsert", "server_filter_delete", "oof_get", "oof_set", "delegate_list", "commitment_list", "commitment_close"},
+		"mail":      {"account_list", "label_list", "message_list", "message_get", "attachment_get", "draft", "send", "draft_send", "reply", "mail_action", "message_copy", "flag_set", "flag_clear", "categories_set", "server_filter_list", "server_filter_upsert", "server_filter_delete", "oof_get", "oof_set", "delegate_list", "commitment_list", "commitment_close"},
 		"calendar":  {"list", "events", "event_create", "freebusy", "event_get", "event_update", "event_delete", "event_respond", "event_ics_export"},
 		"tasks":     {"list_lists", "list_create", "list_delete", "list", "get", "create", "update", "complete", "delete"},
 		"contacts":  {"list", "get", "search", "create", "update", "delete", "group_list", "photo_get"},

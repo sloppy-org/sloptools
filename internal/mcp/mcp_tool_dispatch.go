@@ -24,6 +24,9 @@ func (s *Server) callConsolidatedTool(name string, args map[string]interface{}) 
 			return handledTool(s.mailMessageGet(args))
 		case "attachment_get":
 			return handledTool(s.mailAttachmentGet(args))
+		case "draft":
+			args["draft_only"] = true
+			return handledTool(s.mailSend(args))
 		case "send":
 			return handledTool(s.mailSend(args))
 		case "draft_send":

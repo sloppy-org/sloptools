@@ -21,10 +21,22 @@ type RouteSection struct {
 }
 
 var MCPTools = []Tool{
-	{Name: "sloppy_mail", Description: "Mail. Actions: message listing/reading, send, reply, flag, filter, OOF, commitments. Use sloppy_tool_help tool=mail for the full action list.", Required: []string{"action"}, Properties: map[string]ToolProperty{
-		"action":     {Type: "string", Description: "Mail operation."},
-		"account_id": {Type: "integer", Description: "Optional email account id. Defaults to first enabled account for sphere."},
-		"sphere":     {Type: "string", Description: "work or private sphere when account_id is omitted.", Enum: []string{"work", "private"}},
+	{Name: "sloppy_mail", Description: "Mail. Actions: message listing/reading, draft (save to Drafts folder), send (send immediately), draft_send (send pre-saved draft by draft_id), reply, flag, filter, OOF, commitments. Use sloppy_tool_help tool=mail for the full action list.", Required: []string{"action"}, Properties: map[string]ToolProperty{
+		"action":      {Type: "string", Description: "Mail operation."},
+		"account_id":  {Type: "integer", Description: "Optional email account id. Defaults to first enabled account for sphere."},
+		"sphere":      {Type: "string", Description: "work or private sphere when account_id is omitted.", Enum: []string{"work", "private"}},
+		"to":          {Type: "string", Description: "Recipient address(es), comma-separated. Required for draft/send/reply."},
+		"cc":          {Type: "string", Description: "CC address(es), comma-separated. Optional for draft/send/reply."},
+		"bcc":         {Type: "string", Description: "BCC address(es), comma-separated. Optional for draft/send/reply."},
+		"subject":     {Type: "string", Description: "Subject line. Required for draft/send."},
+		"body":        {Type: "string", Description: "Plain-text body. Required for draft/send/reply."},
+		"in_reply_to": {Type: "string", Description: "Message-ID to thread under. Optional for draft/send."},
+		"draft_only":  {Type: "boolean", Description: "When true on send, saves to Drafts without sending. Prefer action=draft instead."},
+		"draft_id":    {Type: "string", Description: "Draft ID returned by draft/send with draft_only. Required for draft_send."},
+		"message_id":  {Type: "string", Description: "Provider message id. Required for message_get, reply."},
+		"folder":      {Type: "string", Description: "Folder or label scope for message_list (e.g. INBOX)."},
+		"query":       {Type: "string", Description: "Search query for message_list."},
+		"limit":       {Type: "integer", Description: "Maximum messages to return for message_list."},
 	}},
 	{Name: "sloppy_calendar", Description: "Calendar. Action: list, events, event_create, freebusy, event_get, event_update, event_delete, event_respond, event_ics_export.", Required: []string{"action"}, Properties: map[string]ToolProperty{
 		"action":     {Type: "string", Description: "Calendar operation."},

@@ -28,8 +28,8 @@ func TestBrainGTDReviewListMailBranchIsLive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateExternalAccount: %v", err)
 	}
-	day0 := time.Date(2026, time.May, 4, 9, 0, 0, 0, time.UTC)
-	due := day0.AddDate(0, 0, 7)
+	day0 := time.Now().UTC()
+	due := day0.AddDate(0, 0, 14)
 	askBody := "Could you send the report by 2026-05-08?"
 	provider := &fakeMailProvider{
 		listIDs: []string{"unread-inbox", "read-inbox", "deferred-flag", "waiting", "archived"},
