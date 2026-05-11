@@ -20,7 +20,21 @@ type sleepGitPacket struct {
 	Used     bool
 }
 
+// buildSleepGitPacket constructs the git activity context for the judge.
+// since/until bound the query: since defaults to the last "brain sleep:" commit
+// (or today midnight), until defaults to now. Passing explicit bounds from the
+// run-start time prevents commits made DURING the run from appearing in the
+// judge's view, and prevents overlap/gap between consecutive runs.
 func buildSleepGitPacket(vault Vault, now time.Time) sleepGitPacket {
+	return buildSleepGitPacketBounded(vault, now, time.Time{}, now)
+}
+
+// buildSleepGitPacketBounded is buildSleepGitPacket with explicit bounds.
+// since=zero means "use last brain sleep: commit". until=zero means "use now".
+func buildSleepGitPacketBounded(vault Vault, now time.Time, since, until time.Time) sleepGitPacket {
+	if until.IsZero() {
+		until = now
+	}
 	root := vault.BrainRoot()
 	if _, ok := gitWorkTreeRoot(root); !ok {
 		return sleepGitPacket{
@@ -30,22 +44,28 @@ func buildSleepGitPacket(vault Vault, now time.Time) sleepGitPacket {
 	}
 	base, ok := latestSleepCommit(root)
 	scope := ""
-	// Include full diffs (--patch) so the model can see changed brain note
-	// content, but exclude reports/, data/, and episodic/ from the commit
-	// log: those directories accumulate large new files (sleep/scout reports,
-	// ledger entries, episodic logs) whose full content is noise for NREM/REM.
-	// The previous sleep commit is shown separately with full --patch so the
-	// model still sees the previous sleep report body.
+	// --before bounds the upper end of the window so commits made DURING this
+	// run are excluded. This prevents the run from seeing its own edits.
+	beforeArg := "--before=" + until.UTC().Format(time.RFC3339)
 	args := []string{
 		"log", "--date=iso-strict", "--patch", "--stat",
 		"--summary", "--find-renames",
 		"--format=commit %h%nDate: %cI%nSubject: %s%n",
+		beforeArg,
 	}
 	previousSleep := ""
-	if ok {
-		scope = "since previous sleep commit " + shortHash(base) + " inclusive"
+	if !since.IsZero() {
+		// Explicit since bound overrides the commit-grep approach.
+		scope = fmt.Sprintf("since %s until %s",
+			since.UTC().Format("2006-01-02 15:04Z"),
+			until.UTC().Format("2006-01-02 15:04Z"))
+		args = append(args,
+			"--since="+since.UTC().Format(time.RFC3339), "HEAD",
+			"--", ".", ":!reports/", ":!data/", ":!episodic/", ":!evidence/")
+	} else if ok {
+		scope = "since previous sleep commit " + shortHash(base) + " inclusive (until " + until.UTC().Format("15:04Z") + ")"
 		args = append(args, inclusiveCommitRange(root, base),
-			"--", ".", ":!reports/", ":!data/", ":!episodic/")
+			"--", ".", ":!reports/", ":!data/", ":!episodic/", ":!evidence/")
 		var err error
 		previousSleep, err = gitOutput(root,
 			"show", "--date=iso-strict", "--patch", "--stat",
@@ -58,7 +78,7 @@ func buildSleepGitPacket(vault Vault, now time.Time) sleepGitPacket {
 		start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 		scope = "since " + start.Format("2006-01-02 15:04:05 -0700")
 		args = append(args, "--since="+start.Format(time.RFC3339), "HEAD",
-			"--", ".", ":!reports/", ":!data/", ":!episodic/")
+			"--", ".", ":!reports/", ":!data/", ":!episodic/", ":!evidence/")
 	}
 	logText, err := gitOutput(root, args...)
 	if err != nil {

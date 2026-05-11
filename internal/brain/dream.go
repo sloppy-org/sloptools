@@ -108,10 +108,18 @@ func DreamReportRun(cfg *Config, sphere Sphere, budget int) (*DreamReport, error
 }
 
 func attachDreamGitContext(report *DreamReport, vault Vault, now time.Time) {
+	attachDreamGitContextBounded(report, vault, now, time.Time{}, time.Time{})
+}
+
+// attachDreamGitContextBounded is attachDreamGitContext with explicit
+// window bounds. since=zero uses the last brain-sleep commit; until=zero
+// uses now. Passing the run's start time as until prevents commits made
+// during the run from appearing in the judge's view.
+func attachDreamGitContextBounded(report *DreamReport, vault Vault, now time.Time, since, until time.Time) {
 	if report == nil {
 		return
 	}
-	gitPacket := buildSleepGitPacket(vault, now)
+	gitPacket := buildSleepGitPacketBounded(vault, now, since, until)
 	report.GitContext = gitPacket.Markdown
 	report.GitContextScope = gitPacket.Scope
 	report.GitContextUsed = gitPacket.Used

@@ -90,6 +90,12 @@ type SleepOpts struct {
 	Router         *routing.Router
 	Ledger         *ledger.Ledger
 	RunID          string
+	// GitSince and GitUntil bound the git history window for the judge.
+	// GitSince=zero uses the last "brain sleep:" commit as the lower bound.
+	// GitUntil=zero uses Now. Set both to [last_sync_until, run_start_time)
+	// to avoid overlap and gap between consecutive runs.
+	GitSince time.Time
+	GitUntil time.Time
 }
 
 // SleepResult is the orchestrator's structured outcome.
@@ -222,7 +228,7 @@ func prepareSleepCycle(cfg *Config, opts SleepOpts, autonomy string) (*preparedS
 	if err != nil {
 		return nil, fmt.Errorf("dream report: %w", err)
 	}
-	attachDreamGitContext(report, vault, opts.Now)
+	attachDreamGitContextBounded(report, vault, opts.Now, opts.GitSince, opts.GitUntil)
 	nrem, err := ConsolidatePlan(cfg, opts.Sphere)
 	if err != nil {
 		return nil, fmt.Errorf("nrem consolidate plan: %w", err)

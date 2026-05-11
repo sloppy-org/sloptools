@@ -12,7 +12,6 @@ import (
 
 	"github.com/sloppy-org/sloptools/internal/brain"
 	"github.com/sloppy-org/sloptools/internal/brain/activity"
-	"github.com/sloppy-org/sloptools/internal/brain/backend"
 	brainEdit "github.com/sloppy-org/sloptools/internal/brain/edit"
 	"github.com/sloppy-org/sloptools/internal/brain/ledger"
 	"github.com/sloppy-org/sloptools/internal/brain/routing"
@@ -162,7 +161,7 @@ func cmdBrainNight(args []string) int {
 	}
 
 	if stage == "" || stage == "sync" || stage == "sweep" {
-		runSyncStage(brain.Sphere(*sphere), time.Now(), report)
+		runSyncStage(vault, brain.Sphere(*sphere), report.StartedAt, runID, report)
 	}
 
 	if stage == "" || stage == "sweep" {
@@ -191,6 +190,9 @@ func cmdBrainNight(args []string) int {
 	}
 
 	if stage == "" || stage == "judge" {
+		// Load the activity sync state so the judge's git window matches
+		// the same [since, until) window as the activity digest.
+		actState := activity.LoadState(string(*sphere))
 		if err := runJudgeStage(cfg, brain.Sphere(*sphere), brain.SleepOpts{
 			Sphere:         brain.Sphere(*sphere),
 			Budget:         *budget,
@@ -202,6 +204,8 @@ func cmdBrainNight(args []string) int {
 			Router:         router,
 			Ledger:         ldg,
 			RunID:          runID,
+			GitSince:       actState.LastSyncUntil, // same lower bound as activity digest
+			GitUntil:       report.StartedAt,       // fixed at run start, no drift
 		}, report); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
@@ -259,15 +263,27 @@ type scoutSummary struct {
 }
 
 // runSyncStage builds the activity digest from groupware (calendar + mail)
-// and stores it in the night report. Errors are non-fatal: a missing digest
-// means the judge has less context but the night can still proceed.
-func runSyncStage(sphere brain.Sphere, now time.Time, report *nightReport) {
-	digest, err := activity.Build(string(sphere), now)
+// and brain git history for the window [last_sync_until, runStart).
+// The window bounds are fixed at runStart so activity during the run is
+// not counted twice. State is persisted after a successful digest so the
+// next run's window starts from runStart. Errors are non-fatal.
+func runSyncStage(vault brain.Vault, sphere brain.Sphere, runStart time.Time, runID string, report *nightReport) {
+	state := activity.LoadState(string(sphere))
+	since := state.LastSyncUntil
+	until := runStart // fixed: never drifts during the run
+
+	digest, err := activity.BuildWithGit(string(sphere), vault.BrainRoot(), since, until)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "sync: activity digest: %v\n", err)
 		return
 	}
 	report.ActivityDigest = digest.Format()
+
+	// Persist the window so the next run starts exactly from runStart.
+	_ = activity.SaveState(string(sphere), activity.State{
+		LastSyncUntil: until,
+		LastRunID:     runID,
+	})
 }
 
 // runSweepStage runs the deterministic, zero-LLM portion of sleep:
@@ -453,35 +469,4 @@ func runJudgeStage(cfg *brain.Config, sphere brain.Sphere, opts brain.SleepOpts,
 // computeSpend reads the ledger and snapshots the session and weekly
 // share for both paid providers. Errors are swallowed: if the ledger
 // can't be read the spend simply doesn't appear in the report.
-func computeSpend(ldg *ledger.Ledger, sessionStart, now time.Time) *spendSummary {
-	out := &spendSummary{SessionStart: sessionStart.Format(time.RFC3339)}
-	if v, err := ldg.RollingShare(backend.ProviderAnthropic, sessionStart, now); err == nil {
-		out.AnthropicSessionShare = v
-	}
-	if v, err := ldg.RollingShare(backend.ProviderOpenAI, sessionStart, now); err == nil {
-		out.OpenAISessionShare = v
-	}
-	if v, err := ldg.WeeklyShare(backend.ProviderAnthropic, now); err == nil {
-		out.AnthropicWeeklyShare = v
-	}
-	if v, err := ldg.WeeklyShare(backend.ProviderOpenAI, now); err == nil {
-		out.OpenAIWeeklyShare = v
-	}
-	return out
-}
-
-func writeNightReport(vault brain.Vault, runID string, r *nightReport) error {
-	if r.DryRun {
-		return nil
-	}
-	dir := filepath.Join(vault.BrainRoot(), "reports", "night")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("night: mkdir report dir: %w", err)
-	}
-	path := filepath.Join(dir, runID+".json")
-	body, err := encodeIndentJSON(r)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, body, 0o644)
-}
+// computeSpend and writeNightReport live in brain_night_report.go.
