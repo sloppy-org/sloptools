@@ -50,7 +50,7 @@ func ParseTaskSourceID(sourceID string) TaskSourceParts {
 }
 
 func FileSourceID(sphere string) string {
-	return fmt.Sprintf("file:%s:INBOX", sphere)
+	return fmt.Sprintf("file:%s:root", sphere)
 }
 
 func IsFileSourceID(sourceID string) bool {
@@ -64,12 +64,11 @@ func FileSources(cfg *brain.Config, sphere string) ([]FileSource, error) {
 		if sphere != "" && current != sphere {
 			continue
 		}
-		inbox := filepath.Join(vault.Root, "INBOX")
-		count, err := CountBareFiles(inbox)
+		count, err := CountBareFiles(FileSource{Root: vault.Root, Inbox: vault.Root})
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, FileSource{Sphere: current, Root: vault.Root, Inbox: inbox, Count: count})
+		out = append(out, FileSource{Sphere: current, Root: vault.Root, Inbox: vault.Root, Count: count})
 	}
 	return out, nil
 }
@@ -83,12 +82,13 @@ func FileSourceForID(cfg *brain.Config, sourceID string) (FileSource, error) {
 	if !ok {
 		return FileSource{}, fmt.Errorf("no vault configured for sphere %q", sphere)
 	}
-	inbox := filepath.Join(vault.Root, "INBOX")
-	count, err := CountBareFiles(inbox)
+	src := FileSource{Sphere: sphere, Root: vault.Root, Inbox: vault.Root}
+	count, err := CountBareFiles(src)
 	if err != nil {
 		return FileSource{}, err
 	}
-	return FileSource{Sphere: sphere, Root: vault.Root, Inbox: inbox, Count: count}, nil
+	src.Count = count
+	return src, nil
 }
 
 func FileItemForID(source FileSource, id string) (FileItem, error) {
@@ -106,7 +106,7 @@ func FileItemForID(source FileSource, id string) (FileItem, error) {
 	if !info.Mode().IsRegular() {
 		return FileItem{}, fmt.Errorf("inbox item %q is not a regular file", id)
 	}
-	return FileItem{ID: id, Path: filepath.ToSlash(filepath.Join("INBOX", id)), Size: info.Size(), ModTime: info.ModTime()}, nil
+	return FileItem{ID: id, Path: id, Size: info.Size(), ModTime: info.ModTime()}, nil
 }
 
 func ListBareFiles(source FileSource) ([]FileItem, error) {
@@ -127,7 +127,7 @@ func ListBareFiles(source FileSource) ([]FileItem, error) {
 			continue
 		}
 		name := entry.Name()
-		items = append(items, FileItem{ID: name, Path: filepath.ToSlash(filepath.Join("INBOX", name)), Size: info.Size(), ModTime: info.ModTime()})
+		items = append(items, FileItem{ID: name, Path: name, Size: info.Size(), ModTime: info.ModTime()})
 	}
 	sort.Slice(items, func(i, j int) bool {
 		return strings.ToLower(items[i].ID) < strings.ToLower(items[j].ID)
@@ -135,8 +135,8 @@ func ListBareFiles(source FileSource) ([]FileItem, error) {
 	return items, nil
 }
 
-func CountBareFiles(inbox string) (int, error) {
-	items, err := ListBareFiles(FileSource{Inbox: inbox})
+func CountBareFiles(source FileSource) (int, error) {
+	items, err := ListBareFiles(source)
 	if err != nil {
 		return 0, err
 	}
@@ -221,7 +221,7 @@ func ClassifyFile(source FileSource, item FileItem, contextText string) map[stri
 	case ".md", ".txt":
 		kind = "note_or_text"
 	}
-	return map[string]interface{}{"sphere": source.Sphere, "kind": kind, "target_kind": "source_folder", "target": "natural vault folder outside INBOX", "context": strings.TrimSpace(contextText), "ack_action": "inbox.item_ack", "ack_after": "file moved or canonical target written and validated", "source_binding": fmt.Sprintf("file:%s:%s", source.Sphere, item.Path), "requires_review": false}
+	return map[string]interface{}{"sphere": source.Sphere, "kind": kind, "target_kind": "source_folder", "target": "natural vault subfolder", "context": strings.TrimSpace(contextText), "ack_action": "inbox.item_ack", "ack_after": "file moved or canonical target written and validated", "source_binding": fmt.Sprintf("file:%s:%s", source.Sphere, item.Path), "requires_review": false}
 }
 
 func LooksLikeShopping(text string) bool {
@@ -240,7 +240,7 @@ func LooksLikeShopping(text string) bool {
 
 func parseFileSourceID(sourceID string) string {
 	parts := strings.Split(strings.TrimSpace(sourceID), ":")
-	if len(parts) != 3 || parts[0] != "file" || parts[2] != "INBOX" {
+	if len(parts) != 3 || parts[0] != "file" || parts[2] != "root" {
 		return ""
 	}
 	if parts[1] != store.SpherePrivate && parts[1] != store.SphereWork {
@@ -256,9 +256,6 @@ func resolveTarget(source FileSource, targetPath string) (string, error) {
 	clean := filepath.Clean(filepath.FromSlash(targetPath))
 	if clean == "." || clean == "" {
 		return "", errors.New("target_path is required")
-	}
-	if clean == "INBOX" || strings.HasPrefix(clean, "INBOX"+string(filepath.Separator)) {
-		return "", errors.New("target_path must be outside INBOX")
 	}
 	dest := filepath.Join(source.Root, clean)
 	rel, err := filepath.Rel(source.Root, dest)

@@ -129,7 +129,7 @@ func outputMCPGit(t *testing.T, workTree string, args ...string) string {
 func TestInboxSourceListIncludesGoogleTasksInboxAndBareFileSource(t *testing.T) {
 	tmp := t.TempDir()
 	configPath := writeMCPBrainConfig(t, tmp)
-	writeMCPBrainFile(t, filepath.Join(tmp, "private", "INBOX", "receipt.pdf"), "pdf")
+	writeMCPBrainFile(t, filepath.Join(tmp, "private", "receipt.pdf"), "pdf")
 	if err := os.MkdirAll(filepath.Join(tmp, "private", "INBOX", "special"), 0o755); err != nil {
 		t.Fatalf("mkdir special: %v", err)
 	}
@@ -155,7 +155,7 @@ func TestInboxSourceListIncludesGoogleTasksInboxAndBareFileSource(t *testing.T) 
 	if got["count"] != 2 || sources[0]["pending_count"] != 1 || sources[1]["pending_count"] != 1 {
 		t.Fatalf("sources = %#v", got)
 	}
-	if sources[1]["id"] != "file:private:INBOX" || sources[1]["mode"] != "active" {
+	if sources[1]["id"] != "file:private:root" || sources[1]["mode"] != "active" {
 		t.Fatalf("file source = %#v", sources[1])
 	}
 }
@@ -163,7 +163,7 @@ func TestInboxSourceListIncludesGoogleTasksInboxAndBareFileSource(t *testing.T) 
 func TestInboxPlansAndAcknowledgesTaskAndFile(t *testing.T) {
 	tmp := t.TempDir()
 	configPath := writeMCPBrainConfig(t, tmp)
-	writeMCPBrainFile(t, filepath.Join(tmp, "private", "INBOX", "receipt.pdf"), "pdf")
+	writeMCPBrainFile(t, filepath.Join(tmp, "private", "receipt.pdf"), "pdf")
 	s, st, _ := newDomainServerForTest(t)
 	s.brainConfigPath = configPath
 	account, err := st.CreateExternalAccount(store.SpherePrivate, store.ExternalProviderGoogleCalendar, "Google", map[string]any{})
@@ -194,14 +194,14 @@ func TestInboxPlansAndAcknowledgesTaskAndFile(t *testing.T) {
 	if provider.completeCalls != 1 {
 		t.Fatalf("completeCalls = %d, want 1", provider.completeCalls)
 	}
-	filePlan, err := s.callTool("sloppy_inbox", map[string]interface{}{"action": "item_plan", "source_id": "file:private:INBOX", "id": "receipt.pdf"})
+	filePlan, err := s.callTool("sloppy_inbox", map[string]interface{}{"action": "item_plan", "source_id": "file:private:root", "id": "receipt.pdf"})
 	if err != nil {
 		t.Fatalf("file inbox.item_plan: %v", err)
 	}
 	if filePlan["plan"].(map[string]interface{})["kind"] != "scan_or_document" {
 		t.Fatalf("file plan = %#v", filePlan)
 	}
-	acked, err := s.callTool("sloppy_inbox", map[string]interface{}{"action": "item_ack", "source_id": "file:private:INBOX", "id": "receipt.pdf", "target_ref": "file:private:Documents/receipt.pdf", "target_path": "Documents/receipt.pdf"})
+	acked, err := s.callTool("sloppy_inbox", map[string]interface{}{"action": "item_ack", "source_id": "file:private:root", "id": "receipt.pdf", "target_ref": "file:private:Documents/receipt.pdf", "target_path": "Documents/receipt.pdf"})
 	if err != nil {
 		t.Fatalf("file inbox.item_ack: %v", err)
 	}

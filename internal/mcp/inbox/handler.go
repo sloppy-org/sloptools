@@ -267,7 +267,7 @@ func taskItemPayload(account store.ExternalAccount, providerName string, item pr
 }
 
 func fileSourcePayload(source FileSource) map[string]interface{} {
-	return map[string]interface{}{"id": FileSourceID(source.Sphere), "type": "file", "sphere": source.Sphere, "name": source.Sphere + " INBOX", "path": "INBOX", "mode": "active", "scope": "bare_files_only", "subdirectories": "ignored_unless_explicit", "ack_action": "move_file", "pending_count": source.Count}
+	return map[string]interface{}{"id": FileSourceID(source.Sphere), "type": "file", "sphere": source.Sphere, "name": source.Sphere + " root capture", "path": "", "mode": "active", "scope": "bare_files_only", "subdirectories": "ignored_unless_explicit", "ack_action": "move_file", "pending_count": source.Count}
 }
 
 func fileItemPayload(source FileSource, item FileItem) map[string]interface{} {
