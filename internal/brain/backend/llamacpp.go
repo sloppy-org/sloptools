@@ -21,7 +21,67 @@ const (
 	// Matches opencode behaviour: no round limit, just a time budget. The
 	// model runs until it naturally stops making tool calls and produces text.
 	llamacppAgentBudget = 30 * time.Minute
+	// perToolBreakThreshold opens the circuit for a single tool after this many
+	// consecutive identical failures, preventing the model from retrying a broken
+	// tool indefinitely within one run.
+	perToolBreakThreshold = 3
+	// globalBreakThreshold aborts the agent loop after this many total consecutive
+	// tool errors (across all tools), capping runaway failure cascades.
+	globalBreakThreshold = 6
 )
+
+// toolFailureTracker counts consecutive identical failures per tool within one
+// agent-loop run. It is not shared across runs.
+type toolFailureTracker struct {
+	consecutive map[string]int
+	lastClass   map[string]string
+	globalTotal int
+}
+
+func newToolFailureTracker() *toolFailureTracker {
+	return &toolFailureTracker{
+		consecutive: make(map[string]int),
+		lastClass:   make(map[string]string),
+	}
+}
+
+// recordSuccess resets the per-tool and global counters for name.
+func (t *toolFailureTracker) recordSuccess(name string) {
+	t.consecutive[name] = 0
+	t.lastClass[name] = ""
+	t.globalTotal = 0
+}
+
+// recordFailure increments the consecutive counter for name+class and returns
+// true when the per-tool circuit-break threshold is reached.
+func (t *toolFailureTracker) recordFailure(name, class string) bool {
+	if t.lastClass[name] == class {
+		t.consecutive[name]++
+	} else {
+		t.consecutive[name] = 1
+		t.lastClass[name] = class
+	}
+	t.globalTotal++
+	return t.consecutive[name] >= perToolBreakThreshold
+}
+
+// globalTripped returns true when total consecutive failures across all tools
+// exceed the global threshold.
+func (t *toolFailureTracker) globalTripped() bool {
+	return t.globalTotal >= globalBreakThreshold
+}
+
+// errorClassShort extracts the short error prefix used as a circuit-breaker key
+// (head before first ':' or '\n', capped at 80 bytes).
+func errorClassShort(msg string) string {
+	if i := strings.IndexAny(msg, ":\n"); i > 0 && i <= 80 {
+		return strings.TrimSpace(msg[:i])
+	}
+	if len(msg) > 80 {
+		return msg[:80]
+	}
+	return msg
+}
 
 // LlamacppBackend calls the slopgate HTTP API directly (OpenAI-compatible
 // /v1/chat/completions). No subprocess overhead; no opencode cold-start cost.
@@ -96,6 +156,7 @@ func runLlamacppAgentLoop(ctx context.Context, model, modelHeader, affinity stri
 		totalTokensOut int64
 	)
 	deadline := start.Add(llamacppAgentBudget)
+	tracker := newToolFailureTracker()
 	for {
 		if time.Now().After(deadline) {
 			break
@@ -140,9 +201,12 @@ func runLlamacppAgentLoop(ctx context.Context, model, modelHeader, affinity stri
 		messages = append(messages, msg)
 
 		if len(toolCalls) > 0 {
-			executeOpenAIToolCalls(toolCalls, toolMap, &messages)
+			executeOpenAIToolCalls(toolCalls, toolMap, &messages, tracker)
 		} else {
-			executeQwenXMLToolCalls(xmlCalls, toolMap, &messages)
+			executeQwenXMLToolCalls(xmlCalls, toolMap, &messages, tracker)
+		}
+		if tracker.globalTripped() {
+			break
 		}
 	}
 
@@ -161,7 +225,7 @@ func runLlamacppAgentLoop(ctx context.Context, model, modelHeader, affinity stri
 
 // executeOpenAIToolCalls runs standard OpenAI tool_calls entries through MCPClient
 // and appends role=tool messages to messages.
-func executeOpenAIToolCalls(toolCalls []interface{}, toolMap map[string]*MCPClient, messages *[]map[string]interface{}) {
+func executeOpenAIToolCalls(toolCalls []interface{}, toolMap map[string]*MCPClient, messages *[]map[string]interface{}, tracker *toolFailureTracker) {
 	for _, rawTC := range toolCalls {
 		tc, _ := rawTC.(map[string]interface{})
 		if tc == nil {
@@ -178,7 +242,7 @@ func executeOpenAIToolCalls(toolCalls []interface{}, toolMap map[string]*MCPClie
 		if argsStr != "" {
 			_ = json.Unmarshal([]byte(argsStr), &args)
 		}
-		result := callToolSafe(toolMap, toolName, args)
+		result := callToolSafe(toolMap, toolName, args, tracker)
 		*messages = append(*messages, map[string]interface{}{
 			"role":         "tool",
 			"tool_call_id": tcID,
@@ -189,10 +253,10 @@ func executeOpenAIToolCalls(toolCalls []interface{}, toolMap map[string]*MCPClie
 
 // executeQwenXMLToolCalls runs parsed qwen XML tool calls and appends a single
 // role=user message containing all <tool_response> blocks.
-func executeQwenXMLToolCalls(xmlCalls []qwenXMLCall, toolMap map[string]*MCPClient, messages *[]map[string]interface{}) {
+func executeQwenXMLToolCalls(xmlCalls []qwenXMLCall, toolMap map[string]*MCPClient, messages *[]map[string]interface{}, tracker *toolFailureTracker) {
 	var sb strings.Builder
 	for _, tc := range xmlCalls {
-		result := callToolSafe(toolMap, tc.Name, tc.Args)
+		result := callToolSafe(toolMap, tc.Name, tc.Args, tracker)
 		fmt.Fprintf(&sb, "<tool_response>\n<function_name>%s</function_name>\n<output>%s</output>\n</tool_response>\n\n", tc.Name, result)
 	}
 	*messages = append(*messages, map[string]interface{}{
@@ -210,14 +274,31 @@ const toolResultCap = 8 * 1024
 // callToolSafe invokes the named tool; returns an error string on failure so
 // the model sees what went wrong without aborting the agent loop. Results
 // are capped at toolResultCap bytes so the messages array stays bounded.
-func callToolSafe(toolMap map[string]*MCPClient, name string, args map[string]interface{}) string {
+// tracker accumulates consecutive identical failures; when the per-tool
+// threshold is reached the circuit opens and the tool is refused without
+// calling the MCP client again.
+func callToolSafe(toolMap map[string]*MCPClient, name string, args map[string]interface{}, tracker *toolFailureTracker) string {
+	if tracker != nil && tracker.consecutive[name] >= perToolBreakThreshold {
+		return fmt.Sprintf("tool error (circuit open): %q has failed with %q %d times in a row; do not call it again this run, try a different approach or finish", name, tracker.lastClass[name], tracker.consecutive[name])
+	}
 	client, ok := toolMap[name]
 	if !ok {
+		class := "unknown tool"
+		if tracker != nil && tracker.recordFailure(name, class) {
+			return fmt.Sprintf("tool error (circuit open): %q has returned %q %d times in a row; do not call it again this run, try a different approach or finish", name, class, tracker.consecutive[name])
+		}
 		return fmt.Sprintf("error: unknown tool %q", name)
 	}
 	result, err := client.Call(name, args)
 	if err != nil {
+		class := errorClassShort(err.Error())
+		if tracker != nil && tracker.recordFailure(name, class) {
+			return fmt.Sprintf("tool error (circuit open): %q has returned %q %d times in a row; do not call it again this run, try a different approach or finish", name, class, tracker.consecutive[name])
+		}
 		return fmt.Sprintf("tool error: %v", err)
+	}
+	if tracker != nil {
+		tracker.recordSuccess(name)
 	}
 	if len(result) > toolResultCap {
 		result = result[:toolResultCap] + fmt.Sprintf("\n[truncated: %d bytes omitted]", len(result)-toolResultCap)
