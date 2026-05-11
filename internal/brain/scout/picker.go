@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/sloppy-org/sloptools/internal/brain"
+	"github.com/sloppy-org/sloptools/internal/brain/evidence"
 	"gopkg.in/yaml.v3"
 )
 
@@ -250,7 +251,7 @@ func scoreRoot(brainRoot, root string, now time.Time) ([]Pick, error) {
 			rel = filepath.Join(root, d.Name())
 		}
 		rel = filepath.ToSlash(rel)
-		pick := scoreNote(note, rel, now)
+		pick := scoreNote(brainRoot, note, rel, now)
 		markers, boost := scanUncertainty(string(body))
 		if len(markers) > 0 {
 			pick.UncertaintyMarkers = markers
@@ -270,7 +271,7 @@ func scoreRoot(brainRoot, root string, now time.Time) ([]Pick, error) {
 	return out, nil
 }
 
-func scoreNote(note *brain.MarkdownNote, vaultRel string, now time.Time) Pick {
+func scoreNote(brainRoot string, note *brain.MarkdownNote, vaultRel string, now time.Time) Pick {
 	cadence := scalarField(note, "cadence")
 	focus := scalarField(note, "focus")
 	lastSeen := parseDateField(note, "last_seen")
@@ -281,6 +282,19 @@ func scoreNote(note *brain.MarkdownNote, vaultRel string, now time.Time) Pick {
 		title = strings.TrimSuffix(filepath.Base(vaultRel), ".md")
 	}
 	score, reason := computeScoreWithFocus(lastSeen, focus, strategic, needsReview, now)
+
+	// Apply yield_ratio modifier: entities whose past evidence reliably led
+	// to applied edits score higher; entities where evidence was always
+	// stranded (never applied) score lower. Default 0.5 = neutral.
+	yr := evidence.YieldRatio(brainRoot, vaultRel, 90)
+	if yr < 0.1 {
+		score *= 0.5
+		reason += " [low-yield×0.5]"
+	} else if yr > 0.7 {
+		score *= 1.3
+		reason += " [high-yield×1.3]"
+	}
+
 	return Pick{
 		Path:      vaultRel,
 		Title:     title,

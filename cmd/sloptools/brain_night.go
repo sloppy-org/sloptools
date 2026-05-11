@@ -13,10 +13,12 @@ import (
 	"github.com/sloppy-org/sloptools/internal/brain"
 	"github.com/sloppy-org/sloptools/internal/brain/activity"
 	"github.com/sloppy-org/sloptools/internal/brain/backend"
+	brainEdit "github.com/sloppy-org/sloptools/internal/brain/edit"
 	"github.com/sloppy-org/sloptools/internal/brain/ledger"
 	"github.com/sloppy-org/sloptools/internal/brain/routing"
 	"github.com/sloppy-org/sloptools/internal/brain/scout"
 	"github.com/sloppy-org/sloptools/internal/brain/textbook"
+	"github.com/sloppy-org/sloptools/internal/brain/triage"
 )
 
 // scoutCursor tracks which picks have been processed recently so large
@@ -106,8 +108,9 @@ func cmdBrainNight(args []string) int {
 		return 2
 	}
 	stage := strings.TrimSpace(strings.ToLower(*onlyStage))
-	if stage != "" && stage != "sweep" && stage != "scout" && stage != "judge" {
-		fmt.Fprintf(os.Stderr, "--only-stage must be one of: sweep, scout, judge (got %q)\n", *onlyStage)
+	validStages := map[string]bool{"sync": true, "sweep": true, "scout": true, "triage": true, "edit": true, "propose": true, "feedback": true, "judge": true}
+	if stage != "" && !validStages[stage] {
+		fmt.Fprintf(os.Stderr, "--only-stage must be one of: sync, sweep, scout, triage, edit, propose, feedback, judge (got %q)\n", *onlyStage)
 		return 2
 	}
 
@@ -180,6 +183,13 @@ func cmdBrainNight(args []string) int {
 		}
 	}
 
+	if stage == "" || stage == "triage" || stage == "edit" || stage == "propose" || stage == "feedback" {
+		if err := runTriageEditStages(context.Background(), vault, ldg, router, runID, string(*sphere), *dryRun, report); err != nil {
+			fmt.Fprintln(os.Stderr, "triage/edit:", err)
+			// Non-fatal: judge can still run.
+		}
+	}
+
 	if stage == "" || stage == "judge" {
 		if err := runJudgeStage(cfg, brain.Sphere(*sphere), brain.SleepOpts{
 			Sphere:         brain.Sphere(*sphere),
@@ -218,6 +228,8 @@ type nightReport struct {
 	Sweep          *brain.SleepResult `json:"sweep,omitempty"`
 	Textbook       *textbook.Summary  `json:"textbook,omitempty"`
 	Scout          *scoutSummary      `json:"scout,omitempty"`
+	Triage         []triage.Item      `json:"triage,omitempty"`
+	Edit           *brainEdit.Report  `json:"edit,omitempty"`
 	Judge          *brain.SleepResult `json:"judge,omitempty"`
 	JudgeReport    string             `json:"judge_report_path,omitempty"`
 	Spend          *spendSummary      `json:"spend,omitempty"`
@@ -259,6 +271,7 @@ func runSyncStage(sphere brain.Sphere, now time.Time, report *nightReport) {
 }
 
 // runSweepStage runs the deterministic, zero-LLM portion of sleep:
+
 // folder-coverage, prune-links scan + apply, dream picker, NREM
 // consolidation. The judge step is skipped (Backend=none, DryRun
 // follows the caller). The result captures everything the sweep
