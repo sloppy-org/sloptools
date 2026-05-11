@@ -160,6 +160,28 @@ func TestInboxSourceListIncludesGoogleTasksInboxAndBareFileSource(t *testing.T) 
 	}
 }
 
+func TestInboxFileSourceFiltersVaultMetadata(t *testing.T) {
+	tmp := t.TempDir()
+	configPath := writeMCPBrainConfig(t, tmp)
+	root := filepath.Join(tmp, "private")
+	// vault metadata — must be invisible
+	for _, name := range []string{".gitignore", ".sync_abc.db", "CLAUDE.md", "AGENTS.md", "README.md", "GEMINI.md"} {
+		writeMCPBrainFile(t, filepath.Join(root, name), name)
+	}
+	// real capture item — must be visible
+	writeMCPBrainFile(t, filepath.Join(root, "receipt.pdf"), "pdf")
+	s, _, _ := newDomainServerForTest(t)
+	s.brainConfigPath = configPath
+	got, err := s.callTool("sloppy_inbox", map[string]interface{}{"action": "item_list", "source_id": "file:private:root"})
+	if err != nil {
+		t.Fatalf("item_list: %v", err)
+	}
+	items := got["items"].([]map[string]interface{})
+	if len(items) != 1 || items[0]["id"] != "receipt.pdf" {
+		t.Fatalf("items = %#v, want only receipt.pdf", items)
+	}
+}
+
 func TestInboxPlansAndAcknowledgesTaskAndFile(t *testing.T) {
 	tmp := t.TempDir()
 	configPath := writeMCPBrainConfig(t, tmp)

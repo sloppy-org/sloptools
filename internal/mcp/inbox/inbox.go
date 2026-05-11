@@ -127,6 +127,9 @@ func ListBareFiles(source FileSource) ([]FileItem, error) {
 			continue
 		}
 		name := entry.Name()
+		if isVaultMetadata(name) {
+			continue
+		}
 		items = append(items, FileItem{ID: name, Path: name, Size: info.Size(), ModTime: info.ModTime()})
 	}
 	sort.Slice(items, func(i, j int) bool {
@@ -236,6 +239,18 @@ func LooksLikeShopping(text string) bool {
 		}
 	}
 	return len(strings.Fields(normalized)) <= 2 && !strings.ContainsAny(normalized, ".:;?!")
+}
+
+// vaultMetadataNames is the fixed set of top-level vault instruction and
+// index files that sloppy_inbox must never enumerate as capture items.
+var vaultMetadataNames = map[string]bool{
+	"CLAUDE.md": true, "AGENTS.md": true, "README.md": true, "GEMINI.md": true,
+}
+
+// isVaultMetadata returns true for dotfiles and vault instruction/index files
+// that must not appear as capture items when the file source is the vault root.
+func isVaultMetadata(name string) bool {
+	return strings.HasPrefix(name, ".") || vaultMetadataNames[name]
 }
 
 func parseFileSourceID(sourceID string) string {
