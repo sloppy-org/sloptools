@@ -262,6 +262,11 @@ func parseGmailMessage(msg *gmail.Message) *providerdata.EmailMessage {
 	return email
 }
 
+// gmailAttachmentIDPrefix marks IDs we mint from the immutable gmail PartId,
+// so the caller can re-fetch an attachment after Gmail has rotated its
+// short-lived attachmentId tokens.
+const gmailAttachmentIDPrefix = "part:"
+
 func collectGmailAttachments(part *gmail.MessagePart) []providerdata.Attachment {
 	if part == nil {
 		return nil
@@ -278,7 +283,7 @@ func collectGmailAttachments(part *gmail.MessagePart) []providerdata.Attachment 
 				}
 			}
 		}
-		out = append(out, providerdata.Attachment{ID: strings.TrimSpace(part.Body.AttachmentId), Filename: filename, MimeType: mimeType, Size: part.Body.Size, IsInline: isInline})
+		out = append(out, providerdata.Attachment{ID: gmailAttachmentIDPrefix + strings.TrimSpace(part.PartId), Filename: filename, MimeType: mimeType, Size: part.Body.Size, IsInline: isInline})
 	}
 	for _, sub := range part.Parts {
 		out = append(out, collectGmailAttachments(sub)...)
@@ -303,9 +308,19 @@ func (c *GmailClient) GetAttachment(ctx context.Context, messageID, attachmentID
 	if err != nil {
 		return nil, fmt.Errorf("failed to get message for attachment: %w", err)
 	}
-	meta := findGmailAttachmentMeta(msg.Payload, cleanAttachmentID)
+	var part *gmail.MessagePart
+	if strings.HasPrefix(cleanAttachmentID, gmailAttachmentIDPrefix) {
+		partID := strings.TrimPrefix(cleanAttachmentID, gmailAttachmentIDPrefix)
+		part = findGmailPartByID(msg.Payload, partID)
+	} else {
+		part = findGmailPartByAttachmentID(msg.Payload, cleanAttachmentID)
+	}
+	if part == nil || part.Body == nil || strings.TrimSpace(part.Body.AttachmentId) == "" {
+		return nil, fmt.Errorf("attachment %q not found in message", cleanAttachmentID)
+	}
+	freshAttachmentID := part.Body.AttachmentId
 	c.rateLimiter.Acquire("messages.attachments.get")
-	body, err := service.Users.Messages.Attachments.Get("me", messageID, cleanAttachmentID).Context(ctx).Do()
+	body, err := service.Users.Messages.Attachments.Get("me", messageID, freshAttachmentID).Context(ctx).Do()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get attachment: %w", err)
 	}
@@ -316,33 +331,39 @@ func (c *GmailClient) GetAttachment(ctx context.Context, messageID, attachmentID
 			return nil, fmt.Errorf("decode attachment data: %w", err)
 		}
 	}
-	out := &providerdata.AttachmentData{ID: cleanAttachmentID, Content: data, Size: int64(len(data))}
-	if meta != nil {
-		out.Filename = meta.Filename
-		out.MimeType = meta.MimeType
-		out.IsInline = meta.IsInline
-		if meta.Size > 0 {
-			out.Size = meta.Size
+	isInline := false
+	for _, h := range part.Headers {
+		if strings.EqualFold(h.Name, "Content-Disposition") && strings.Contains(strings.ToLower(h.Value), "inline") {
+			isInline = true
 		}
 	}
-	return out, nil
+	return &providerdata.AttachmentData{ID: cleanAttachmentID, Filename: strings.TrimSpace(part.Filename), MimeType: strings.TrimSpace(part.MimeType), Size: int64(len(data)), IsInline: isInline, Content: data}, nil
 }
 
-func findGmailAttachmentMeta(part *gmail.MessagePart, attachmentID string) *providerdata.Attachment {
+func findGmailPartByID(part *gmail.MessagePart, partID string) *gmail.MessagePart {
+	if part == nil {
+		return nil
+	}
+	if strings.TrimSpace(part.PartId) == partID {
+		return part
+	}
+	for _, sub := range part.Parts {
+		if m := findGmailPartByID(sub, partID); m != nil {
+			return m
+		}
+	}
+	return nil
+}
+
+func findGmailPartByAttachmentID(part *gmail.MessagePart, attachmentID string) *gmail.MessagePart {
 	if part == nil {
 		return nil
 	}
 	if part.Body != nil && strings.TrimSpace(part.Body.AttachmentId) == attachmentID {
-		isInline := false
-		for _, h := range part.Headers {
-			if strings.EqualFold(h.Name, "Content-Disposition") && strings.Contains(strings.ToLower(h.Value), "inline") {
-				isInline = true
-			}
-		}
-		return &providerdata.Attachment{ID: attachmentID, Filename: strings.TrimSpace(part.Filename), MimeType: strings.TrimSpace(part.MimeType), Size: part.Body.Size, IsInline: isInline}
+		return part
 	}
 	for _, sub := range part.Parts {
-		if m := findGmailAttachmentMeta(sub, attachmentID); m != nil {
+		if m := findGmailPartByAttachmentID(sub, attachmentID); m != nil {
 			return m
 		}
 	}
