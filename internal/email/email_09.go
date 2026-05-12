@@ -257,8 +257,96 @@ func parseGmailMessage(msg *gmail.Message) *providerdata.EmailMessage {
 	if msg.Payload != nil {
 		email.BodyText = extractGmailBody(msg.Payload, "text/plain")
 		email.BodyHTML = extractGmailBody(msg.Payload, "text/html")
+		email.Attachments = collectGmailAttachments(msg.Payload)
 	}
 	return email
+}
+
+func collectGmailAttachments(part *gmail.MessagePart) []providerdata.Attachment {
+	if part == nil {
+		return nil
+	}
+	var out []providerdata.Attachment
+	if part.Body != nil && strings.TrimSpace(part.Body.AttachmentId) != "" {
+		filename := strings.TrimSpace(part.Filename)
+		mimeType := strings.TrimSpace(part.MimeType)
+		isInline := false
+		for _, h := range part.Headers {
+			if strings.EqualFold(h.Name, "Content-Disposition") {
+				if strings.Contains(strings.ToLower(h.Value), "inline") {
+					isInline = true
+				}
+			}
+		}
+		out = append(out, providerdata.Attachment{ID: strings.TrimSpace(part.Body.AttachmentId), Filename: filename, MimeType: mimeType, Size: part.Body.Size, IsInline: isInline})
+	}
+	for _, sub := range part.Parts {
+		out = append(out, collectGmailAttachments(sub)...)
+	}
+	return out
+}
+
+func (c *GmailClient) GetAttachment(ctx context.Context, messageID, attachmentID string) (*providerdata.AttachmentData, error) {
+	if strings.TrimSpace(messageID) == "" {
+		return nil, fmt.Errorf("message_id is required")
+	}
+	cleanAttachmentID := strings.TrimSpace(attachmentID)
+	if cleanAttachmentID == "" {
+		return nil, fmt.Errorf("attachment_id is required")
+	}
+	service, err := c.getService(ctx)
+	if err != nil {
+		return nil, err
+	}
+	c.rateLimiter.Acquire("messages.get")
+	msg, err := service.Users.Messages.Get("me", messageID).Context(ctx).Format("full").Do()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get message for attachment: %w", err)
+	}
+	meta := findGmailAttachmentMeta(msg.Payload, cleanAttachmentID)
+	c.rateLimiter.Acquire("messages.attachments.get")
+	body, err := service.Users.Messages.Attachments.Get("me", messageID, cleanAttachmentID).Context(ctx).Do()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get attachment: %w", err)
+	}
+	data, err := base64.URLEncoding.WithPadding(base64.NoPadding).DecodeString(body.Data)
+	if err != nil {
+		data, err = base64.URLEncoding.DecodeString(body.Data)
+		if err != nil {
+			return nil, fmt.Errorf("decode attachment data: %w", err)
+		}
+	}
+	out := &providerdata.AttachmentData{ID: cleanAttachmentID, Content: data, Size: int64(len(data))}
+	if meta != nil {
+		out.Filename = meta.Filename
+		out.MimeType = meta.MimeType
+		out.IsInline = meta.IsInline
+		if meta.Size > 0 {
+			out.Size = meta.Size
+		}
+	}
+	return out, nil
+}
+
+func findGmailAttachmentMeta(part *gmail.MessagePart, attachmentID string) *providerdata.Attachment {
+	if part == nil {
+		return nil
+	}
+	if part.Body != nil && strings.TrimSpace(part.Body.AttachmentId) == attachmentID {
+		isInline := false
+		for _, h := range part.Headers {
+			if strings.EqualFold(h.Name, "Content-Disposition") && strings.Contains(strings.ToLower(h.Value), "inline") {
+				isInline = true
+			}
+		}
+		return &providerdata.Attachment{ID: attachmentID, Filename: strings.TrimSpace(part.Filename), MimeType: strings.TrimSpace(part.MimeType), Size: part.Body.Size, IsInline: isInline}
+	}
+	for _, sub := range part.Parts {
+		if m := findGmailAttachmentMeta(sub, attachmentID); m != nil {
+			return m
+		}
+	}
+	return nil
 }
 
 // gmailFolderFromLabels picks the folder string used by D5 mapping. Gmail

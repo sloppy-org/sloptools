@@ -426,6 +426,8 @@ var _ FlagMutator = (*GmailClient)(nil)
 
 var _ CategoryMutator = (*GmailClient)(nil)
 
+var _ AttachmentProvider = (*GmailClient)(nil)
+
 func NewGmail() (*GmailClient, error) {
 	return NewGmailWithFiles("", "")
 }
