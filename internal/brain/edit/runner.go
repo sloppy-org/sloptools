@@ -168,9 +168,10 @@ func runOne(ctx context.Context, opts Opts, item triage.Item) Result {
 		}
 	}
 
-	// Mark evidence entries as applied on success.
+	// Mark all unapplied evidence for this entity as applied, including
+	// entries from prior partial runs that were just processed.
 	if res.Edited {
-		_ = evidence.MarkApplied(opts.BrainRoot, item.Entity, opts.RunID)
+		_ = evidence.MarkAppliedAll(opts.BrainRoot, item.Entity)
 		// Commit this entity's edit.
 		commitEntityEdit(opts.BrainRoot, item.Entity, item.Reason)
 	}

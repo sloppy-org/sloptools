@@ -132,6 +132,23 @@ func ReadForEntity(brainRoot, entity string, days int) ([]Entry, error) {
 	return out, nil
 }
 
+// ReadUnapplied returns all unapplied, non-reverted entries from the last
+// `days` days across all run IDs. Used by the triage stage so that evidence
+// gathered by partial or killed prior runs is not orphaned.
+func ReadUnapplied(brainRoot string, days int) ([]Entry, error) {
+	all, err := ReadRecent(brainRoot, days)
+	if err != nil {
+		return nil, err
+	}
+	var out []Entry
+	for _, e := range all {
+		if !e.Applied && !e.Reverted {
+			out = append(out, e)
+		}
+	}
+	return out, nil
+}
+
 // ReadByRunID returns all entries written by a specific run.
 func ReadByRunID(brainRoot, runID string) ([]Entry, error) {
 	path := logPath(brainRoot)
@@ -175,6 +192,30 @@ func MarkApplied(brainRoot, entity, runID string) error {
 	changed := false
 	for i := range all {
 		if all[i].Entity == entity && all[i].RunID == runID && !all[i].Applied {
+			all[i].Applied = true
+			all[i].AppliedAt = &now
+			changed = true
+		}
+	}
+	if !changed {
+		return nil
+	}
+	return rewrite(path, all)
+}
+
+// MarkAppliedAll sets applied=true for all unapplied entries for an entity,
+// regardless of run ID. Used after a successful edit so evidence from prior
+// partial runs is not re-applied on the next night.
+func MarkAppliedAll(brainRoot, entity string) error {
+	path := logPath(brainRoot)
+	all, err := readAll(path)
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	changed := false
+	for i := range all {
+		if all[i].Entity == entity && !all[i].Applied {
 			all[i].Applied = true
 			all[i].AppliedAt = &now
 			changed = true

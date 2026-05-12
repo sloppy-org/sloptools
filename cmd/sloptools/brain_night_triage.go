@@ -19,8 +19,9 @@ import (
 func runTriageEditStages(ctx context.Context, vault brain.Vault, ldg *ledger.Ledger, router *routing.Router, runID, sphere string, dryRun bool, report *nightReport) error {
 	brainRoot := vault.BrainRoot()
 
-	// Load tonight's evidence entries.
-	entries, err := evidence.ReadByRunID(brainRoot, runID)
+	// Load all unapplied entries from the last 7 days so evidence from
+	// partial or killed prior runs is not orphaned.
+	entries, err := evidence.ReadUnapplied(brainRoot, 7)
 	if err != nil {
 		return fmt.Errorf("read evidence: %w", err)
 	}
