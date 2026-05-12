@@ -64,11 +64,11 @@ type PlanCaps struct {
 	OpenAIMaxCallsPerNight    int
 }
 
-// DefaultPlanCaps returns sensible defaults. The 30-call per-night
-// ceiling is conservative for the documented brain night shape (≤30
-// scout picks + ≤1 judge call ≈ 30 paid calls per provider when every
-// pick escalates evenly). Adjust in brain.toml for tighter or looser
-// budgets.
+// DefaultPlanCaps returns sensible defaults. OpenAI (codex) is the primary
+// non-bulk provider; the 300-call ceiling is a runaway-safety bound, not a
+// throttle. The 5% weekly token-share cap provides the real budget alarm and
+// triggers MoE fallback before a live OpenAI 429 occurs. Adjust either cap
+// in brain.toml.
 func DefaultPlanCaps() PlanCaps {
 	return PlanCaps{
 		AnthropicWeeklyShareMax:   0.05,
@@ -76,7 +76,7 @@ func DefaultPlanCaps() PlanCaps {
 		AnthropicTokensPerWeek:    20_000_000, // coarse placeholder
 		OpenAITokensPerWeek:       20_000_000,
 		AnthropicMaxCallsPerNight: 30,
-		OpenAIMaxCallsPerNight:    30,
+		OpenAIMaxCallsPerNight:    300,
 	}
 }
 

@@ -411,7 +411,7 @@ func llamacppPost(ctx context.Context, model, modelHeader, affinity string,
 }
 
 // llamacppModelHeader derives the x-model header value from req.Model.
-// "llamacpp-moe/qwen" → "qwen"; "llamacpp/qwen27b" → "qwen27b".
+// "llamacpp-moe/qwen" → "qwen".
 func llamacppModelHeader(model string) string {
 	if idx := strings.LastIndex(model, "/"); idx >= 0 {
 		return model[idx+1:]

@@ -11,7 +11,7 @@ import (
 )
 
 // PreflightPacketCap is the byte ceiling above which the bulk tier is
-// skipped entirely. Originally 24 KB (calibrated for the qwen27b collapse
+// skipped entirely. Originally 24 KB (calibrated for a context collapse
 // at 167 KB on a ~40K-token window, #129). qwen3-MoE has a 256K-token
 // context window (~1 MB of text), so the old cap was far too conservative
 // and routed every real sleep packet straight to the paid tier. Raised to

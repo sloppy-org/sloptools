@@ -60,7 +60,7 @@ func TestDefaultBulkUsesLlamacppMoE(t *testing.T) {
 	}
 }
 
-func TestPickValueLocal_ScoutReturnsQwen27b(t *testing.T) {
+func TestPickValueLocal_ScoutReturnsMoE(t *testing.T) {
 	r, _, _ := newTestRouter(t, Overrides{})
 	p, err := r.PickValueLocal(StageScout)
 	if err != nil {
@@ -69,8 +69,8 @@ func TestPickValueLocal_ScoutReturnsQwen27b(t *testing.T) {
 	if p.BackendID != LlamacppMoEBackendID {
 		t.Fatalf("value-local backendID wanted %s, got %s", LlamacppMoEBackendID, p.BackendID)
 	}
-	if p.Model != LlamacppQwen27bModel {
-		t.Fatalf("value-local model wanted %s, got %s", LlamacppQwen27bModel, p.Model)
+	if p.Model != LlamacppMoEModel {
+		t.Fatalf("value-local model wanted %s, got %s", LlamacppMoEModel, p.Model)
 	}
 }
 
@@ -163,8 +163,8 @@ func TestLedgerGuard_FallsBackToBulkWhenBothSaturated(t *testing.T) {
 	if pick.BackendID != "llamacpp" {
 		t.Fatalf("expected llamacpp fallback, got %s", pick.BackendID)
 	}
-	if pick.Model != LlamacppQwen27bModel {
-		t.Fatalf("expected fallback model %s, got %s", LlamacppQwen27bModel, pick.Model)
+	if pick.Model != LlamacppMoEModel {
+		t.Fatalf("expected fallback model %s, got %s", LlamacppMoEModel, pick.Model)
 	}
 }
 

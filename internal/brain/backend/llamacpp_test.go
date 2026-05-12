@@ -49,7 +49,7 @@ func TestLlamacppBackendNoToolSingleShot(t *testing.T) {
 		Stage:            "test-single-shot",
 		Packet:           "Say hello in one sentence.",
 		SystemPromptPath: f.Name(),
-		Model:            "llamacpp/qwen27b",
+		Model:            "llamacpp-moe/qwen",
 		Reasoning:        backend.ReasoningHigh,
 		AllowEdits:       false,
 		Sandbox:          sb,

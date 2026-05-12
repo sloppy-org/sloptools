@@ -100,7 +100,7 @@ type Router struct {
 type Overrides struct {
 	ClaudeTier string // "haiku" | "sonnet" | "opus" — force Anthropic + tier
 	OpenAITier string // "mini"  | "full"  | "pro"   — force OpenAI    + tier
-	ForceLocal bool   // pin every stage to LlamacppQwen27bModel
+	ForceLocal bool   // pin every stage to LlamacppMoEModel
 }
 
 // New builds a Router with the default stage configs.
@@ -325,14 +325,14 @@ func bulkStage(s Stage, tools []string) StageConfig {
 		Stage:      s,
 		Tier:       TierBulk,
 		Bulk:       bulk,
-		ValueLocal: LlamacppQwenHigh(),
+		ValueLocal: LlamacppMoEBulk(),
 		Fallback:   bulk,
 		MCPTools:   tools,
 	}
 }
 
 func mediumStage(s Stage, tools []string) StageConfig {
-	bulk := LlamacppQwenHigh()
+	bulk := LlamacppMoEBulk()
 	return StageConfig{
 		Stage:    s,
 		Tier:     TierMedium,
@@ -344,7 +344,7 @@ func mediumStage(s Stage, tools []string) StageConfig {
 }
 
 func hardStage(s Stage, tools []string) StageConfig {
-	bulk := LlamacppQwenHigh()
+	bulk := LlamacppMoEBulk()
 	return StageConfig{
 		Stage:    s,
 		Tier:     TierHard,
@@ -367,30 +367,12 @@ func (r *Router) MCPToolsFor(s Stage) []string {
 // Choice constructors. Reasoning is mandatory; never xhigh by default.
 
 const (
-	// LlamacppQwen27bModel is the qwen27b model id served by slopgate.
-	// Used for full-autonomy sleep-judge and as the saturation fallback
-	// for medium / hard stages.
-	LlamacppQwen27bModel = "llamacpp/qwen27b"
-	LlamacppQwen27bLabel = "llamacpp/qwen3.6-27B"
-
 	// LlamacppMoEModel routes to slopgate's qwen3-MoE alias (fast, ~0.3s/token).
+	// Used for bulk passes and as the saturation fallback for medium / hard stages.
 	LlamacppMoEModel     = "llamacpp-moe/qwen"
 	LlamacppMoELabel     = "llamacpp/qwen3-MoE"
 	LlamacppMoEBackendID = "llamacpp"
 )
-
-// LlamacppQwenHigh returns the heavy local Choice (qwen27b via direct HTTP
-// to slopgate). Used for sleep-judge full-autonomy, scout self-resolve, and
-// as the saturation fallback for medium / hard stages.
-func LlamacppQwenHigh() Choice {
-	return Choice{
-		BackendID: LlamacppMoEBackendID,
-		Provider:  backend.ProviderLocal,
-		Model:     LlamacppQwen27bModel,
-		Reasoning: backend.ReasoningHigh,
-		Label:     LlamacppQwen27bLabel,
-	}
-}
 
 // LlamacppMoEBulk returns a Choice for the fast MoE bulk pass via direct
 // HTTP (no subprocess overhead).

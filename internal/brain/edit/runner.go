@@ -1,9 +1,9 @@
 // Package edit runs focused per-entity editorial passes. For each triaged
 // entity it builds a tight 4-6KB packet (canonical note + tonight's
-// evidence entries + activity mentions + top backlinks) and runs qwen27b
-// with sloppy_brain note_write capability. The model edits the vault
-// directly. Each successful edit is committed and the evidence entries
-// marked applied.
+// evidence entries + activity mentions + top backlinks) and runs the MoE
+// bulk pass with sloppy_brain note_write capability. The model edits the
+// vault directly. Each successful edit is committed and the evidence entries
+// marked applied. When the bulk pass fails, escalateOne retries via codex.
 package edit
 
 import (
@@ -99,8 +99,8 @@ func runOne(ctx context.Context, opts Opts, item triage.Item) Result {
 	}
 	defer cleanup()
 
-	// Run qwen27b with sloppy_brain.
-	pick := routing.LlamacppQwenHigh()
+	// Run MoE bulk pass with sloppy_brain; codex escalation follows via Router.Pick.
+	pick := routing.LlamacppMoEBulk()
 	be := backend.LlamacppBackend{}
 	stage := "edit-" + sanitize(item.Entity)
 	sb, err := backend.NewSandbox(opts.RunID, stage, promptPath, backend.DefaultMCPConfig())
@@ -141,12 +141,12 @@ func runOne(ctx context.Context, opts Opts, item triage.Item) Result {
 	resp, err := be.Run(ctx, req)
 	res.WallMS = resp.WallMS
 	if err != nil || strings.TrimSpace(resp.Output) == "" {
-		// Escalate to codex when qwen27b fails.
+		// Escalate to codex when MoE bulk pass fails.
 		escalated, escErr := escalateOne(ctx, opts, item, packet, promptPath)
 		res.Escalated = escalated
 		if escErr != nil {
 			res.Skipped = true
-			res.Reason = fmt.Sprintf("qwen27b failed (%v), escalation failed (%v)", err, escErr)
+			res.Reason = fmt.Sprintf("MoE failed (%v), escalation failed (%v)", err, escErr)
 		} else {
 			res.Edited = escalated
 		}

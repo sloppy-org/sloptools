@@ -15,7 +15,7 @@ import (
 
 // runTriageEditStages runs triage → per-entity edit → propose → feedback.
 // It reads tonight's evidence log entries, asks qwen-MoE to rank which
-// entities need attention, then runs qwen27b per entity to apply edits.
+// entities need attention, then runs a MoE bulk pass per entity to apply edits.
 func runTriageEditStages(ctx context.Context, vault brain.Vault, ldg *ledger.Ledger, router *routing.Router, runID, sphere string, dryRun bool, report *nightReport) error {
 	brainRoot := vault.BrainRoot()
 

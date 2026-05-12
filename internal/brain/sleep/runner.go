@@ -141,14 +141,15 @@ func RunJudge(ctx context.Context, opts JudgeOpts) (*JudgeResult, error) {
 
 // runBulk runs the bulk editorial pass and returns the StageRecord plus the
 // cleaned body. Both autonomy modes use LlamacppBackend (direct HTTP to
-// slopgate, no subprocess). Plan-only uses the fast MoE alias with no tools;
-// full-autonomy uses qwen27b with the curated sleep-judge allowlist so
-// sloppy_brain action=note_write can edit vault files.
+// slopgate, no subprocess). Plan-only uses MoE with no tools; full-autonomy
+// uses MoE with the curated sleep-judge allowlist so sloppy_brain
+// action=note_write can edit vault files. Paid escalation via runEscalate
+// goes through Router.Pick(StageSleepJudge) → codex.
 func runBulk(ctx context.Context, opts JudgeOpts) (*audit.StageRecord, string, error) {
 	var bulkPick routing.Choice
 	var allowList []string
 	if opts.AllowEdits {
-		bulkPick = routing.LlamacppQwenHigh()
+		bulkPick = routing.LlamacppMoEBulk()
 		allowList = opts.Router.MCPToolsFor(routing.StageSleepJudge)
 	} else {
 		bulkPick = routing.LlamacppMoEBulk()

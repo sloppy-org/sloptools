@@ -89,7 +89,7 @@ func TestWriteFile_RoundTrip(t *testing.T) {
 				Stage:        "sleep-judge-bulk",
 				Backend:      "opencode",
 				Provider:     "local",
-				Model:        "llamacpp/qwen27b",
+				Model:        "llamacpp-moe/qwen",
 				Tier:         "bulk",
 				StartedAt:    now,
 				WallMS:       300_000,

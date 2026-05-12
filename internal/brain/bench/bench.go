@@ -35,7 +35,7 @@ type ModelSpec struct {
 // for the hardest asynchronous agentic evals, not the brain night.
 func DefaultModelMatrix() []ModelSpec {
 	return []ModelSpec{
-		{ProviderLocal(), "llamacpp", routing.LlamacppQwen27bModel, backend.ReasoningHigh, routing.LlamacppQwen27bLabel},
+		{ProviderLocal(), "llamacpp", routing.LlamacppMoEModel, backend.ReasoningHigh, routing.LlamacppMoELabel},
 		{ProviderOpenAI(), "codex", "gpt-5.4-mini", backend.ReasoningMedium, "codex/gpt-5.4-mini@medium"},
 		{ProviderOpenAI(), "codex", "gpt-5.5", backend.ReasoningHigh, "codex/gpt-5.5@high"},
 		{ProviderAnthropic(), "claude", "claude-haiku-4-5", backend.ReasoningMedium, "claude-haiku-4-5@medium"},
