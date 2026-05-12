@@ -135,8 +135,14 @@ func Run(ctx context.Context, opts RunOpts) (*RunReport, error) {
 		ReportsDir: dir,
 		Candidates: len(opts.Picks),
 	}
+	// One BrokenTools instance for the whole scout run. The first scout
+	// loop that hits the per-loop circuit on a tool reports it here; every
+	// subsequent loop in this run starts with that tool stripped from its
+	// allowlist, so we never pay the 3-retry tax on the same broken tool
+	// 350 times.
+	broken := backend.NewBrokenTools(1)
 	for _, p := range opts.Picks {
-		entry := runOnePick(ctx, opts, dir, stagePrompt, p)
+		entry := runOnePick(ctx, opts, dir, stagePrompt, p, broken)
 		if entry.Skipped {
 			report.Skipped++
 		}
@@ -160,7 +166,7 @@ func Run(ctx context.Context, opts RunOpts) (*RunReport, error) {
 // have no web-searchable anchors and consistently time out without output.
 const sparseBodyThreshold = 200
 
-func runOnePick(ctx context.Context, opts RunOpts, reportsDir, stagePrompt string, p Pick) ReportEntry {
+func runOnePick(ctx context.Context, opts RunOpts, reportsDir, stagePrompt string, p Pick, broken *backend.BrokenTools) ReportEntry {
 	startedAt := time.Now().UTC()
 	entry := ReportEntry{Path: p.Path, Score: p.Score}
 
@@ -213,6 +219,8 @@ func runOnePick(ctx context.Context, opts RunOpts, reportsDir, stagePrompt strin
 		Reasoning:        pick.Reasoning,
 		AllowEdits:       false,
 		MCPAllowList:     pick.MCPTools,
+		MCPToolQuotas:    pick.MCPQuotas,
+		MCPBrokenTools:   broken,
 		Affinity:         backend.AffinityForPick(opts.RunID, p.Path, "scout"),
 		Sandbox:          sb,
 	}

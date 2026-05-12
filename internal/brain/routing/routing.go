@@ -59,8 +59,9 @@ type Pick struct {
 	Provider  backend.Provider
 	Model     string
 	Reasoning backend.Reasoning
-	Label     string   // "claude-sonnet-4-6@medium" etc.
-	MCPTools  []string // curated allowlist for LlamacppBackend; nil = all tools
+	Label     string         // "claude-sonnet-4-6@medium" etc.
+	MCPTools  []string       // curated allowlist for LlamacppBackend; nil = all tools
+	MCPQuotas map[string]int // per-tool call cap; nil = unbounded
 }
 
 // Choice is one eligible model for a tier slot.
@@ -76,12 +77,13 @@ type Choice struct {
 type StageConfig struct {
 	Stage      Stage
 	Tier       Tier
-	Bulk       Choice   // local primary
-	ValueLocal Choice   // resolve-pass local model; zero means reuse Bulk
-	Medium     []Choice // even-split round-robin pool (one OpenAI + one Anthropic)
-	Hard       []Choice // even-split round-robin pool (one OpenAI + one Anthropic)
-	Fallback   Choice   // when all paid providers are saturated
-	MCPTools   []string // default MCP tool allowlist; overridable by brain.toml
+	Bulk       Choice         // local primary
+	ValueLocal Choice         // resolve-pass local model; zero means reuse Bulk
+	Medium     []Choice       // even-split round-robin pool (one OpenAI + one Anthropic)
+	Hard       []Choice       // even-split round-robin pool (one OpenAI + one Anthropic)
+	Fallback   Choice         // when all paid providers are saturated
+	MCPTools   []string       // default MCP tool allowlist; overridable by brain.toml
+	MCPQuotas  map[string]int // per-tool call cap inside the agent loop; absent = unbounded
 }
 
 // Router holds the loaded stage configs, the ledger, and the per-stage
@@ -144,17 +146,17 @@ func (r *Router) Pick(s Stage) (Pick, error) {
 		return Pick{}, fmt.Errorf("routing: unknown stage %s", s)
 	}
 	if r.overrides.ForceLocal {
-		return choiceToPick(s, cfg.Tier, cfg.Bulk, cfg.MCPTools), nil
+		return choiceToPick(s, cfg.Tier, cfg.Bulk, cfg.MCPTools, cfg.MCPQuotas), nil
 	}
 	if c, ok := r.applyClaudeOverride(cfg); ok {
-		return choiceToPick(s, cfg.Tier, c, cfg.MCPTools), nil
+		return choiceToPick(s, cfg.Tier, c, cfg.MCPTools, cfg.MCPQuotas), nil
 	}
 	if c, ok := r.applyOpenAIOverride(cfg); ok {
-		return choiceToPick(s, cfg.Tier, c, cfg.MCPTools), nil
+		return choiceToPick(s, cfg.Tier, c, cfg.MCPTools, cfg.MCPQuotas), nil
 	}
 	pool := r.poolForTier(cfg)
 	if len(pool) == 0 {
-		return choiceToPick(s, cfg.Tier, cfg.Bulk, cfg.MCPTools), nil
+		return choiceToPick(s, cfg.Tier, cfg.Bulk, cfg.MCPTools, cfg.MCPQuotas), nil
 	}
 	return r.roundRobin(s, cfg, pool), nil
 }
@@ -172,7 +174,7 @@ func (r *Router) PickValueLocal(s Stage) (Pick, error) {
 	if c.BackendID == "" {
 		c = cfg.Bulk
 	}
-	return choiceToPick(s, cfg.Tier, c, cfg.MCPTools), nil
+	return choiceToPick(s, cfg.Tier, c, cfg.MCPTools, cfg.MCPQuotas), nil
 }
 
 func (r *Router) poolForTier(cfg StageConfig) []Choice {
@@ -200,12 +202,12 @@ func (r *Router) roundRobin(s Stage, cfg StageConfig, pool []Choice) Pick {
 			}
 		}
 		r.rr[s] = (idx + 1) % len(pool)
-		return choiceToPick(s, cfg.Tier, c, cfg.MCPTools)
+		return choiceToPick(s, cfg.Tier, c, cfg.MCPTools, cfg.MCPQuotas)
 	}
-	return choiceToPick(s, cfg.Tier, cfg.Fallback, cfg.MCPTools)
+	return choiceToPick(s, cfg.Tier, cfg.Fallback, cfg.MCPTools, cfg.MCPQuotas)
 }
 
-func choiceToPick(s Stage, t Tier, c Choice, tools []string) Pick {
+func choiceToPick(s Stage, t Tier, c Choice, tools []string, quotas map[string]int) Pick {
 	return Pick{
 		Stage:     s,
 		Tier:      t,
@@ -215,6 +217,7 @@ func choiceToPick(s Stage, t Tier, c Choice, tools []string) Pick {
 		Reasoning: c.Reasoning,
 		Label:     c.Label,
 		MCPTools:  tools,
+		MCPQuotas: quotas,
 	}
 }
 
@@ -294,10 +297,33 @@ var scoutDefaultMCPTools = []string{
 	"helpy_zotero", "helpy_tugonline", "helpy_tu4u", "helpy_ics",
 }
 
+// scoutDefaultMCPQuotas caps how many times each tool may be called inside
+// one scout agent loop. The cumulative cost of unbounded calls is what
+// produced the 2026-05-11 night of 2651 web_search hits and rate-limit
+// hell — a 30-min wall budget alone is not enough when each loop can fire
+// dozens of probes per minute. Tight defaults; relax in brain.toml only
+// when a stage demonstrates it needs more.
+var scoutDefaultMCPQuotas = map[string]int{
+	"web_search":      5,
+	"web_fetch":       8,
+	"pdf_read":        6,
+	"helpy_zotero":    4,
+	"helpy_tugonline": 3,
+	"helpy_tu4u":      3,
+	"helpy_ics":       3,
+}
+
 // folderNoteDefaultMCPTools is the curated tool allowlist for folder-note.
 var folderNoteDefaultMCPTools = []string{
 	"sloppy_brain",
 	"web_fetch", "pdf_read", "image_read", "helpy_office",
+}
+
+var folderNoteDefaultMCPQuotas = map[string]int{
+	"web_fetch":    4,
+	"pdf_read":     6,
+	"image_read":   8,
+	"helpy_office": 4,
 }
 
 // sleepJudgeFullAutonomyTools is the curated allowlist for sleep-judge when
@@ -308,18 +334,24 @@ var sleepJudgeFullAutonomyTools = []string{
 	"web_search", "web_fetch", "pdf_read",
 }
 
+var sleepJudgeDefaultMCPQuotas = map[string]int{
+	"web_search": 4,
+	"web_fetch":  6,
+	"pdf_read":   4,
+}
+
 func DefaultStageConfigs() map[Stage]StageConfig {
 	return map[Stage]StageConfig{
-		StageFolderNote:  bulkStage(StageFolderNote, folderNoteDefaultMCPTools),
-		StageScout:       bulkStage(StageScout, scoutDefaultMCPTools),
-		StageTriage:      mediumStage(StageTriage, nil),
-		StageSleepJudge:  mediumStage(StageSleepJudge, sleepJudgeFullAutonomyTools),
-		StageCompress:    hardStage(StageCompress, nil),
-		StageEntityWrite: hardStage(StageEntityWrite, nil),
+		StageFolderNote:  bulkStage(StageFolderNote, folderNoteDefaultMCPTools, folderNoteDefaultMCPQuotas),
+		StageScout:       bulkStage(StageScout, scoutDefaultMCPTools, scoutDefaultMCPQuotas),
+		StageTriage:      mediumStage(StageTriage, nil, nil),
+		StageSleepJudge:  mediumStage(StageSleepJudge, sleepJudgeFullAutonomyTools, sleepJudgeDefaultMCPQuotas),
+		StageCompress:    hardStage(StageCompress, nil, nil),
+		StageEntityWrite: hardStage(StageEntityWrite, nil, nil),
 	}
 }
 
-func bulkStage(s Stage, tools []string) StageConfig {
+func bulkStage(s Stage, tools []string, quotas map[string]int) StageConfig {
 	bulk := LlamacppMoEBulk()
 	return StageConfig{
 		Stage:      s,
@@ -328,30 +360,33 @@ func bulkStage(s Stage, tools []string) StageConfig {
 		ValueLocal: LlamacppMoEBulk(),
 		Fallback:   bulk,
 		MCPTools:   tools,
+		MCPQuotas:  quotas,
 	}
 }
 
-func mediumStage(s Stage, tools []string) StageConfig {
+func mediumStage(s Stage, tools []string, quotas map[string]int) StageConfig {
 	bulk := LlamacppMoEBulk()
 	return StageConfig{
-		Stage:    s,
-		Tier:     TierMedium,
-		Bulk:     bulk,
-		Medium:   []Choice{CodexMiniMedium()},
-		Fallback: bulk,
-		MCPTools: tools,
+		Stage:     s,
+		Tier:      TierMedium,
+		Bulk:      bulk,
+		Medium:    []Choice{CodexMiniMedium()},
+		Fallback:  bulk,
+		MCPTools:  tools,
+		MCPQuotas: quotas,
 	}
 }
 
-func hardStage(s Stage, tools []string) StageConfig {
+func hardStage(s Stage, tools []string, quotas map[string]int) StageConfig {
 	bulk := LlamacppMoEBulk()
 	return StageConfig{
-		Stage:    s,
-		Tier:     TierHard,
-		Bulk:     bulk,
-		Hard:     []Choice{CodexFullHigh()},
-		Fallback: bulk,
-		MCPTools: tools,
+		Stage:     s,
+		Tier:      TierHard,
+		Bulk:      bulk,
+		Hard:      []Choice{CodexFullHigh()},
+		Fallback:  bulk,
+		MCPTools:  tools,
+		MCPQuotas: quotas,
 	}
 }
 

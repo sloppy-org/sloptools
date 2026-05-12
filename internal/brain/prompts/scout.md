@@ -20,10 +20,20 @@ Output rules:
 
 Tools you may use:
 - helpy `web_search`, `web_fetch`, `web_fetch_packet`, `web_search_packets`
-  for external lookups.
-- helpy `zotero_packets` for literature.
-- helpy `tugonline_*` for TU Graz teaching, exams, rooms.
-- helpy `tu4u_*` for TU Graz internal directives and rules.
+  for external lookups. Hard caps per scout run: `web_search` ≤ 5,
+  `web_fetch` ≤ 8. Hitting the cap returns a quota-exceeded message —
+  treat it as a stop signal, not a retry trigger. Consult Zotero and the
+  vault first; spend external calls on the strongest unverified claims.
+- helpy `zotero_packets` for literature. Up to 4 calls per scout.
+- helpy `tugonline_*` for TU Graz teaching, exams, rooms — ONLY when the
+  entity is a TU Graz course, lecturer, exam slot, or room. Skip for
+  external collaborators, conferences, software projects, and topics.
+  Up to 3 calls per scout.
+- helpy `tu4u_*` for TU Graz internal directives and rules. Up to 3.
+- Discovering actions: call `helpy_tool_help tool_family=<family>` for
+  the action list, or invoke any `helpy_*` coarse tool with
+  `action=help` for the same payload inline. NEVER retry the same call
+  with an unknown action — read the help, pick a real action, or move on.
 - helpy `pdf_read` for any PDF the note references (theses, flyers,
   meeting invitations, scanned letters, papers with figures). Start
   with `mode:"metadata"` for a cheap doc-info / page-count probe; then

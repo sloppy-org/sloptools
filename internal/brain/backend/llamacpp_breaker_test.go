@@ -95,7 +95,7 @@ func TestCallToolSafeOpensCircuitAfterThreshold(t *testing.T) {
 	const tool = "helpy_tugonline"
 	var lastResult string
 	for i := 0; i <= perToolBreakThreshold+1; i++ {
-		lastResult = callToolSafe(toolMap, tool, nil, tr)
+		lastResult = callToolSafe(toolMap, tool, nil, tr, nil, nil)
 	}
 	if !strings.Contains(lastResult, "circuit open") {
 		t.Fatalf("expected circuit-open message after %d failures, got: %s", perToolBreakThreshold, lastResult)
@@ -109,10 +109,10 @@ func TestCallToolSafeCircuitOpenSkipsClient(t *testing.T) {
 
 	// Exhaust the threshold.
 	for i := 0; i < perToolBreakThreshold; i++ {
-		callToolSafe(toolMap, tool, nil, tr)
+		callToolSafe(toolMap, tool, nil, tr, nil, nil)
 	}
 	// Confirm circuit is open.
-	result := callToolSafe(toolMap, tool, nil, tr)
+	result := callToolSafe(toolMap, tool, nil, tr, nil, nil)
 	if !strings.Contains(result, "circuit open") {
 		t.Fatalf("expected circuit-open on next call, got: %s", result)
 	}
@@ -121,8 +121,58 @@ func TestCallToolSafeCircuitOpenSkipsClient(t *testing.T) {
 func TestCallToolSafeNilTrackerDoesNotPanic(t *testing.T) {
 	toolMap := map[string]*MCPClient{}
 	// nil tracker: callToolSafe must not panic and must return the normal error string.
-	result := callToolSafe(toolMap, "missing_tool", nil, nil)
+	result := callToolSafe(toolMap, "missing_tool", nil, nil, nil, nil)
 	if !strings.Contains(result, "unknown tool") {
 		t.Fatalf("expected unknown-tool error, got: %s", result)
+	}
+}
+
+// --- per-tool quota integration ---
+
+func TestCallToolSafeQuotaBlocksAfterCap(t *testing.T) {
+	tr := newToolFailureTracker()
+	toolMap := map[string]*MCPClient{} // every call is unknown-tool error
+	usage := newToolUsage(map[string]int{"web_search": 2})
+
+	for i := 0; i < 2; i++ {
+		result := callToolSafe(toolMap, "web_search", nil, tr, usage, nil)
+		if strings.Contains(result, "quota exceeded") {
+			t.Fatalf("quota must not block within cap (i=%d): %s", i, result)
+		}
+	}
+	result := callToolSafe(toolMap, "web_search", nil, tr, usage, nil)
+	if !strings.Contains(result, "quota exceeded") {
+		t.Fatalf("expected quota-exceeded message past cap, got: %s", result)
+	}
+}
+
+func TestCallToolSafePromotesToSessionBroken(t *testing.T) {
+	tr := newToolFailureTracker()
+	toolMap := map[string]*MCPClient{}
+	broken := NewBrokenTools(1)
+
+	for i := 0; i < perToolBreakThreshold; i++ {
+		callToolSafe(toolMap, "helpy_tugonline", nil, tr, nil, broken)
+	}
+	if !broken.IsBroken("helpy_tugonline") {
+		t.Fatalf("session registry must mark tool broken after per-loop circuit opens")
+	}
+}
+
+func TestBrokenToolsFilterAllowList(t *testing.T) {
+	broken := NewBrokenTools(1)
+	broken.Report("helpy_tugonline", "unknown tool")
+	original := []string{"web_search", "helpy_tugonline", "helpy_zotero"}
+	filtered := broken.FilterAllowList(original)
+	if len(filtered) != 2 {
+		t.Fatalf("expected 2 surviving tools, got %v", filtered)
+	}
+	for _, name := range filtered {
+		if name == "helpy_tugonline" {
+			t.Fatalf("broken tool leaked through filter: %v", filtered)
+		}
+	}
+	if len(original) != 3 || original[1] != "helpy_tugonline" {
+		t.Fatalf("filter mutated caller slice: %v", original)
 	}
 }

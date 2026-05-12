@@ -118,10 +118,20 @@ func (LlamacppBackend) Run(ctx context.Context, req Request) (Response, error) {
 	modelHeader := llamacppModelHeader(req.Model)
 	start := time.Now()
 
-	if len(req.MCPAllowList) == 0 {
+	// Apply session-level broken-tool filtering before opening any MCP
+	// clients. A tool that earlier agent loops marked broken is dropped
+	// from the allowlist outright, so this run does not pay the per-loop
+	// 3-retry tax learning the same lesson again.
+	allow := req.MCPAllowList
+	if req.MCPBrokenTools != nil {
+		allow = req.MCPBrokenTools.FilterAllowList(allow)
+	}
+	if len(allow) == 0 {
 		return runLlamacppSingleShot(ctx, req.Model, modelHeader, req.Affinity, messages, start)
 	}
-	clients, toolMap, toolDefs, err := startMCPClients(req)
+	filteredReq := req
+	filteredReq.MCPAllowList = allow
+	clients, toolMap, toolDefs, err := startMCPClients(filteredReq)
 	if err != nil {
 		return Response{}, fmt.Errorf("llamacpp: start MCP clients: %w", err)
 	}
@@ -130,7 +140,7 @@ func (LlamacppBackend) Run(ctx context.Context, req Request) (Response, error) {
 			c.Close()
 		}
 	}()
-	return runLlamacppAgentLoop(ctx, req.Model, modelHeader, req.Affinity, messages, toolMap, toolDefs, start)
+	return runLlamacppAgentLoop(ctx, req.Model, modelHeader, req.Affinity, messages, toolMap, toolDefs, start, req.MCPToolQuotas, req.MCPBrokenTools)
 }
 
 func runLlamacppSingleShot(ctx context.Context, model, modelHeader, affinity string,
@@ -149,7 +159,7 @@ func runLlamacppSingleShot(ctx context.Context, model, modelHeader, affinity str
 
 func runLlamacppAgentLoop(ctx context.Context, model, modelHeader, affinity string,
 	messages []map[string]interface{}, toolMap map[string]*MCPClient, toolDefs []interface{},
-	start time.Time) (Response, error) {
+	start time.Time, quotas map[string]int, broken *BrokenTools) (Response, error) {
 	var (
 		lastContent    string
 		totalTokensIn  int64
@@ -157,6 +167,7 @@ func runLlamacppAgentLoop(ctx context.Context, model, modelHeader, affinity stri
 	)
 	deadline := start.Add(llamacppAgentBudget)
 	tracker := newToolFailureTracker()
+	usage := newToolUsage(quotas)
 	for {
 		if time.Now().After(deadline) {
 			break
@@ -201,9 +212,9 @@ func runLlamacppAgentLoop(ctx context.Context, model, modelHeader, affinity stri
 		messages = append(messages, msg)
 
 		if len(toolCalls) > 0 {
-			executeOpenAIToolCalls(toolCalls, toolMap, &messages, tracker)
+			executeOpenAIToolCalls(toolCalls, toolMap, &messages, tracker, usage, broken)
 		} else {
-			executeQwenXMLToolCalls(xmlCalls, toolMap, &messages, tracker)
+			executeQwenXMLToolCalls(xmlCalls, toolMap, &messages, tracker, usage, broken)
 		}
 		if tracker.globalTripped() {
 			break
@@ -225,7 +236,7 @@ func runLlamacppAgentLoop(ctx context.Context, model, modelHeader, affinity stri
 
 // executeOpenAIToolCalls runs standard OpenAI tool_calls entries through MCPClient
 // and appends role=tool messages to messages.
-func executeOpenAIToolCalls(toolCalls []interface{}, toolMap map[string]*MCPClient, messages *[]map[string]interface{}, tracker *toolFailureTracker) {
+func executeOpenAIToolCalls(toolCalls []interface{}, toolMap map[string]*MCPClient, messages *[]map[string]interface{}, tracker *toolFailureTracker, usage *toolUsage, broken *BrokenTools) {
 	for _, rawTC := range toolCalls {
 		tc, _ := rawTC.(map[string]interface{})
 		if tc == nil {
@@ -242,7 +253,7 @@ func executeOpenAIToolCalls(toolCalls []interface{}, toolMap map[string]*MCPClie
 		if argsStr != "" {
 			_ = json.Unmarshal([]byte(argsStr), &args)
 		}
-		result := callToolSafe(toolMap, toolName, args, tracker)
+		result := callToolSafe(toolMap, toolName, args, tracker, usage, broken)
 		*messages = append(*messages, map[string]interface{}{
 			"role":         "tool",
 			"tool_call_id": tcID,
@@ -253,10 +264,10 @@ func executeOpenAIToolCalls(toolCalls []interface{}, toolMap map[string]*MCPClie
 
 // executeQwenXMLToolCalls runs parsed qwen XML tool calls and appends a single
 // role=user message containing all <tool_response> blocks.
-func executeQwenXMLToolCalls(xmlCalls []qwenXMLCall, toolMap map[string]*MCPClient, messages *[]map[string]interface{}, tracker *toolFailureTracker) {
+func executeQwenXMLToolCalls(xmlCalls []qwenXMLCall, toolMap map[string]*MCPClient, messages *[]map[string]interface{}, tracker *toolFailureTracker, usage *toolUsage, broken *BrokenTools) {
 	var sb strings.Builder
 	for _, tc := range xmlCalls {
-		result := callToolSafe(toolMap, tc.Name, tc.Args, tracker)
+		result := callToolSafe(toolMap, tc.Name, tc.Args, tracker, usage, broken)
 		fmt.Fprintf(&sb, "<tool_response>\n<function_name>%s</function_name>\n<output>%s</output>\n</tool_response>\n\n", tc.Name, result)
 	}
 	*messages = append(*messages, map[string]interface{}{
@@ -276,15 +287,30 @@ const toolResultCap = 8 * 1024
 // are capped at toolResultCap bytes so the messages array stays bounded.
 // tracker accumulates consecutive identical failures; when the per-tool
 // threshold is reached the circuit opens and the tool is refused without
-// calling the MCP client again.
-func callToolSafe(toolMap map[string]*MCPClient, name string, args map[string]interface{}, tracker *toolFailureTracker) string {
+// calling the MCP client again. usage enforces per-tool call caps so a
+// single agent loop cannot drain the slopgate/searxng budget. broken is the
+// session-shared registry: a tool whose per-loop circuit opens here gets
+// promoted to broken so subsequent loops never see it again.
+func callToolSafe(toolMap map[string]*MCPClient, name string, args map[string]interface{}, tracker *toolFailureTracker, usage *toolUsage, broken *BrokenTools) string {
+	if usage != nil && usage.exceeded(name) {
+		return fmt.Sprintf("tool error (quota exceeded): %q has hit its per-run cap of %d; pick a different tool or finish", name, usage.cap(name))
+	}
 	if tracker != nil && tracker.consecutive[name] >= perToolBreakThreshold {
 		return fmt.Sprintf("tool error (circuit open): %q has failed with %q %d times in a row; do not call it again this run, try a different approach or finish", name, tracker.lastClass[name], tracker.consecutive[name])
+	}
+	// Every attempt (success or failure, known tool or not) counts against
+	// the per-tool quota — otherwise a model that hammers a non-existent
+	// tool name would bypass the cap entirely.
+	if usage != nil {
+		usage.record(name)
 	}
 	client, ok := toolMap[name]
 	if !ok {
 		class := "unknown tool"
 		if tracker != nil && tracker.recordFailure(name, class) {
+			if broken != nil {
+				broken.Report(name, class)
+			}
 			return fmt.Sprintf("tool error (circuit open): %q has returned %q %d times in a row; do not call it again this run, try a different approach or finish", name, class, tracker.consecutive[name])
 		}
 		return fmt.Sprintf("error: unknown tool %q", name)
@@ -293,6 +319,9 @@ func callToolSafe(toolMap map[string]*MCPClient, name string, args map[string]in
 	if err != nil {
 		class := errorClassShort(err.Error())
 		if tracker != nil && tracker.recordFailure(name, class) {
+			if broken != nil {
+				broken.Report(name, class)
+			}
 			return fmt.Sprintf("tool error (circuit open): %q has returned %q %d times in a row; do not call it again this run, try a different approach or finish", name, class, tracker.consecutive[name])
 		}
 		return fmt.Sprintf("tool error: %v", err)

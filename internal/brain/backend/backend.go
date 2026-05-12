@@ -64,9 +64,21 @@ type Request struct {
 	Reasoning        Reasoning
 	AllowEdits       bool
 	MCPAllowList     []string
-	MaxBudgetUSD     float64
-	Sandbox          *Sandbox
-	WorkDir          string
+	// MCPToolQuotas caps the number of successful + failed calls per tool
+	// for the agent loop. A tool absent from the map has no quota. When
+	// the quota is exhausted, the agent loop returns a quota-exceeded
+	// string instead of calling the MCP server.
+	MCPToolQuotas map[string]int
+	// MCPBrokenTools is a session-shared registry of tools that have
+	// already failed enough times in earlier calls within the same brain
+	// session that the orchestrator has marked them broken. Tools listed
+	// here are stripped from the agent's allowlist before the run starts,
+	// so the loop never even sees them and the model is not tempted to
+	// retry. Concurrent-safe; the orchestrator owns the lock.
+	MCPBrokenTools *BrokenTools
+	MaxBudgetUSD   float64
+	Sandbox        *Sandbox
+	WorkDir        string
 	// Affinity is the x-session-affinity header value sent to slopgate.
 	// LlamacppBackend uses it to stay on the same upstream peer across
 	// tool-call rounds, keeping the KV prefix cache warm.
