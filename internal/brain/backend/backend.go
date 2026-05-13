@@ -1,5 +1,5 @@
-// Package backend defines a uniform Backend interface over the three model
-// CLIs we use: claude, codex, opencode. Every brain-night call goes through
+// Package backend defines a uniform Backend interface over the model
+// backends we use. Every brain-night call goes through
 // one of these. No SDK or HTTP API path exists.
 package backend
 
@@ -22,7 +22,6 @@ const (
 // Reasoning is a CLI-level reasoning effort hint. Values map to:
 //
 //   - codex `-c model_reasoning_effort="..."` (minimal | low | medium | high | xhigh)
-//   - claude `--effort ...` (low | medium | high | xhigh | max)
 //   - opencode `--variant ...` (provider-specific; high | max | minimal)
 //
 // Brain-night defaults are deliberately NOT xhigh: the tasks are

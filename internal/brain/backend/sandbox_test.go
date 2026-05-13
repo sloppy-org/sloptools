@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestSandboxCopiesStagePromptAndIsolatesGlobalCLAUDE(t *testing.T) {
+func TestSandboxCopiesStagePromptAndIsolatesGlobalInstructions(t *testing.T) {
 	tmpPrompt := filepath.Join(t.TempDir(), "stage.md")
 	stagePromptBody := "You are a librarian. Output strict folder notes only.\n"
 	if err := os.WriteFile(tmpPrompt, []byte(stagePromptBody), 0o600); err != nil {
@@ -27,9 +27,7 @@ func TestSandboxCopiesStagePromptAndIsolatesGlobalCLAUDE(t *testing.T) {
 		t.Fatalf("system.md mismatch: %q", string(systemBody))
 	}
 	for _, expected := range []string{
-		filepath.Join(sb.HomeDir, ".claude", "CLAUDE.md"),
 		filepath.Join(sb.WorkDir, "AGENTS.md"),
-		filepath.Join(sb.WorkDir, "CLAUDE.md"),
 	} {
 		body, err := os.ReadFile(expected)
 		if err != nil {

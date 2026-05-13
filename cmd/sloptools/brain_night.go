@@ -79,15 +79,14 @@ func encodeIndentJSON(v any) ([]byte, error) {
 
 // cmdBrainNight dispatches `sloptools brain night`, the unified
 // sweep → scout → judge orchestrator. Each stage is independently
-// invokable via --only-stage. Routing is even-split round-robin across
-// OpenAI ↔ Anthropic for medium / hard tiers; bulk is local llamacpp qwen.
+// invokable via --only-stage. Routing uses OpenAI for paid medium / hard
+// tiers; bulk is local llamacpp qwen.
 // brain.toml at ~/.config/sloptools/brain.toml overrides the defaults.
 func cmdBrainNight(args []string) int {
 	fs := flag.NewFlagSet("brain night", flag.ContinueOnError)
 	configPath := fs.String("config", "", "vault config path")
 	sphere := fs.String("sphere", "", "vault sphere: work or private")
 	onlyStage := fs.String("only-stage", "", "sweep | scout | judge (default: all)")
-	claudeTier := fs.String("claude-tier", "", "force Anthropic at tier: haiku | sonnet | opus")
 	openaiTier := fs.String("openai-tier", "", "force OpenAI at tier: mini | full")
 	forceLocal := fs.Bool("force-local", false, "pin every stage to the configured local llamacpp model")
 	autonomy := fs.String("autonomy", brain.SleepDefaultAutonomy, "full or plan-only")
@@ -137,7 +136,6 @@ func cmdBrainNight(args []string) int {
 	}
 	sessionStart := time.Now().UTC()
 	router := routing.New(ldg, routing.Overrides{
-		ClaudeTier: strings.TrimSpace(strings.ToLower(*claudeTier)),
 		OpenAITier: strings.TrimSpace(strings.ToLower(*openaiTier)),
 		ForceLocal: *forceLocal,
 	})

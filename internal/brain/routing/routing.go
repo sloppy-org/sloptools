@@ -1,8 +1,7 @@
 // Package routing picks a Backend + Model + Reasoning per stage of the
 // brain night. It enforces three rules:
 //
-//   - even split: medium and hard tiers alternate OpenAI ↔ Anthropic per
-//     call so neither plan dominates and neither plan goes unused;
+//   - paid pools: medium and hard tiers use configured paid providers;
 //   - ledger gate: a saturated provider is skipped (and the stage falls
 //     back to the unsaturated peer; if both are saturated, the stage
 //     downgrades to opencode/local);
@@ -55,11 +54,11 @@ const (
 type Pick struct {
 	Stage     Stage
 	Tier      Tier
-	BackendID string // "claude" | "codex" | "llamacpp"
+	BackendID string // "codex" | "llamacpp"
 	Provider  backend.Provider
 	Model     string
 	Reasoning backend.Reasoning
-	Label     string         // "claude-sonnet-4-6@medium" etc.
+	Label     string
 	MCPTools  []string       // curated allowlist for LlamacppBackend; nil = all tools
 	MCPQuotas map[string]int // per-tool call cap; nil = unbounded
 }
@@ -79,8 +78,8 @@ type StageConfig struct {
 	Tier       Tier
 	Bulk       Choice         // local primary
 	ValueLocal Choice         // resolve-pass local model; zero means reuse Bulk
-	Medium     []Choice       // even-split round-robin pool (one OpenAI + one Anthropic)
-	Hard       []Choice       // even-split round-robin pool (one OpenAI + one Anthropic)
+	Medium     []Choice       // paid medium pool
+	Hard       []Choice       // paid hard pool
 	Fallback   Choice         // when all paid providers are saturated
 	MCPTools   []string       // default MCP tool allowlist; overridable by brain.toml
 	MCPQuotas  map[string]int // per-tool call cap inside the agent loop; absent = unbounded
@@ -100,7 +99,6 @@ type Router struct {
 
 // Overrides are session-level routing overrides set by CLI flags.
 type Overrides struct {
-	ClaudeTier string // "haiku" | "sonnet" | "opus" — force Anthropic + tier
 	OpenAITier string // "mini"  | "full"  | "pro"   — force OpenAI    + tier
 	ForceLocal bool   // pin every stage to LlamacppMoEModel
 }
@@ -147,9 +145,6 @@ func (r *Router) Pick(s Stage) (Pick, error) {
 	}
 	if r.overrides.ForceLocal {
 		return choiceToPick(s, cfg.Tier, cfg.Bulk, cfg.MCPTools, cfg.MCPQuotas), nil
-	}
-	if c, ok := r.applyClaudeOverride(cfg); ok {
-		return choiceToPick(s, cfg.Tier, c, cfg.MCPTools, cfg.MCPQuotas), nil
 	}
 	if c, ok := r.applyOpenAIOverride(cfg); ok {
 		return choiceToPick(s, cfg.Tier, c, cfg.MCPTools, cfg.MCPQuotas), nil
@@ -221,18 +216,6 @@ func choiceToPick(s Stage, t Tier, c Choice, tools []string, quotas map[string]i
 	}
 }
 
-func (r *Router) applyClaudeOverride(cfg StageConfig) (Choice, bool) {
-	switch r.overrides.ClaudeTier {
-	case "haiku":
-		return ClaudeHaikuMedium(), true
-	case "sonnet":
-		return ClaudeSonnetMedium(), true
-	case "opus":
-		return ClaudeOpusHigh(), true
-	}
-	return Choice{}, false
-}
-
 func (r *Router) applyOpenAIOverride(cfg StageConfig) (Choice, bool) {
 	switch r.overrides.OpenAITier {
 	case "mini":
@@ -279,9 +262,8 @@ func (r *Router) applyOpenAIOverride(cfg StageConfig) (Choice, bool) {
 //     either; the bench task exercises it but no nightly stage routes
 //     through it yet.
 //   - entity-write (hard): writes canonical entity notes. Highest stakes.
-//     Hard tier (gpt-5.5 ↔ claude-sonnet) round-robin. STAYS hard until
-//     a structural-integrity gate exists for canonical Markdown writes;
-//     that gate is its own project.
+//     Hard tier uses gpt-5.5. STAYS hard until a structural-integrity gate
+//     exists for canonical Markdown writes; that gate is its own project.
 //
 // The --escalate-on-conflict flag (scout today) is the proven pattern
 // for "bulk first, paid only on classifier doubt". The shared
@@ -438,35 +420,5 @@ func CodexFullHigh() Choice {
 		Model:     "gpt-5.5",
 		Reasoning: backend.ReasoningHigh,
 		Label:     "codex/gpt-5.5@high",
-	}
-}
-
-func ClaudeHaikuMedium() Choice {
-	return Choice{
-		BackendID: "claude",
-		Provider:  backend.ProviderAnthropic,
-		Model:     "claude-haiku-4-5",
-		Reasoning: backend.ReasoningMedium,
-		Label:     "claude-haiku-4-5@medium",
-	}
-}
-
-func ClaudeSonnetMedium() Choice {
-	return Choice{
-		BackendID: "claude",
-		Provider:  backend.ProviderAnthropic,
-		Model:     "claude-sonnet-4-6",
-		Reasoning: backend.ReasoningMedium,
-		Label:     "claude-sonnet-4-6@medium",
-	}
-}
-
-func ClaudeOpusHigh() Choice {
-	return Choice{
-		BackendID: "claude",
-		Provider:  backend.ProviderAnthropic,
-		Model:     "claude-opus-4-7",
-		Reasoning: backend.ReasoningHigh,
-		Label:     "claude-opus-4-7@high",
 	}
 }

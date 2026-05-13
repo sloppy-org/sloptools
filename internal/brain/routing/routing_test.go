@@ -121,37 +121,33 @@ func TestPickHardStage_CodexOnly(t *testing.T) {
 	}
 }
 
-func TestLedgerGuard_SkipsSaturatedProvider(t *testing.T) {
+func TestLedgerGuard_FallsBackWhenOpenAISaturated(t *testing.T) {
 	r, l, _ := newTestRouter(t, Overrides{})
 	now := time.Now().UTC()
 	r.now = func() time.Time { return now }
-	// Saturate Anthropic. Cap is 1000 tokens/week × 0.05 max × 7 = 350 → push past it.
+	// Saturate OpenAI. Cap is 1000 tokens/week × 0.05 max × 7 = 350 → push past it.
 	if err := l.Append(ledger.Entry{
-		TS: now, Provider: backend.ProviderAnthropic, TokensIn: 200, TokensOut: 200,
+		TS: now, Provider: backend.ProviderOpenAI, TokensIn: 200, TokensOut: 200,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 4; i++ {
-		p, err := r.Pick(StageSleepJudge)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if p.Provider == backend.ProviderAnthropic {
-			t.Fatalf("saturated provider should be skipped, picked %s", p.Provider)
-		}
+	p, err := r.Pick(StageSleepJudge)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Provider != backend.ProviderLocal {
+		t.Fatalf("saturated paid provider should fall back to local, picked %s", p.Provider)
 	}
 }
 
-func TestLedgerGuard_FallsBackToBulkWhenBothSaturated(t *testing.T) {
+func TestLedgerGuard_FallsBackToBulkWhenPaidProviderSaturated(t *testing.T) {
 	r, l, _ := newTestRouter(t, Overrides{})
 	now := time.Now().UTC()
 	r.now = func() time.Time { return now }
-	for _, p := range []backend.Provider{backend.ProviderAnthropic, backend.ProviderOpenAI} {
-		if err := l.Append(ledger.Entry{
-			TS: now, Provider: p, TokensIn: 200, TokensOut: 200,
-		}); err != nil {
-			t.Fatal(err)
-		}
+	if err := l.Append(ledger.Entry{
+		TS: now, Provider: backend.ProviderOpenAI, TokensIn: 200, TokensOut: 200,
+	}); err != nil {
+		t.Fatal(err)
 	}
 	pick, err := r.Pick(StageSleepJudge)
 	if err != nil {
@@ -168,13 +164,13 @@ func TestLedgerGuard_FallsBackToBulkWhenBothSaturated(t *testing.T) {
 	}
 }
 
-func TestOverride_ClaudeTier(t *testing.T) {
-	r, _, _ := newTestRouter(t, Overrides{ClaudeTier: "opus"})
+func TestOverride_OpenAITier(t *testing.T) {
+	r, _, _ := newTestRouter(t, Overrides{OpenAITier: "full"})
 	p, err := r.Pick(StageSleepJudge)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Model != "claude-opus-4-7" || p.Provider != backend.ProviderAnthropic {
+	if p.Model != "gpt-5.5" || p.Provider != backend.ProviderOpenAI {
 		t.Fatalf("override failed: %+v", p)
 	}
 }
@@ -201,7 +197,7 @@ func TestLoadFile_MissingReturnsNilNoError(t *testing.T) {
 	}
 }
 
-func TestApplyStages_OverrideMediumPool(t *testing.T) {
+func TestApplyStages_RejectsClaudePool(t *testing.T) {
 	cfg := &FileConfig{Stages: map[string]StageFile{
 		"sleep-judge": {
 			Tier: "medium",
@@ -210,12 +206,7 @@ func TestApplyStages_OverrideMediumPool(t *testing.T) {
 			},
 		},
 	}}
-	out, err := cfg.ApplyStages(DefaultStageConfigs())
-	if err != nil {
-		t.Fatal(err)
-	}
-	pool := out[StageSleepJudge].Medium
-	if len(pool) != 1 || pool[0].Model != "claude-sonnet-4-6" {
-		t.Fatalf("override not applied: %+v", pool)
+	if _, err := cfg.ApplyStages(DefaultStageConfigs()); err == nil {
+		t.Fatal("expected claude backend override to be rejected")
 	}
 }

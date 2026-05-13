@@ -236,8 +236,6 @@ func backendForID(id string) (backend.Backend, error) {
 	switch id {
 	case "codex":
 		return backend.CodexBackend{}, nil
-	case "claude":
-		return backend.ClaudeBackend{}, nil
 	case "llamacpp":
 		return backend.LlamacppBackend{}, nil
 	}

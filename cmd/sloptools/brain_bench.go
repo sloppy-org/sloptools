@@ -28,7 +28,7 @@ func cmdBrainBench(args []string) int {
 	models := fs.String("models", "", "comma-separated model labels (default: full v1 matrix)")
 	outDir := fs.String("out-dir", "", "override output directory")
 	postIssue := fs.Int("post-comment", 0, "post report.md as a comment on this sloptools issue")
-	llmJudge := fs.String("llm-judge", "", "judge model label (e.g. claude-sonnet-4-6 or codex/gpt-5.4-mini); empty disables LLM judge")
+	llmJudge := fs.String("llm-judge", "", "judge model label (e.g. codex/gpt-5.4-mini); empty disables LLM judge")
 	fixturesFilter := fs.String("fixtures", "", "comma-separated fixture ids to run (default all)")
 	draws := fs.Int("draws", 1, "stochastic replicas per (task, fixture, model) cell (default 1)")
 	if err := fs.Parse(args); err != nil {

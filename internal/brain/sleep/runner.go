@@ -280,8 +280,6 @@ func runEscalate(ctx context.Context, opts JudgeOpts, reason string) (*audit.Sta
 
 func backendForID(id string) (backend.Backend, error) {
 	switch id {
-	case "claude":
-		return backend.ClaudeBackend{}, nil
 	case "codex":
 		return backend.CodexBackend{}, nil
 	case "llamacpp":

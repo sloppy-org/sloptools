@@ -132,7 +132,6 @@ func printBrainHelp() {
 	fmt.Println("  --config PATH       vault config path")
 	fmt.Println("  --sphere NAME       vault sphere: work or private")
 	fmt.Println("  --only-stage NAME   sweep | scout | judge (default: all)")
-	fmt.Println("  --claude-tier NAME  force Anthropic at tier: haiku | sonnet | opus")
 	fmt.Println("  --openai-tier NAME  force OpenAI at tier: mini | full")
 	fmt.Println("  --force-local       pin every stage to the configured local llamacpp model")
 	fmt.Println("  --autonomy NAME     full (default) or plan-only")
@@ -146,7 +145,7 @@ func printBrainHelp() {
 	fmt.Println("  --models LIST    comma-separated model labels (default: full v1 matrix)")
 	fmt.Println("  --out-dir PATH   override output directory")
 	fmt.Println("  --post-comment N post rendered report.md as a comment on sloptools issue N")
-	fmt.Println("  --llm-judge LABEL run a second-pass LLM judge per cell (e.g. claude-sonnet-4-6)")
+	fmt.Println("  --llm-judge LABEL run a second-pass LLM judge per cell (e.g. codex/gpt-5.4-mini)")
 }
 
 func cmdBrainSearch(args []string) int {

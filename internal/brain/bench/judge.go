@@ -18,8 +18,7 @@ import (
 // verdict that the report renders alongside the deterministic score.
 //
 // Use a model the bench has already shown to be hallucination-free on
-// this task. Initial recommendation from the v1 manual re-grade:
-// claude-sonnet-4-6 @ medium.
+// this task.
 type Judge struct {
 	BackendID string
 	Model     string

@@ -179,15 +179,22 @@ func toPool(in []ChoiceFile) ([]Choice, error) {
 }
 
 func (c ChoiceFile) toChoice() (Choice, error) {
+	backendID := strings.ToLower(c.Backend)
+	if backendID == "claude" {
+		return Choice{}, fmt.Errorf("claude backend is disabled for programmatic routing")
+	}
 	prov, err := parseProvider(c.Provider)
 	if err != nil {
 		return Choice{}, err
+	}
+	if prov == backend.ProviderAnthropic {
+		return Choice{}, fmt.Errorf("anthropic provider is disabled for programmatic routing")
 	}
 	r, err := parseReasoning(c.Reasoning)
 	if err != nil {
 		return Choice{}, err
 	}
-	if c.Backend == "" {
+	if backendID == "" {
 		return Choice{}, fmt.Errorf("backend required")
 	}
 	if c.Model == "" {
@@ -198,7 +205,7 @@ func (c ChoiceFile) toChoice() (Choice, error) {
 		label = fmt.Sprintf("%s/%s@%s", c.Backend, c.Model, r)
 	}
 	return Choice{
-		BackendID: c.Backend,
+		BackendID: backendID,
 		Provider:  prov,
 		Model:     c.Model,
 		Reasoning: r,

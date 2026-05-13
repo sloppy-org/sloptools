@@ -15,11 +15,11 @@ import (
 // prompt under system.md, and registers the canonical sloppy + helpy MCP
 // servers in mcp.json (and CODEX_HOME/config.toml).
 //
-// The user's auth credentials (claude OAuth, codex auth, opencode
-// session) are preserved by symlinking the relevant credential files
-// from the original $HOME into the scratch HOME. The role-specific
-// CLAUDE.md / AGENTS.md / opencode agent markdown overrides any global
-// instruction file the CLI would otherwise auto-discover.
+// The user's auth credentials (codex auth, opencode session) are
+// preserved by symlinking the relevant credential files from the original
+// $HOME into the scratch HOME. The role-specific AGENTS.md / opencode
+// agent markdown overrides any global instruction file the CLI would
+// otherwise auto-discover.
 type Sandbox struct {
 	Root           string
 	HomeDir        string
@@ -54,7 +54,6 @@ func NewSandbox(runID, stage, stagePromptPath string, mcpServers MCPConfig) (*Sa
 	for _, d := range []string{
 		root,
 		homeDir,
-		filepath.Join(homeDir, ".claude"),
 		filepath.Join(xdgConfig, "opencode", "agent"),
 		codexHome,
 		workDir,
@@ -80,12 +79,10 @@ func NewSandbox(runID, stage, stagePromptPath string, mcpServers MCPConfig) (*Sa
 			return nil, fmt.Errorf("sandbox: write stage prompt: %w", err)
 		}
 		sb.SystemPromptIn = dst
-		// Stage prompt also serves as the auto-discovered CLAUDE.md /
-		// AGENTS.md so the home-dir version cannot leak through.
+		// Stage prompt also serves as the auto-discovered AGENTS.md so the
+		// home-dir version cannot leak through.
 		for _, p := range []string{
-			filepath.Join(homeDir, ".claude", "CLAUDE.md"),
 			filepath.Join(workDir, "AGENTS.md"),
-			filepath.Join(workDir, "CLAUDE.md"),
 		} {
 			if err := os.WriteFile(p, body, 0o600); err != nil {
 				return nil, fmt.Errorf("sandbox: stage prompt copy %s: %w", p, err)
@@ -222,7 +219,6 @@ func (sb *Sandbox) preserveCredentials() error {
 	pairs := []struct {
 		src, dst string
 	}{
-		{filepath.Join(realHome, ".claude", ".credentials.json"), filepath.Join(sb.HomeDir, ".claude", ".credentials.json")},
 		{filepath.Join(realHome, ".codex"), filepath.Join(sb.HomeDir, ".codex-real")},
 		{filepath.Join(realHome, ".local", "share", "opencode"), filepath.Join(sb.HomeDir, ".local", "share", "opencode")},
 		{filepath.Join(realHome, ".config", "opencode", "auth.json"), filepath.Join(sb.XDGConfigHome, "opencode", "auth.json")},
@@ -279,8 +275,8 @@ func DefaultMCPConfig() MCPConfig {
 	}
 }
 
-// claudeMCPConfigFile is the on-disk shape claude --mcp-config expects.
-type claudeMCPConfigFile struct {
+// mcpConfigFile is the canonical on-disk MCP config shape.
+type mcpConfigFile struct {
 	MCPServers MCPConfig `json:"mcpServers"`
 }
 
@@ -289,7 +285,7 @@ func (sb *Sandbox) writeMCPConfig(servers MCPConfig) error {
 		servers = DefaultMCPConfig()
 	}
 	path := filepath.Join(sb.Root, "mcp.json")
-	body, err := json.MarshalIndent(claudeMCPConfigFile{MCPServers: servers}, "", "  ")
+	body, err := json.MarshalIndent(mcpConfigFile{MCPServers: servers}, "", "  ")
 	if err != nil {
 		return fmt.Errorf("sandbox: marshal mcp.json: %w", err)
 	}

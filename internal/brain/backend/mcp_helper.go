@@ -15,7 +15,7 @@ func (sb *Sandbox) MCPServersFromFile() MCPConfig {
 	if err != nil {
 		return DefaultMCPConfig()
 	}
-	var f claudeMCPConfigFile
+	var f mcpConfigFile
 	if err := json.Unmarshal(body, &f); err != nil {
 		return DefaultMCPConfig()
 	}

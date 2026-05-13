@@ -71,8 +71,7 @@ type CodexExecFn func(ctx context.Context, req SleepCodexRequest) ([]byte, error
 // SleepOpts is the input to RunSleep.
 //
 // Router and Ledger are optional. When Router is non-nil, the sleep
-// judge call is routed through the Backend interface (claude/codex/
-// opencode CLIs in scratch sandboxes) instead of shelling out to codex
+// judge call is routed through the Backend interface instead of shelling out to codex
 // directly. Backend, Model, and Autonomy still apply, but Backend acts
 // as a hint for the legacy code path; the Router decides the concrete
 // model + reasoning. Ledger is appended to per call when set.

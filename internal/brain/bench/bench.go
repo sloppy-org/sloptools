@@ -22,7 +22,7 @@ import (
 // CLI backend handles the call.
 type ModelSpec struct {
 	Provider  backend.Provider
-	BackendID string // "claude", "codex", "llamacpp"
+	BackendID string // "codex", "llamacpp"
 	Model     string // CLI model identifier
 	Reasoning backend.Reasoning
 	Label     string // short label used in the report
@@ -38,17 +38,13 @@ func DefaultModelMatrix() []ModelSpec {
 		{ProviderLocal(), "llamacpp", routing.LlamacppMoEModel, backend.ReasoningHigh, routing.LlamacppMoELabel},
 		{ProviderOpenAI(), "codex", "gpt-5.4-mini", backend.ReasoningMedium, "codex/gpt-5.4-mini@medium"},
 		{ProviderOpenAI(), "codex", "gpt-5.5", backend.ReasoningHigh, "codex/gpt-5.5@high"},
-		{ProviderAnthropic(), "claude", "claude-haiku-4-5", backend.ReasoningMedium, "claude-haiku-4-5@medium"},
-		{ProviderAnthropic(), "claude", "claude-sonnet-4-6", backend.ReasoningMedium, "claude-sonnet-4-6@medium"},
-		{ProviderAnthropic(), "claude", "claude-opus-4-7", backend.ReasoningHigh, "claude-opus-4-7@high"},
 	}
 }
 
-// ProviderLocal/OpenAI/Anthropic are alias accessors so tests that
+// ProviderLocal/OpenAI are alias accessors so tests that
 // build their own matrices do not have to import backend.
-func ProviderLocal() backend.Provider     { return backend.ProviderLocal }
-func ProviderOpenAI() backend.Provider    { return backend.ProviderOpenAI }
-func ProviderAnthropic() backend.Provider { return backend.ProviderAnthropic }
+func ProviderLocal() backend.Provider  { return backend.ProviderLocal }
+func ProviderOpenAI() backend.Provider { return backend.ProviderOpenAI }
 
 // Cell is one (task, fixture, model) tuple; one CLI invocation. With
 // Options.Draws > 1, the same tuple can produce multiple cells with
@@ -98,9 +94,7 @@ type Options struct {
 	// Judge, when set, runs a second-pass LLM judge over each cell's
 	// output to catch quality issues the deterministic rubric misses
 	// (invented facts, degenerate H1, empty sections that should not be
-	// empty). v1 default uses the bench's own routing tier; production
-	// recommendation from the v1 manual re-grade is claude-sonnet-4-6
-	// @ medium.
+	// empty). v1 default uses the bench's own routing tier.
 	Judge *Judge
 	// Draws is the number of stochastic replicas per (task, fixture,
 	// model) cell. 0 or 1 yields a single draw (the current default).
@@ -246,8 +240,6 @@ func runCell(ctx context.Context, opts Options, task Task, f Fixture, stagePromp
 
 func newBackendByID(id string) (backend.Backend, error) {
 	switch id {
-	case "claude":
-		return backend.ClaudeBackend{}, nil
 	case "codex":
 		return backend.CodexBackend{}, nil
 	case "llamacpp":

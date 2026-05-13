@@ -16,8 +16,6 @@ import (
 // owns its own mapping; routing only knows the string ids.
 func backendForID(id string) (backend.Backend, error) {
 	switch id {
-	case "claude":
-		return backend.ClaudeBackend{}, nil
 	case "codex":
 		return backend.CodexBackend{}, nil
 	case "llamacpp":
@@ -31,8 +29,6 @@ func backendForPick(pick routing.Pick) backend.Backend {
 	switch pick.BackendID {
 	case "codex":
 		return backend.CodexBackend{}
-	case "claude":
-		return backend.ClaudeBackend{}
 	default:
 		return backend.LlamacppBackend{}
 	}
