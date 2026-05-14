@@ -72,3 +72,19 @@ func TestStripXMLToolCallsOnlyTags(t *testing.T) {
 		t.Errorf("expected empty string, got %q", got)
 	}
 }
+
+func TestSanitizeModelVisibleContentStripsReasoning(t *testing.T) {
+	content := "<think>private reasoning</think>\n# Scout report\nVisible"
+	got := sanitizeModelVisibleContent(content)
+	if got != "# Scout report\nVisible" {
+		t.Fatalf("sanitize = %q", got)
+	}
+}
+
+func TestSanitizeModelVisibleContentStripsUnclosedReasoning(t *testing.T) {
+	content := "# Report\nVisible\n<think>private reasoning"
+	got := sanitizeModelVisibleContent(content)
+	if got != "# Report\nVisible" {
+		t.Fatalf("sanitize = %q", got)
+	}
+}

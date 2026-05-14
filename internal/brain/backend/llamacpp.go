@@ -150,6 +150,7 @@ func runLlamacppSingleShot(ctx context.Context, model, modelHeader, affinity str
 		return Response{}, err
 	}
 	content := chatContent(body)
+	content = sanitizeModelVisibleContent(content)
 	if strings.TrimSpace(content) == "" {
 		return Response{}, ErrEmptyOutput
 	}
@@ -195,6 +196,9 @@ func runLlamacppAgentLoop(ctx context.Context, model, modelHeader, affinity stri
 			lastContent = c
 			logVisibleModelText(round, c)
 		}
+		if rc, ok := msg["reasoning_content"].(string); ok && strings.TrimSpace(rc) != "" {
+			fmt.Fprintf(os.Stderr, "brain night: model reasoning round=%d redacted_bytes=%d\n", round, len(rc))
+		}
 
 		toolCalls, _ := msg["tool_calls"].([]interface{})
 		xmlCalls := parseQwenXMLCalls(lastContent)
@@ -204,7 +208,7 @@ func runLlamacppAgentLoop(ctx context.Context, model, modelHeader, affinity stri
 
 		if len(toolCalls) == 0 && len(xmlCalls) == 0 {
 			// No tool calls: model produced its final answer.
-			clean := stripXMLToolCalls(lastContent)
+			clean := sanitizeModelVisibleContent(lastContent)
 			if strings.TrimSpace(clean) == "" {
 				return Response{}, ErrEmptyOutput
 			}
@@ -229,7 +233,7 @@ func runLlamacppAgentLoop(ctx context.Context, model, modelHeader, affinity stri
 	}
 
 	// Budget exhausted: return whatever the model last produced.
-	clean := stripXMLToolCalls(lastContent)
+	clean := sanitizeModelVisibleContent(lastContent)
 	if strings.TrimSpace(clean) == "" {
 		return Response{}, ErrEmptyOutput
 	}

@@ -105,3 +105,25 @@ func stripXMLToolCalls(content string) string {
 	}
 	return strings.TrimSpace(content)
 }
+
+func sanitizeModelVisibleContent(content string) string {
+	content = stripXMLToolCalls(content)
+	content = stripXMLBlock(content, "think")
+	content = stripXMLBlock(content, "thinking")
+	return strings.TrimSpace(content)
+}
+
+func stripXMLBlock(content, tag string) string {
+	open := "<" + tag + ">"
+	close := "</" + tag + ">"
+	for strings.Contains(content, open) {
+		s := strings.Index(content, open)
+		e := strings.Index(content[s:], close)
+		if e < 0 {
+			content = content[:s]
+			break
+		}
+		content = content[:s] + content[s+e+len(close):]
+	}
+	return content
+}

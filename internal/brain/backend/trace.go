@@ -8,7 +8,7 @@ import (
 )
 
 func logVisibleModelText(round int, content string) {
-	clean := strings.TrimSpace(stripXMLToolCalls(content))
+	clean := strings.TrimSpace(sanitizeModelVisibleContent(content))
 	if clean == "" {
 		return
 	}
