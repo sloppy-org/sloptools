@@ -74,7 +74,15 @@ func (CodexBackend) Run(ctx context.Context, req Request) (Response, error) {
 	cmd.Stderr = io.MultiWriter(os.Stderr, &captured)
 
 	start := time.Now()
-	if err := cmd.Run(); err != nil {
+	fmt.Fprintf(os.Stderr, "brain night: codex start stage=%s model=%s reasoning=%s cwd=%s allow_edits=%t\n",
+		req.Stage, req.Model, req.Reasoning, cwd, req.AllowEdits)
+	stopHeartbeat := make(chan struct{})
+	go codexHeartbeat(stopHeartbeat, req.Stage, start)
+	err = cmd.Run()
+	close(stopHeartbeat)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "brain night: codex error stage=%s elapsed=%s error=%s\n",
+			req.Stage, time.Since(start).Round(time.Second), err)
 		return Response{}, fmt.Errorf("codex exec run: %w", err)
 	}
 	wall := time.Since(start)
@@ -102,12 +110,28 @@ func (CodexBackend) Run(ctx context.Context, req Request) (Response, error) {
 			out = total - in
 		}
 	}
+	fmt.Fprintf(os.Stderr, "brain night: codex done stage=%s wall_ms=%d tokens_in=%d tokens_out=%d output_bytes=%d preview=%s\n",
+		req.Stage, wall.Milliseconds(), in, out, len(body), traceText(string(body), 700))
 	return Response{
 		Output:    strings.TrimRight(string(body), "\n") + "\n",
 		WallMS:    wall.Milliseconds(),
 		TokensIn:  in,
 		TokensOut: out,
 	}, nil
+}
+
+func codexHeartbeat(stop <-chan struct{}, stage string, start time.Time) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-stop:
+			return
+		case <-ticker.C:
+			fmt.Fprintf(os.Stderr, "brain night: codex running stage=%s elapsed=%s\n",
+				stage, time.Since(start).Round(time.Second))
+		}
+	}
 }
 
 // codex 0.128 prints final usage near the tail of stderr in formats like:
