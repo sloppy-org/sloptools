@@ -1,6 +1,7 @@
 package sleep
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -89,21 +90,40 @@ func TestClassifySleepJudge_NormalNonAscii_NoEscalation(t *testing.T) {
 }
 
 func TestClassifySleepJudge_RepeatingTrigram_Escalates(t *testing.T) {
-	// The 167 KB qwen collapse showed the trigram "g g g" repeating
-	// thousands of times. Threshold is 30 repeats of any one trigram.
-	body := strings.Repeat("(g (g (g graphic graphic Mar Mar ", 35)
+	// The 167 KB qwen collapse showed the token trigram "g g g"
+	// repeating thousands of times. Threshold is 100 repeats of any one
+	// token trigram.
+	body := strings.Repeat("(g (g (g graphic graphic Mar Mar ", 105)
 	d := classifySleepJudgeOutput(body, 4*1024)
 	if !d.Escalate {
-		t.Fatalf("trigram repeating >30 times must escalate: %+v", d)
+		t.Fatalf("trigram repeating >100 times must escalate: %+v", d)
 	}
 	if !strings.Contains(d.Reason, "repetition") && !strings.Contains(d.Reason, "trigram") {
 		t.Fatalf("reason should name repetition: %q", d.Reason)
 	}
 }
 
+func TestClassifySleepJudge_RepeatedMarkdownExtension_NoEscalation(t *testing.T) {
+	// Markdown reports often mention many note paths. The old rune-window
+	// detector counted ".md" as a trigram and escalated good reports.
+	var b strings.Builder
+	b.WriteString("# Sleep report\n\n## Paths changed\n")
+	for i := 0; i < 40; i++ {
+		b.WriteString("- `projects/example-")
+		b.WriteString(strconv.Itoa(i))
+		b.WriteString(".md` updated with a distinct note ")
+		b.WriteString(strconv.Itoa(i))
+		b.WriteString("\n")
+	}
+	d := classifySleepJudgeOutput(b.String(), 4*1024)
+	if d.Escalate {
+		t.Fatalf("repeated .md path suffixes must not escalate: %+v", d)
+	}
+}
+
 func TestClassifySleepJudge_LegitimateRepeatedBullet_NoEscalation(t *testing.T) {
 	// A normal report that happens to repeat a few bullets should not
-	// escalate. The trigram threshold is high enough (30) that ordinary
+	// escalate. The trigram threshold is high enough that ordinary
 	// reports stay under it.
 	var b strings.Builder
 	b.WriteString("# Sleep report\n\n## Verified\n")

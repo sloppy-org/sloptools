@@ -28,12 +28,12 @@ const PreflightPacketCap = 200 * 1024
 // near-ratios above 10%.
 const nonPrintableRatioThreshold = 0.05
 
-// trigramRepeatThreshold is the count above which a single 3-gram
-// repeating in the body is treated as evidence of context-window
-// collapse. 30 leaves room for legitimate reports that repeat a short
+// trigramRepeatThreshold is the count above which a single word-token
+// 3-gram repeating in the body is treated as evidence of context-window
+// collapse. 100 leaves room for legitimate reports that repeat a short
 // pattern across many bullets while still tripping on the qwen spam
-// fixture which repeats one trigram thousands of times.
-const trigramRepeatThreshold = 30
+// fixture which repeats one trigram hundreds or thousands of times.
+const trigramRepeatThreshold = 100
 
 // Decision is the deterministic classifier output for one bulk-tier
 // sleep-judge call. Reason is empty when no escalation is needed.
@@ -53,7 +53,8 @@ type Decision struct {
 //  2. opencode/llm-provider parse-error wrapper detected ("Failed to
 //     parse input", leaked "<think>" tag).
 //  3. non-printable + control-byte ratio above 5%.
-//  4. any 3-gram repeats more than `trigramRepeatThreshold` times.
+//  4. any word-token 3-gram repeats more than
+//     `trigramRepeatThreshold` times.
 //
 // Caller passes the original packet size (in bytes) so the pre-flight
 // signal works without re-reading the packet at classification time.
@@ -67,8 +68,8 @@ func classifySleepJudgeOutput(body string, packetSize int) Decision {
 	if ratio, over := nonPrintableRatio(body); over {
 		return Decision{Escalate: true, Reason: fmt.Sprintf("non-printable ratio %.2f exceeds %.2f", ratio, nonPrintableRatioThreshold)}
 	}
-	if hits, over := topTrigramRepeats(body); over {
-		return Decision{Escalate: true, Reason: fmt.Sprintf("trigram repetition %d exceeds %d", hits, trigramRepeatThreshold)}
+	if hits, trigram, over := topTrigramRepeats(body); over {
+		return Decision{Escalate: true, Reason: fmt.Sprintf("token trigram %q repeats %d times, exceeds %d", trigram, hits, trigramRepeatThreshold)}
 	}
 	return Decision{}
 }
@@ -118,36 +119,45 @@ func nonPrintableRatio(body string) (float64, bool) {
 	return ratio, ratio > nonPrintableRatioThreshold
 }
 
-// topTrigramRepeats counts the most-repeated 3-rune window. Returns the
-// hit count for the worst trigram and whether it exceeds the
-// `trigramRepeatThreshold`. Trigrams that span only whitespace are
-// skipped so legitimate bullet lists do not register.
-func topTrigramRepeats(body string) (int, bool) {
-	runes := []rune(body)
-	if len(runes) < 3 {
-		return 0, false
+// topTrigramRepeats counts the most-repeated 3-token window. Tokens are
+// alphanumeric words, not raw rune windows, so common Markdown substrings
+// such as ".md" in many paths do not look like model collapse.
+func topTrigramRepeats(body string) (int, string, bool) {
+	tokens := tokenizeRepeatScan(body)
+	if len(tokens) < 3 {
+		return 0, "", false
 	}
-	counts := make(map[string]int, len(runes))
+	counts := make(map[string]int, len(tokens))
 	worst := 0
-	for i := 0; i+3 <= len(runes); i++ {
-		w := runes[i : i+3]
-		if isAllWhitespace(w) {
-			continue
-		}
-		key := string(w)
+	worstKey := ""
+	for i := 0; i+3 <= len(tokens); i++ {
+		key := tokens[i] + " " + tokens[i+1] + " " + tokens[i+2]
 		counts[key]++
 		if counts[key] > worst {
 			worst = counts[key]
+			worstKey = key
 		}
 	}
-	return worst, worst > trigramRepeatThreshold
+	return worst, worstKey, worst > trigramRepeatThreshold
 }
 
-func isAllWhitespace(rs []rune) bool {
-	for _, r := range rs {
-		if !unicode.IsSpace(r) {
-			return false
+func tokenizeRepeatScan(body string) []string {
+	tokens := make([]string, 0, len(body)/8)
+	var b strings.Builder
+	flush := func() {
+		if b.Len() == 0 {
+			return
 		}
+		tokens = append(tokens, strings.ToLower(b.String()))
+		b.Reset()
 	}
-	return true
+	for _, r := range body {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(r)
+			continue
+		}
+		flush()
+	}
+	flush()
+	return tokens
 }
