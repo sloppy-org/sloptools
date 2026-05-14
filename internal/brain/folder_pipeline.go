@@ -307,9 +307,9 @@ func reviewRoute(source, basis string, findings []FolderFinding, score int) stri
 	case strings.Contains(text, "validation"):
 		return "deterministic"
 	case high && score >= 8:
-		return "gpt-full"
+		return "qwen122b"
 	default:
-		return "gpt-mini"
+		return "qwen"
 	}
 }
 
