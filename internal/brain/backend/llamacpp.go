@@ -175,7 +175,6 @@ func runLlamacppAgentLoop(ctx context.Context, model, modelHeader, affinity stri
 			break
 		}
 		round++
-		fmt.Fprintln(os.Stderr, "brain night: Scout is deciding what evidence to check next.")
 		body, err := llamacppPost(ctx, model, modelHeader, affinity, messages, toolDefs)
 		if err != nil {
 			return Response{}, err
@@ -286,7 +285,7 @@ func callToolSafe(toolMap map[string]*MCPClient, name string, args map[string]in
 	fmt.Fprintf(os.Stderr, "brain night: %s\n", describeToolCall(name, args))
 	if usage != nil && usage.exceeded(name) {
 		result := fmt.Sprintf("tool error (quota exceeded): %q has hit its per-run cap of %d; pick a different tool or finish", name, usage.cap(name))
-		fmt.Fprintf(os.Stderr, "brain night: Skipping %s because tonight's limit for that source is reached.\n", sourceName(name))
+		fmt.Fprintf(os.Stderr, "brain night: Skipping %s; tonight's limit for that operation is reached.\n", quotaOperationName(name))
 		return result
 	}
 	if tracker != nil && tracker.consecutive[name] >= perToolBreakThreshold {

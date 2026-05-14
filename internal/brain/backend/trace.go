@@ -155,6 +155,29 @@ func sourceName(name string) string {
 	}
 }
 
+func quotaOperationName(name string) string {
+	switch name {
+	case "web_search":
+		return "another web search"
+	case "web_fetch":
+		return "another page fetch"
+	case "helpy_zotero":
+		return "another Zotero lookup"
+	case "sloppy_brain":
+		return "another brain-vault search"
+	case "sloppy_contacts":
+		return "another contacts lookup"
+	case "sloppy_calendar":
+		return "another calendar lookup"
+	case "sloppy_mail":
+		return "another mail lookup"
+	case "pdf_read":
+		return "another PDF read"
+	default:
+		return "another " + sourceName(name) + " call"
+	}
+}
+
 func argString(args map[string]interface{}, key string) string {
 	if args == nil {
 		return ""
