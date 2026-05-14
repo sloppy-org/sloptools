@@ -21,67 +21,7 @@ const (
 	// Matches opencode behaviour: no round limit, just a time budget. The
 	// model runs until it naturally stops making tool calls and produces text.
 	llamacppAgentBudget = 30 * time.Minute
-	// perToolBreakThreshold opens the circuit for a single tool after this many
-	// consecutive identical failures, preventing the model from retrying a broken
-	// tool indefinitely within one run.
-	perToolBreakThreshold = 3
-	// globalBreakThreshold aborts the agent loop after this many total consecutive
-	// tool errors (across all tools), capping runaway failure cascades.
-	globalBreakThreshold = 6
 )
-
-// toolFailureTracker counts consecutive identical failures per tool within one
-// agent-loop run. It is not shared across runs.
-type toolFailureTracker struct {
-	consecutive map[string]int
-	lastClass   map[string]string
-	globalTotal int
-}
-
-func newToolFailureTracker() *toolFailureTracker {
-	return &toolFailureTracker{
-		consecutive: make(map[string]int),
-		lastClass:   make(map[string]string),
-	}
-}
-
-// recordSuccess resets the per-tool and global counters for name.
-func (t *toolFailureTracker) recordSuccess(name string) {
-	t.consecutive[name] = 0
-	t.lastClass[name] = ""
-	t.globalTotal = 0
-}
-
-// recordFailure increments the consecutive counter for name+class and returns
-// true when the per-tool circuit-break threshold is reached.
-func (t *toolFailureTracker) recordFailure(name, class string) bool {
-	if t.lastClass[name] == class {
-		t.consecutive[name]++
-	} else {
-		t.consecutive[name] = 1
-		t.lastClass[name] = class
-	}
-	t.globalTotal++
-	return t.consecutive[name] >= perToolBreakThreshold
-}
-
-// globalTripped returns true when total consecutive failures across all tools
-// exceed the global threshold.
-func (t *toolFailureTracker) globalTripped() bool {
-	return t.globalTotal >= globalBreakThreshold
-}
-
-// errorClassShort extracts the short error prefix used as a circuit-breaker key
-// (head before first ':' or '\n', capped at 80 bytes).
-func errorClassShort(msg string) string {
-	if i := strings.IndexAny(msg, ":\n"); i > 0 && i <= 80 {
-		return strings.TrimSpace(msg[:i])
-	}
-	if len(msg) > 80 {
-		return msg[:80]
-	}
-	return msg
-}
 
 // LlamacppBackend calls the slopgate HTTP API directly (OpenAI-compatible
 // /v1/chat/completions). No subprocess overhead; no opencode cold-start cost.
@@ -282,10 +222,12 @@ func executeQwenXMLToolCalls(xmlCalls []qwenXMLCall, toolMap map[string]*MCPClie
 const toolResultCap = 8 * 1024
 
 func callToolSafe(toolMap map[string]*MCPClient, name string, args map[string]interface{}, tracker *toolFailureTracker, usage *toolUsage, broken *BrokenTools) string {
-	fmt.Fprintf(os.Stderr, "brain night: %s\n", describeToolCall(name, args))
 	if usage != nil && usage.exceeded(name) {
 		result := fmt.Sprintf("tool error (quota exceeded): %q has hit its per-run cap of %d; pick a different tool or finish", name, usage.cap(name))
-		fmt.Fprintf(os.Stderr, "brain night: Skipping %s; tonight's limit for that operation is reached.\n", quotaOperationName(name))
+		if tracker != nil {
+			tracker.recordTerminalFailure(name, "quota exceeded")
+		}
+		fmt.Fprintf(os.Stderr, "brain night: Skipping %s; tonight's %s limit is reached. Scout will stop this loop instead of retrying.\n", quotaOperationName(name), sourceName(name))
 		return result
 	}
 	if tracker != nil && tracker.consecutive[name] >= perToolBreakThreshold {
@@ -293,6 +235,7 @@ func callToolSafe(toolMap map[string]*MCPClient, name string, args map[string]in
 		fmt.Fprintf(os.Stderr, "brain night: Skipping %s because it is failing repeatedly.\n", sourceName(name))
 		return result
 	}
+	fmt.Fprintf(os.Stderr, "brain night: %s\n", describeToolCall(name, args))
 	// Every attempt (success or failure, known tool or not) counts against
 	// the per-tool quota — otherwise a model that hammers a non-existent
 	// tool name would bypass the cap entirely.

@@ -29,8 +29,8 @@ Tools you may use:
 - helpy `tugonline_*` for TU Graz teaching, exams, rooms — ONLY when the
   entity is a TU Graz course, lecturer, exam slot, or room. Skip for
   external collaborators, conferences, software projects, and topics.
-  Up to 3 calls per scout.
-- helpy `tu4u_*` for TU Graz internal directives and rules. Up to 3.
+  Up to 8 calls per scout.
+- helpy `tu4u_*` for TU Graz internal directives and rules. Up to 8.
 - Discovering actions: call `helpy_tool_help tool_family=<family>` for
   the action list, or invoke any `helpy_*` coarse tool with
   `action=help` for the same payload inline. NEVER retry the same call

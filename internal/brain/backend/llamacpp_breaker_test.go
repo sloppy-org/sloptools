@@ -1,9 +1,9 @@
 package backend
 
 import (
+	"fmt"
 	"strings"
 	"testing"
-	"fmt"
 )
 
 // --- toolFailureTracker unit tests ---
@@ -143,6 +143,22 @@ func TestCallToolSafeQuotaBlocksAfterCap(t *testing.T) {
 	result := callToolSafe(toolMap, "web_search", nil, tr, usage, nil)
 	if !strings.Contains(result, "quota exceeded") {
 		t.Fatalf("expected quota-exceeded message past cap, got: %s", result)
+	}
+}
+
+func TestCallToolSafeQuotaTripsGlobalBreaker(t *testing.T) {
+	tr := newToolFailureTracker()
+	usage := newToolUsage(map[string]int{"helpy_tu4u": 1})
+	toolMap := map[string]*MCPClient{}
+
+	callToolSafe(toolMap, "helpy_tu4u", nil, tr, usage, nil)
+	result := callToolSafe(toolMap, "helpy_tu4u", nil, tr, usage, nil)
+
+	if !strings.Contains(result, "quota exceeded") {
+		t.Fatalf("expected quota-exceeded message, got: %s", result)
+	}
+	if !tr.globalTripped() {
+		t.Fatalf("quota exhaustion should trip global breaker")
 	}
 }
 

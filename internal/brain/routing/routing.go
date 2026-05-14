@@ -294,8 +294,8 @@ var scoutDefaultMCPQuotas = map[string]int{
 	"web_fetch":       4,
 	"pdf_read":        6,
 	"helpy_zotero":    4,
-	"helpy_tugonline": 3,
-	"helpy_tu4u":      3,
+	"helpy_tugonline": 8,
+	"helpy_tu4u":      8,
 	"helpy_ics":       3,
 }
 
