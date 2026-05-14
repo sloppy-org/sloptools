@@ -84,6 +84,44 @@ func TestSandboxEnvOverridesHOMEAndCODEXHOME(t *testing.T) {
 	if have["XDG_CONFIG_HOME"] != sb.XDGConfigHome {
 		t.Fatalf("XDG_CONFIG_HOME not overridden, got %q want %q", have["XDG_CONFIG_HOME"], sb.XDGConfigHome)
 	}
+	if have["XDG_CACHE_HOME"] != sb.XDGCacheHome {
+		t.Fatalf("XDG_CACHE_HOME not overridden, got %q want %q", have["XDG_CACHE_HOME"], sb.XDGCacheHome)
+	}
+}
+
+func TestSandboxPreservesHelpyCache(t *testing.T) {
+	realHome := t.TempDir()
+	t.Setenv("HOME", realHome)
+	cacheDir := filepath.Join(realHome, ".cache", "helpy")
+	if err := os.MkdirAll(cacheDir, 0o700); err != nil {
+		t.Fatalf("mkdir helpy cache: %v", err)
+	}
+	cookieJar := filepath.Join(cacheDir, "tugrazauth-cookies.json")
+	if err := os.WriteFile(cookieJar, []byte(`{"version":1,"hosts":{}}`), 0o600); err != nil {
+		t.Fatalf("write cookie jar: %v", err)
+	}
+
+	sb, err := NewSandbox("test-cache", "stage", "", DefaultMCPConfig())
+	if err != nil {
+		t.Fatalf("NewSandbox: %v", err)
+	}
+	t.Cleanup(func() { _ = sb.Cleanup() })
+
+	linkPath := filepath.Join(sb.XDGCacheHome, "helpy")
+	target, err := os.Readlink(linkPath)
+	if err != nil {
+		t.Fatalf("read helpy cache symlink: %v", err)
+	}
+	if target != cacheDir {
+		t.Fatalf("helpy cache symlink = %q, want %q", target, cacheDir)
+	}
+	body, err := os.ReadFile(filepath.Join(linkPath, "tugrazauth-cookies.json"))
+	if err != nil {
+		t.Fatalf("read preserved cookie jar: %v", err)
+	}
+	if string(body) != `{"version":1,"hosts":{}}` {
+		t.Fatalf("cookie jar body = %q", string(body))
+	}
 }
 
 func TestSandboxEnvPointsHelpyZoteroAtRealHome(t *testing.T) {

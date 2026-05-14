@@ -11,7 +11,7 @@ import (
 
 // Sandbox is a per-call scratch tree that isolates the child CLI from
 // the user's home configuration. Every backend exports HOME, CODEX_HOME,
-// and XDG_CONFIG_HOME at this tree, places the role-specific system
+// XDG_CONFIG_HOME, and XDG_CACHE_HOME at this tree, places the role-specific system
 // prompt under system.md, and registers the canonical sloppy + helpy MCP
 // servers in mcp.json (and CODEX_HOME/config.toml).
 //
@@ -25,6 +25,7 @@ type Sandbox struct {
 	HomeDir        string
 	CodexHome      string
 	XDGConfigHome  string
+	XDGCacheHome   string
 	WorkDir        string
 	SystemPromptIn string // copied per-call from Request.SystemPromptPath
 	MCPConfigPath  string
@@ -50,10 +51,12 @@ func NewSandbox(runID, stage, stagePromptPath string, mcpServers MCPConfig) (*Sa
 	homeDir := filepath.Join(root, "HOME")
 	codexHome := filepath.Join(root, "CODEX_HOME")
 	xdgConfig := filepath.Join(homeDir, ".config")
+	xdgCache := filepath.Join(homeDir, ".cache")
 	workDir := filepath.Join(root, "workdir")
 	for _, d := range []string{
 		root,
 		homeDir,
+		xdgCache,
 		filepath.Join(xdgConfig, "opencode", "agent"),
 		codexHome,
 		workDir,
@@ -67,6 +70,7 @@ func NewSandbox(runID, stage, stagePromptPath string, mcpServers MCPConfig) (*Sa
 		HomeDir:       homeDir,
 		CodexHome:     codexHome,
 		XDGConfigHome: xdgConfig,
+		XDGCacheHome:  xdgCache,
 		WorkDir:       workDir,
 	}
 	if stagePromptPath != "" {
@@ -149,6 +153,7 @@ func (sb *Sandbox) Env() []string {
 		"HOME":            sb.HomeDir,
 		"CODEX_HOME":      sb.CodexHome,
 		"XDG_CONFIG_HOME": sb.XDGConfigHome,
+		"XDG_CACHE_HOME":  sb.XDGCacheHome,
 	}
 	if realHome, err := os.UserHomeDir(); err == nil {
 		for k, v := range readDotEnv(filepath.Join(realHome, ".config", "helpy", "mcp.env")) {
@@ -259,6 +264,10 @@ func (sb *Sandbox) preserveCredentials() error {
 		// "no such file" or "session not configured" the moment they boot.
 		{filepath.Join(realHome, ".config", "sloptools"), filepath.Join(sb.XDGConfigHome, "sloptools")},
 		{filepath.Join(realHome, ".config", "helpy"), filepath.Join(sb.XDGConfigHome, "helpy")},
+		// TU Graz SSO cookies live in helpy's XDG cache. Preserve them so
+		// TU4U/TUGonline calls do not force a fresh Bitwarden-backed login
+		// inside every short-lived scout sandbox.
+		{filepath.Join(realHome, ".cache", "helpy"), filepath.Join(sb.XDGCacheHome, "helpy")},
 		// sloptools also looks at ~/.local/share/sloppy for store data;
 		// pass it through so brain_search and friends find the indexes.
 		{filepath.Join(realHome, ".local", "share", "sloppy"), filepath.Join(sb.HomeDir, ".local", "share", "sloppy")},
