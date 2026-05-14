@@ -67,7 +67,7 @@ func (LlamacppBackend) Run(ctx context.Context, req Request) (Response, error) {
 		allow = req.MCPBrokenTools.FilterAllowList(allow)
 	}
 	if len(allow) == 0 {
-		return runLlamacppSingleShot(ctx, req.Model, modelHeader, req.Affinity, messages, start)
+		return runLlamacppSingleShot(ctx, req.Stage, req.Model, modelHeader, req.Affinity, messages, start)
 	}
 	filteredReq := req
 	filteredReq.MCPAllowList = allow
@@ -80,13 +80,18 @@ func (LlamacppBackend) Run(ctx context.Context, req Request) (Response, error) {
 			c.Close()
 		}
 	}()
-	return runLlamacppAgentLoop(ctx, req.Model, modelHeader, req.Affinity, messages, toolMap, toolDefs, start, req.MCPToolQuotas, req.MCPBrokenTools)
+	return runLlamacppAgentLoop(ctx, req.Stage, req.Model, modelHeader, req.Affinity, messages, toolMap, toolDefs, start, req.MCPToolQuotas, req.MCPBrokenTools)
 }
 
-func runLlamacppSingleShot(ctx context.Context, model, modelHeader, affinity string,
+func runLlamacppSingleShot(ctx context.Context, stage, model, modelHeader, affinity string,
 	messages []map[string]interface{}, start time.Time) (Response, error) {
+	fmt.Fprintf(os.Stderr, "brain night: Qwen starts working on %s.\n", stage)
+	stopHeartbeat := make(chan struct{})
+	go qwenHeartbeat(stopHeartbeat, stage, start)
 	body, err := llamacppPost(ctx, model, modelHeader, affinity, messages, nil)
+	close(stopHeartbeat)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "brain night: Qwen failed while working on %s: %s\n", stage, err)
 		return Response{}, err
 	}
 	content := chatContent(body)
@@ -95,10 +100,11 @@ func runLlamacppSingleShot(ctx context.Context, model, modelHeader, affinity str
 		return Response{}, ErrEmptyOutput
 	}
 	ti, to := extractUsage(body)
+	fmt.Fprintf(os.Stderr, "brain night: Qwen finished working on %s.\n", stage)
 	return Response{Output: content, TokensIn: ti, TokensOut: to, WallMS: time.Since(start).Milliseconds()}, nil
 }
 
-func runLlamacppAgentLoop(ctx context.Context, model, modelHeader, affinity string,
+func runLlamacppAgentLoop(ctx context.Context, stage, model, modelHeader, affinity string,
 	messages []map[string]interface{}, toolMap map[string]*MCPClient, toolDefs []interface{},
 	start time.Time, quotas map[string]int, broken *BrokenTools) (Response, error) {
 	var (
@@ -115,8 +121,13 @@ func runLlamacppAgentLoop(ctx context.Context, model, modelHeader, affinity stri
 			break
 		}
 		round++
+		fmt.Fprintf(os.Stderr, "brain night: Qwen decides next step for %s.\n", stage)
+		stopHeartbeat := make(chan struct{})
+		go qwenHeartbeat(stopHeartbeat, stage, start)
 		body, err := llamacppPost(ctx, model, modelHeader, affinity, messages, toolDefs)
+		close(stopHeartbeat)
 		if err != nil {
+			fmt.Fprintf(os.Stderr, "brain night: Qwen failed while working on %s: %s\n", stage, err)
 			return Response{}, err
 		}
 		ti, to := extractUsage(body)
@@ -181,6 +192,20 @@ func runLlamacppAgentLoop(ctx context.Context, model, modelHeader, affinity stri
 	}, nil
 }
 
+func qwenHeartbeat(stop <-chan struct{}, stage string, start time.Time) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-stop:
+			return
+		case <-ticker.C:
+			fmt.Fprintf(os.Stderr, "brain night: Qwen is still working on %s (%s elapsed).\n",
+				stage, time.Since(start).Round(time.Second))
+		}
+	}
+}
+
 func executeOpenAIToolCalls(toolCalls []interface{}, toolMap map[string]*MCPClient, messages *[]map[string]interface{}, tracker *toolFailureTracker, usage *toolUsage, broken *BrokenTools) {
 	for _, rawTC := range toolCalls {
 		tc, _ := rawTC.(map[string]interface{})
@@ -225,9 +250,9 @@ func callToolSafe(toolMap map[string]*MCPClient, name string, args map[string]in
 	if usage != nil && usage.exceeded(name) {
 		result := fmt.Sprintf("tool error (quota exceeded): %q has hit its per-run cap of %d; pick a different tool or finish", name, usage.cap(name))
 		if tracker != nil {
-			tracker.recordTerminalFailure(name, "quota exceeded")
+			tracker.recordFailure(name, "quota exceeded")
 		}
-		fmt.Fprintf(os.Stderr, "brain night: Skipping %s; tonight's %s limit is reached. Scout will stop this loop instead of retrying.\n", quotaOperationName(name), sourceName(name))
+		fmt.Fprintf(os.Stderr, "brain night: Skipping %s; this scout item's %s limit is reached. Scout should use another source or write the report.\n", quotaOperationName(name), sourceName(name))
 		return result
 	}
 	if tracker != nil && tracker.consecutive[name] >= perToolBreakThreshold {

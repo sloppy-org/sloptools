@@ -146,7 +146,7 @@ func TestCallToolSafeQuotaBlocksAfterCap(t *testing.T) {
 	}
 }
 
-func TestCallToolSafeQuotaTripsGlobalBreaker(t *testing.T) {
+func TestCallToolSafeQuotaDoesNotTripGlobalBreaker(t *testing.T) {
 	tr := newToolFailureTracker()
 	usage := newToolUsage(map[string]int{"helpy_tu4u": 1})
 	toolMap := map[string]*MCPClient{}
@@ -157,8 +157,8 @@ func TestCallToolSafeQuotaTripsGlobalBreaker(t *testing.T) {
 	if !strings.Contains(result, "quota exceeded") {
 		t.Fatalf("expected quota-exceeded message, got: %s", result)
 	}
-	if !tr.globalTripped() {
-		t.Fatalf("quota exhaustion should trip global breaker")
+	if tr.globalTripped() {
+		t.Fatalf("quota exhaustion should let the model write a final answer")
 	}
 }
 
