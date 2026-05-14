@@ -120,19 +120,6 @@ func messageFixture(id int64, sender, email, topic string, ts time.Time, content
 	}
 }
 
-func TestMessagesRequiresStreamAndTopic(t *testing.T) {
-	client, err := NewClient(Config{BaseURL: "https://example.com", Email: "x@x", APIKey: "k"})
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
-	}
-	if _, err := client.Messages(context.Background(), MessagesParams{Topic: "t"}); err != ErrStreamRequired {
-		t.Fatalf("missing stream: %v", err)
-	}
-	if _, err := client.Messages(context.Background(), MessagesParams{Stream: "s"}); err != ErrTopicRequired {
-		t.Fatalf("missing topic: %v", err)
-	}
-}
-
 func TestMessagesPropagatesAPIError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -147,5 +134,79 @@ func TestMessagesPropagatesAPIError(t *testing.T) {
 	_, err := client.Messages(context.Background(), MessagesParams{Stream: "s", Topic: "t"})
 	if err == nil || !strings.Contains(err.Error(), "STREAM_NOT_FOUND") {
 		t.Fatalf("err = %v, want stream-not-found error", err)
+	}
+}
+
+func TestSearchAddsSearchNarrowAndFiltersWindow(t *testing.T) {
+	cutoff := time.Date(2026, 5, 4, 9, 0, 0, 0, time.UTC)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assertSearchRequest(t, r)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(messagesFixture(cutoff))
+	}))
+	defer server.Close()
+	client, err := NewClient(Config{BaseURL: server.URL, Email: "bot@example.org", APIKey: "secret"})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	got, err := client.Search(context.Background(), SearchParams{
+		Query:  "grant",
+		Stream: "plasma-orga",
+		After:  cutoff.Add(-24 * time.Hour),
+		Before: cutoff,
+		Limit:  7,
+	})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("messages = %#v, want two in-window messages", got)
+	}
+}
+
+func assertSearchRequest(t *testing.T, r *http.Request) {
+	t.Helper()
+	query := r.URL.Query()
+	if query.Get("num_before") != "7" {
+		t.Fatalf("num_before = %q", query.Get("num_before"))
+	}
+	var narrow []narrowTerm
+	if err := json.Unmarshal([]byte(query.Get("narrow")), &narrow); err != nil {
+		t.Fatalf("decode narrow: %v", err)
+	}
+	got := map[string]string{}
+	for _, term := range narrow {
+		got[term.Operator] = term.Operand
+	}
+	if got["stream"] != "plasma-orga" || got["search"] != "grant" {
+		t.Fatalf("narrow = %#v", got)
+	}
+}
+
+func TestStreamsListsSubscriptions(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/users/me/subscriptions" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"result": "success",
+			"subscriptions": []map[string]interface{}{
+				{"stream_id": 1, "name": "plasma-orga", "description": "team"},
+				{"stream_id": 2, "name": "", "description": "ignored"},
+			},
+		})
+	}))
+	defer server.Close()
+	client, err := NewClient(Config{BaseURL: server.URL, Email: "bot@example.org", APIKey: "secret"})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	got, err := client.Streams(context.Background())
+	if err != nil {
+		t.Fatalf("Streams: %v", err)
+	}
+	if len(got) != 1 || got[0].Name != "plasma-orga" || got[0].ID != 1 {
+		t.Fatalf("streams = %#v", got)
 	}
 }

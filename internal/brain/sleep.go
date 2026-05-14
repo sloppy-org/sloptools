@@ -397,7 +397,11 @@ func newSleepResult(opts SleepOpts, backend, model, autonomy string, prep *prepa
 		GitContextScope:  prep.report.GitContextScope,
 	}
 	if backend == SleepBackendCodex {
-		res.Model = model
+		if opts.Router != nil {
+			res.Model = "routed"
+		} else {
+			res.Model = model
+		}
 	}
 	return res
 }

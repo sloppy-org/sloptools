@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sloppy-org/sloptools/internal/chat"
 	"github.com/sloppy-org/sloptools/internal/store"
 )
 
@@ -247,11 +248,21 @@ func (s *Server) callConsolidatedTool(name string, args map[string]interface{}) 
 		}
 	case "sloppy_source":
 		return handledTool(s.sourceReadOnly(args))
+	case "sloppy_chat":
+		return handledTool(s.chatReadOnly(args))
 	case "sloppy_tool_help":
 		return handledTool(toolHelpHandler(args))
 	default:
 		return unhandledTool()
 	}
+}
+
+func (s *Server) chatReadOnly(args map[string]interface{}) (map[string]interface{}, error) {
+	path, explicit, err := chat.ResolveConfigPath(strArg(args, "sources_config"))
+	if err != nil {
+		return nil, err
+	}
+	return chat.Handler{ConfigPath: path, Explicit: explicit}.Call(context.Background(), args)
 }
 
 type toolDispatchResult struct {

@@ -64,6 +64,13 @@ type messagesResponse struct {
 	Anchor   anchorRef `json:"-"`
 }
 
+type subscriptionsResponse struct {
+	Result        string            `json:"result"`
+	Msg           string            `json:"msg"`
+	Subscriptions []rawSubscription `json:"subscriptions"`
+	Code          string            `json:"code,omitempty"`
+}
+
 type rawMsg struct {
 	ID               int64       `json:"id"`
 	SenderName       string      `json:"sender_full_name"`
@@ -72,6 +79,12 @@ type rawMsg struct {
 	Subject          string      `json:"subject"`
 	Timestamp        json.Number `json:"timestamp"`
 	Content          string      `json:"content"`
+}
+
+type rawSubscription struct {
+	StreamID    int64  `json:"stream_id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
 }
 
 type anchorRef struct{}
@@ -84,21 +97,50 @@ type anchorRef struct{}
 // filtering.
 func (c *Client) Messages(ctx context.Context, params MessagesParams) ([]Message, error) {
 	stream := cleanString(params.Stream)
-	if stream == "" {
-		return nil, ErrStreamRequired
-	}
 	topic := cleanString(params.Topic)
-	if topic == "" {
-		return nil, ErrTopicRequired
-	}
 	limit := params.Limit
 	if limit <= 0 {
 		limit = defaultMessageLimit
 	}
-	narrow := []narrowTerm{
-		{Operator: "stream", Operand: stream},
-		{Operator: "topic", Operand: topic},
+	narrow := make([]narrowTerm, 0, 2)
+	if stream != "" {
+		narrow = append(narrow, narrowTerm{Operator: "stream", Operand: stream})
 	}
+	if topic != "" {
+		narrow = append(narrow, narrowTerm{Operator: "topic", Operand: topic})
+	}
+	messages, err := c.messages(ctx, narrow, limit)
+	if err != nil {
+		return nil, err
+	}
+	return filterAndConvert(messages, stream, topic, params.After, params.Before), nil
+}
+
+// Search fetches recent messages using optional stream, topic, and full-text
+// search narrow terms.
+func (c *Client) Search(ctx context.Context, params SearchParams) ([]Message, error) {
+	limit := params.Limit
+	if limit <= 0 {
+		limit = defaultMessageLimit
+	}
+	narrow := []narrowTerm{}
+	if stream := cleanString(params.Stream); stream != "" {
+		narrow = append(narrow, narrowTerm{Operator: "stream", Operand: stream})
+	}
+	if topic := cleanString(params.Topic); topic != "" {
+		narrow = append(narrow, narrowTerm{Operator: "topic", Operand: topic})
+	}
+	if query := cleanString(params.Query); query != "" {
+		narrow = append(narrow, narrowTerm{Operator: "search", Operand: query})
+	}
+	messages, err := c.messages(ctx, narrow, limit)
+	if err != nil {
+		return nil, err
+	}
+	return filterAndConvert(messages, params.Stream, params.Topic, params.After, params.Before), nil
+}
+
+func (c *Client) messages(ctx context.Context, narrow []narrowTerm, limit int) ([]rawMsg, error) {
 	narrowJSON, err := json.Marshal(narrow)
 	if err != nil {
 		return nil, fmt.Errorf("encode zulip narrow: %w", err)
@@ -108,7 +150,9 @@ func (c *Client) Messages(ctx context.Context, params MessagesParams) ([]Message
 	values.Set("num_before", strconv.Itoa(limit))
 	values.Set("num_after", "0")
 	values.Set("apply_markdown", "false")
-	values.Set("narrow", string(narrowJSON))
+	if len(narrow) > 0 {
+		values.Set("narrow", string(narrowJSON))
+	}
 	requestURL := c.baseURL + "/api/v1/messages?" + values.Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
 	if err != nil {
@@ -132,7 +176,43 @@ func (c *Client) Messages(ctx context.Context, params MessagesParams) ([]Message
 	if decoded.Result != "" && decoded.Result != "success" {
 		return nil, fmt.Errorf("zulip messages: %s (%s)", decoded.Msg, decoded.Code)
 	}
-	return filterAndConvert(decoded.Messages, stream, topic, params.After, params.Before), nil
+	return decoded.Messages, nil
+}
+
+// Streams lists the streams subscribed for the configured Zulip bot user.
+func (c *Client) Streams(ctx context.Context) ([]Stream, error) {
+	requestURL := c.baseURL + "/api/v1/users/me/subscriptions"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.SetBasicAuth(c.email, c.apiKey)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", c.userAgent)
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("zulip streams request: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("zulip streams: HTTP %d", resp.StatusCode)
+	}
+	var decoded subscriptionsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&decoded); err != nil {
+		return nil, fmt.Errorf("decode zulip streams: %w", err)
+	}
+	if decoded.Result != "" && decoded.Result != "success" {
+		return nil, fmt.Errorf("zulip streams: %s (%s)", decoded.Msg, decoded.Code)
+	}
+	out := make([]Stream, 0, len(decoded.Subscriptions))
+	for _, sub := range decoded.Subscriptions {
+		name := cleanString(sub.Name)
+		if name == "" {
+			continue
+		}
+		out = append(out, Stream{ID: sub.StreamID, Name: name, Description: cleanString(sub.Description)})
+	}
+	return out, nil
 }
 
 func filterAndConvert(raw []rawMsg, stream, topic string, after, before time.Time) []Message {

@@ -88,8 +88,19 @@ var MCPTools = []Tool{
 		"limit":  {Type: "integer", Description: "Maximum search results. Defaults to 5, capped at 20."},
 		"state":  {Type: "string", Description: "Issue/PR state for search: open, closed, merged, all.", Enum: []string{"open", "closed", "merged", "all"}},
 	}},
+	{Name: "sloppy_chat", Description: "Read-only team chat. Actions: provider_list, stream_list, message_list, message_search. Zulip is the first provider and is configured per sphere in sources.toml.", Required: []string{"action"}, Properties: map[string]ToolProperty{
+		"action":         {Type: "string", Description: "Chat operation.", Enum: []string{"provider_list", "stream_list", "message_list", "message_search"}},
+		"sphere":         {Type: "string", Description: "Sphere. Defaults to work.", Enum: []string{"work", "private"}},
+		"sources_config": {Type: "string", Description: "Optional sources.toml path. Defaults to ~/.config/sloptools/sources.toml."},
+		"stream":         {Type: "string", Description: "Zulip stream name."},
+		"topic":          {Type: "string", Description: "Zulip topic name."},
+		"query":          {Type: "string", Description: "Full-text search query for message_search."},
+		"after":          {Type: "string", Description: "RFC3339 inclusive lower timestamp bound."},
+		"before":         {Type: "string", Description: "RFC3339 exclusive upper timestamp bound."},
+		"limit":          {Type: "integer", Description: "Maximum messages or streams to return."},
+	}},
 	{Name: "sloppy_tool_help", Description: "List actions for a sloppy tool family.", Required: []string{"tool"}, Properties: map[string]ToolProperty{
-		"tool": {Type: "string", Description: "Tool family: mail, calendar, tasks, contacts, brain, workspace, evernote, inbox, meeting, canvas, handoff, source.", Enum: []string{"mail", "calendar", "tasks", "contacts", "brain", "workspace", "evernote", "inbox", "meeting", "canvas", "handoff", "source"}},
+		"tool": {Type: "string", Description: "Tool family: mail, calendar, tasks, contacts, brain, workspace, evernote, inbox, meeting, canvas, handoff, source, chat.", Enum: []string{"mail", "calendar", "tasks", "contacts", "brain", "workspace", "evernote", "inbox", "meeting", "canvas", "handoff", "source", "chat"}},
 	}},
 }
 

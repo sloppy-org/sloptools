@@ -249,7 +249,7 @@ func (r *Router) applyOpenAIOverride(cfg StageConfig) (Choice, bool) {
 // scoutDefaultMCPTools is the curated tool allowlist for the scout stage.
 // Tool names must match what sloppy and helpy expose (flat names, no prefix).
 var scoutDefaultMCPTools = []string{
-	"sloppy_brain", "sloppy_contacts", "sloppy_calendar", "sloppy_mail", "sloppy_source",
+	"sloppy_brain", "sloppy_contacts", "sloppy_calendar", "sloppy_mail", "sloppy_source", "sloppy_chat",
 	"web_search", "web_fetch", "pdf_read",
 	"helpy_zotero", "helpy_tugonline", "helpy_tu4u", "helpy_ics",
 }
@@ -266,6 +266,7 @@ var scoutDefaultMCPQuotas = map[string]int{
 	"sloppy_calendar": 3,
 	"sloppy_mail":     3,
 	"sloppy_source":   6,
+	"sloppy_chat":     4,
 	"web_search":      2,
 	"web_fetch":       4,
 	"pdf_read":        6,
@@ -292,14 +293,15 @@ var folderNoteDefaultMCPQuotas = map[string]int{
 // AllowEdits=true. Includes sloppy_brain (action=note_write for vault edits)
 // and helpy tools for external fact confirmation.
 var sleepJudgeFullAutonomyTools = []string{
-	"sloppy_brain",
+	"sloppy_brain", "sloppy_chat",
 	"web_search", "web_fetch", "pdf_read",
 }
 
 var sleepJudgeDefaultMCPQuotas = map[string]int{
-	"web_search": 4,
-	"web_fetch":  6,
-	"pdf_read":   4,
+	"sloppy_chat": 3,
+	"web_search":  4,
+	"web_fetch":   6,
+	"pdf_read":    4,
 }
 
 func DefaultStageConfigs() map[Stage]StageConfig {

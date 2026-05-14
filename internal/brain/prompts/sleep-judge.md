@@ -32,6 +32,9 @@ Tools:
   folder-note inspection; action=note_parse, action=note_validate for
   individual notes; and action=note_write to edit canonical Markdown
   when autonomy is "full".
+- sloppy `sloppy_chat` is read-only team chat. For work-sphere context,
+  use action=message_search with stream/topic/query/after/before only
+  when the packet names a chat-backed decision or open question.
 - helpy `web_search`, `web_fetch` only to confirm a single named
   external fact already referenced in the packet. Never speculative
   search.

@@ -1,8 +1,4 @@
-// Package zulip is a small read-only client for the Zulip REST API used
-// by the meeting kickoff helper. It only covers the surface needed to
-// fetch messages from a stream + topic in a bounded time window; deeper
-// integration (sending, subscribing, mentions API) belongs in a future
-// package or wrapper.
+// Package zulip is a small read-only client for the Zulip REST API.
 package zulip
 
 import (
@@ -35,6 +31,24 @@ type MessagesParams struct {
 	After  time.Time
 	Before time.Time
 	Limit  int
+}
+
+// SearchParams selects recent messages with optional Zulip narrow terms.
+// Query maps to Zulip's full-text search operator.
+type SearchParams struct {
+	Query  string
+	Stream string
+	Topic  string
+	After  time.Time
+	Before time.Time
+	Limit  int
+}
+
+// Stream is one subscribed Zulip stream visible to the configured bot.
+type Stream struct {
+	ID          int64  `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
 }
 
 // MessagesProvider is the read-side interface the kickoff helper depends
