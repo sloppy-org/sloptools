@@ -24,7 +24,7 @@ func TestTaskCreateCapabilityUnsupported(t *testing.T) {
 		return provider, nil
 	}
 
-	got, err := s.callTool("sloppy_tasks", map[string]interface{}{"action": "create", 
+	got, err := s.callTool("sloppy_tasks", map[string]interface{}{"action": "create",
 		"account_id": account.ID,
 		"list_id":    "list-1",
 		"title":      "New task",
@@ -51,7 +51,7 @@ func TestTaskCreateReturnsPayload(t *testing.T) {
 		return provider, nil
 	}
 
-	got, err := s.callTool("sloppy_tasks", map[string]interface{}{"action": "create", 
+	got, err := s.callTool("sloppy_tasks", map[string]interface{}{"action": "create",
 		"account_id":  account.ID,
 		"list_id":     "list-1",
 		"title":       "New task",
@@ -117,7 +117,7 @@ func TestTaskUpdateFullReplace(t *testing.T) {
 		return provider, nil
 	}
 
-	got, err := s.callTool("sloppy_tasks", map[string]interface{}{"action": "update", 
+	got, err := s.callTool("sloppy_tasks", map[string]interface{}{"action": "update",
 		"account_id":   account.ID,
 		"list_id":      "list-1",
 		"id":           "t-1",
@@ -173,7 +173,7 @@ func TestTaskCompleteDefaultsCompletedTrue(t *testing.T) {
 		return provider, nil
 	}
 
-	got, err := s.callTool("sloppy_tasks", map[string]interface{}{"action": "complete", 
+	got, err := s.callTool("sloppy_tasks", map[string]interface{}{"action": "complete",
 		"account_id": account.ID,
 		"list_id":    "list-1",
 		"id":         "t-1",
@@ -207,7 +207,7 @@ func TestTaskCompleteUncompletesWhenFalse(t *testing.T) {
 		return provider, nil
 	}
 
-	got, err := s.callTool("sloppy_tasks", map[string]interface{}{"action": "complete", 
+	got, err := s.callTool("sloppy_tasks", map[string]interface{}{"action": "complete",
 		"account_id": account.ID,
 		"list_id":    "list-1",
 		"id":         "t-1",
@@ -235,7 +235,7 @@ func TestTaskCompleteCapabilityUnsupported(t *testing.T) {
 		return provider, nil
 	}
 
-	got, err := s.callTool("sloppy_tasks", map[string]interface{}{"action": "complete", 
+	got, err := s.callTool("sloppy_tasks", map[string]interface{}{"action": "complete",
 		"account_id": account.ID,
 		"list_id":    "list-1",
 		"id":         "t-1",
@@ -267,7 +267,7 @@ func TestTaskDeleteRemovesTask(t *testing.T) {
 		return provider, nil
 	}
 
-	got, err := s.callTool("sloppy_tasks", map[string]interface{}{"action": "delete", 
+	got, err := s.callTool("sloppy_tasks", map[string]interface{}{"action": "delete",
 		"account_id": account.ID,
 		"list_id":    "list-1",
 		"id":         "t-1",
@@ -297,7 +297,7 @@ func TestTaskDeleteCapabilityUnsupported(t *testing.T) {
 		return provider, nil
 	}
 
-	got, err := s.callTool("sloppy_tasks", map[string]interface{}{"action": "delete", 
+	got, err := s.callTool("sloppy_tasks", map[string]interface{}{"action": "delete",
 		"account_id": account.ID,
 		"list_id":    "list-1",
 		"id":         "t-1",
@@ -321,7 +321,7 @@ func TestTaskListCreateRequiresListManager(t *testing.T) {
 		return provider, nil
 	}
 
-	got, err := s.callTool("sloppy_tasks", map[string]interface{}{"action": "list_create", 
+	got, err := s.callTool("sloppy_tasks", map[string]interface{}{"action": "list_create",
 		"account_id": account.ID,
 		"name":       "New List",
 	})
@@ -347,7 +347,7 @@ func TestTaskListCreateSuccess(t *testing.T) {
 		return provider, nil
 	}
 
-	got, err := s.callTool("sloppy_tasks", map[string]interface{}{"action": "list_create", 
+	got, err := s.callTool("sloppy_tasks", map[string]interface{}{"action": "list_create",
 		"account_id": account.ID,
 		"name":       "Projects",
 	})
@@ -374,7 +374,7 @@ func TestTaskListDeleteRejectsPrimaryList(t *testing.T) {
 		return provider, nil
 	}
 
-	got, err := s.callTool("sloppy_tasks", map[string]interface{}{"action": "list_delete", 
+	got, err := s.callTool("sloppy_tasks", map[string]interface{}{"action": "list_delete",
 		"account_id": account.ID,
 		"list_id":    "primary",
 	})
@@ -392,7 +392,7 @@ func TestBrainGTDWriteToolCreatesMissingCommitmentNotes(t *testing.T) {
 	notePath := filepath.Join("brain", "gtd", "created.md")
 
 	s := NewServer(t.TempDir())
-	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_write", 
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_write",
 		"config_path": configPath,
 		"sphere":      "work",
 		"path":        notePath,
@@ -466,7 +466,7 @@ Owned by Ada from this Friday.
 - Hand-off recorded in standup notes.
 `)
 	s := NewServer(t.TempDir())
-	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_write", 
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_write",
 		"config_path": configPath, "sphere": "work", "path": notePath,
 		"commitment": map[string]interface{}{"context": "meeting"},
 	})

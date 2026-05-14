@@ -226,7 +226,7 @@ func setupMeetingsIngestVault(t *testing.T) (*Server, string, string) {
 
 func TestBrainGTDIngestMeetingsStampsIDsAndCreatesPerPersonCommitments(t *testing.T) {
 	s, root, configPath := setupMeetingsIngestVault(t)
-	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_ingest", 
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_ingest",
 		"config_path": configPath,
 		"sphere":      "work",
 		"source":      "meetings",
@@ -340,7 +340,7 @@ func TestBrainGTDIngestMeetingsClosesCommitmentsOnHandEditedCheckmark(t *testing
 func TestBrainGTDSyncFlipsMeetingsCheckboxByStableAnchor(t *testing.T) {
 	s, root, configPath := setupMeetingsIngestVault(t)
 	sourcesConfig := writeMeetingsSourcesConfig(t, root)
-	if _, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_ingest", 
+	if _, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_ingest",
 		"config_path": configPath,
 		"sphere":      "work",
 		"source":      "meetings",
@@ -353,7 +353,7 @@ func TestBrainGTDSyncFlipsMeetingsCheckboxByStableAnchor(t *testing.T) {
 		t.Fatalf("expected 2 commitments in ingest dir, got %d", len(created))
 	}
 	target := pickAdaCommitment(t, created)
-	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_set_status", 
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_set_status",
 		"config_path":    configPath,
 		"sphere":         "work",
 		"path":           relWorkPath(t, root, target),

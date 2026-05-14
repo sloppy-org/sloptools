@@ -61,6 +61,8 @@ func describeToolCall(name string, args map[string]interface{}) string {
 		return "Scout checks calendar evidence."
 	case "sloppy_mail":
 		return "Scout checks mail evidence for: " + firstNonEmpty(argString(args, "query"), nestedArgString(args, "query"))
+	case "sloppy_source":
+		return "Scout checks GitHub source evidence: " + firstNonEmpty(argString(args, "repo"), argString(args, "query"))
 	case "helpy_tugonline":
 		return "Scout checks TU Graz/TUGonline."
 	case "helpy_tu4u":
@@ -144,6 +146,8 @@ func sourceName(name string) string {
 		return "calendar"
 	case "sloppy_mail":
 		return "mail"
+	case "sloppy_source":
+		return "GitHub source"
 	case "helpy_tugonline":
 		return "TUGonline"
 	case "helpy_tu4u":
@@ -171,6 +175,8 @@ func quotaOperationName(name string) string {
 		return "another calendar lookup"
 	case "sloppy_mail":
 		return "another mail lookup"
+	case "sloppy_source":
+		return "another GitHub source lookup"
 	case "pdf_read":
 		return "another PDF read"
 	default:

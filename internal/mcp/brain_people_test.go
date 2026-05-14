@@ -50,7 +50,7 @@ func TestBrainPeopleDashboardAggregatesOpenLoops(t *testing.T) {
 	writePeopleCommitment(t, tmp, "other.md", "next", "Other person task", "", []string{"Other Person"}, "", recent)
 
 	s := NewServer(t.TempDir())
-	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "people_dashboard", 
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "people_dashboard",
 		"config_path": configPath,
 		"sphere":      "work",
 		"name":        "Ada",
@@ -73,7 +73,7 @@ func TestBrainPeopleDashboardResolvesFoldedParentheticalPerson(t *testing.T) {
 	writePeopleCommitment(t, tmp, "owe.md", "next", "Send outline", "", []string{"Zoe Example"}, "", "")
 
 	s := NewServer(t.TempDir())
-	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "people_dashboard", 
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "people_dashboard",
 		"config_path": configPath,
 		"sphere":      "work",
 		"name":        "Zoe",
@@ -95,7 +95,7 @@ func TestBrainPeopleRenderReplacesOnlyCurrentOpenLoops(t *testing.T) {
 	writePeopleCommitment(t, tmp, "owe.md", "next", "Send recommendation", "", []string{"Ada Example"}, "", "")
 
 	s := NewServer(t.TempDir())
-	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "people_render", 
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "people_render",
 		"config_path": configPath,
 		"sphere":      "work",
 		"name":        "Ada Example",
@@ -120,7 +120,7 @@ func TestBrainPeopleRenderReplacesOnlyCurrentOpenLoops(t *testing.T) {
 		t.Fatalf("rendered person note invalid: %#v\n%s", diags, rendered)
 	}
 	firstInfo := statPeopleFile(t, personPath)
-	second, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "people_render", 
+	second, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "people_render",
 		"config_path": configPath,
 		"sphere":      "work",
 		"name":        "Ada Example",
@@ -142,7 +142,7 @@ func TestBrainPeopleRenderEmptyAndMissingPerson(t *testing.T) {
 	personPath := writePersonNote(t, tmp, "Ada Example", "# Ada Example\n")
 
 	s := NewServer(t.TempDir())
-	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "people_render", 
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "people_render",
 		"config_path": configPath,
 		"sphere":      "work",
 		"name":        "Ada Example",
@@ -156,7 +156,7 @@ func TestBrainPeopleRenderEmptyAndMissingPerson(t *testing.T) {
 	if !strings.Contains(readPeopleFile(t, personPath), "## Current open loops\n\n_None at present._\n") {
 		t.Fatalf("missing empty state:\n%s", readPeopleFile(t, personPath))
 	}
-	missing, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "people_render", 
+	missing, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "people_render",
 		"config_path": configPath,
 		"sphere":      "work",
 		"name":        "Missing Person",
@@ -179,7 +179,7 @@ func TestBrainCatalogTools(t *testing.T) {
 		configPath := writeMCPBrainConfig(t, tmp)
 		s := NewServer(t.TempDir())
 
-		got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "vault_list", 
+		got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "vault_list",
 			"config_path": configPath,
 		})
 		if err != nil {
@@ -226,7 +226,7 @@ Free prose.
 `)
 
 		s := NewServer(t.TempDir())
-		got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "folder_audit", 
+		got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "folder_audit",
 			"config_path": configPath,
 			"sphere":      "work",
 		})
@@ -297,7 +297,7 @@ Neoclassical toroidal viscosity.
 `)
 
 		s := NewServer(t.TempDir())
-		got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "entities_candidates", 
+		got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "entities_candidates",
 			"config_path": configPath,
 			"sphere":      "work",
 		})
@@ -341,7 +341,7 @@ Send the reply.
 `)
 
 		s := NewServer(t.TempDir())
-		parsed, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_parse", 
+		parsed, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_parse",
 			"config_path": configPath,
 			"sphere":      "work",
 		})
@@ -351,7 +351,7 @@ Send the reply.
 		if parsed["count"].(int) != 1 {
 			t.Fatalf("parse count = %#v", parsed["count"])
 		}
-		listed, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_list", 
+		listed, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_list",
 			"config_path": configPath,
 			"sphere":      "work",
 			"status":      "next",

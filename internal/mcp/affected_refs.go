@@ -291,6 +291,7 @@ func toolHelpHandler(args map[string]interface{}) (map[string]interface{}, error
 		"meeting":   {"summary_draft", "summary_send", "share_create", "share_revoke"},
 		"canvas":    {"session_open", "artifact_show", "status", "import_handoff"},
 		"handoff":   {"create", "peek", "consume", "revoke", "status", "temp_create", "temp_remove"},
+		"source":    {"github_issue_view", "github_pr_view", "github_issue_search", "github_pr_search", "github_code_search"},
 	}
 	if tool == "" {
 		b, _ := json.Marshal(help)

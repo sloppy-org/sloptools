@@ -14,10 +14,10 @@ import "sync"
 // scouts 3 retries — that is what produced 1051 helpy_tugonline failures in
 // one night.
 type BrokenTools struct {
-	mu      sync.RWMutex
-	broken  map[string]string // tool name -> error class that broke it
-	threshold int             // strikes to register; 0 means register on first strike
-	strikes map[string]int
+	mu        sync.RWMutex
+	broken    map[string]string // tool name -> error class that broke it
+	threshold int               // strikes to register; 0 means register on first strike
+	strikes   map[string]int
 }
 
 // NewBrokenTools returns a registry that marks a tool broken after

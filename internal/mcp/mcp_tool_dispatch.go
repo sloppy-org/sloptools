@@ -1,9 +1,13 @@
 package mcp
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
+	"os/exec"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/sloppy-org/sloptools/internal/store"
 )
@@ -241,6 +245,8 @@ func (s *Server) callConsolidatedTool(name string, args map[string]interface{}) 
 		default:
 			return handledTool(nil, fmt.Errorf("sloppy_handoff: unknown action %q", action))
 		}
+	case "sloppy_source":
+		return handledTool(s.sourceReadOnly(args))
 	case "sloppy_tool_help":
 		return handledTool(toolHelpHandler(args))
 	default:
@@ -256,6 +262,92 @@ type toolDispatchResult struct {
 
 func handledTool(payload map[string]interface{}, err error) toolDispatchResult {
 	return toolDispatchResult{payload: payload, err: err, ok: true}
+}
+
+func (s *Server) sourceReadOnly(args map[string]interface{}) (map[string]interface{}, error) {
+	action := strings.TrimSpace(strArg(args, "action"))
+	repo := strings.TrimSpace(strArg(args, "repo"))
+	if repo == "" {
+		return nil, fmt.Errorf("repo is required as owner/name")
+	}
+	var ghArgs []string
+	switch action {
+	case "github_issue_view":
+		number := intArg(args, "number", 0)
+		if number <= 0 {
+			return nil, fmt.Errorf("number is required")
+		}
+		ghArgs = []string{"issue", "view", fmt.Sprint(number), "-R", repo, "--json", "number,title,url,state,author,labels,assignees,body,comments,createdAt,updatedAt,closedAt"}
+	case "github_pr_view":
+		number := intArg(args, "number", 0)
+		if number <= 0 {
+			return nil, fmt.Errorf("number is required")
+		}
+		ghArgs = []string{"pr", "view", fmt.Sprint(number), "-R", repo, "--json", "number,title,url,state,author,labels,assignees,body,comments,reviewDecision,reviewRequests,reviews,files,headRefName,baseRefName,createdAt,updatedAt,closedAt"}
+	case "github_issue_search":
+		ghArgs = []string{"issue", "list", "-R", repo, "--state", sourceState(args, "all"), "--limit", fmt.Sprint(sourceLimit(args)), "--json", "number,title,url,state,author,labels,assignees,updatedAt,closedAt"}
+		if q := strings.TrimSpace(strArg(args, "query")); q != "" {
+			ghArgs = append(ghArgs, "--search", q)
+		}
+	case "github_pr_search":
+		ghArgs = []string{"pr", "list", "-R", repo, "--state", sourceState(args, "all"), "--limit", fmt.Sprint(sourceLimit(args)), "--json", "number,title,url,state,author,labels,assignees,reviewDecision,reviewRequests,updatedAt,closedAt"}
+		if q := strings.TrimSpace(strArg(args, "query")); q != "" {
+			ghArgs = append(ghArgs, "--search", q)
+		}
+	case "github_code_search":
+		query := strings.TrimSpace(strArg(args, "query"))
+		if query == "" {
+			return nil, fmt.Errorf("query is required")
+		}
+		ghArgs = []string{"search", "code", query, "--repo", repo, "--limit", fmt.Sprint(sourceLimit(args)), "--json", "path,repository,sha,textMatches,url"}
+	default:
+		return nil, fmt.Errorf("sloppy_source: unknown action %q", action)
+	}
+	payload, err := runGHJSON(ghArgs)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]interface{}{"provider": "github", "action": action, "repo": repo, "result": payload}, nil
+}
+
+func sourceLimit(args map[string]interface{}) int {
+	limit := intArg(args, "limit", 5)
+	if limit <= 0 {
+		return 5
+	}
+	if limit > 20 {
+		return 20
+	}
+	return limit
+}
+
+func sourceState(args map[string]interface{}, def string) string {
+	state := strings.ToLower(strings.TrimSpace(strArg(args, "state")))
+	switch state {
+	case "open", "closed", "merged", "all":
+		return state
+	default:
+		return def
+	}
+}
+
+func runGHJSON(args []string) (interface{}, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "gh", args...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(out))
+		if msg != "" {
+			return nil, fmt.Errorf("gh %s: %s", strings.Join(args, " "), msg)
+		}
+		return nil, fmt.Errorf("gh %s: %w", strings.Join(args, " "), err)
+	}
+	var payload interface{}
+	if err := json.Unmarshal(out, &payload); err != nil {
+		return nil, fmt.Errorf("gh %s: decode json: %w", strings.Join(args, " "), err)
+	}
+	return payload, nil
 }
 
 func unhandledTool() toolDispatchResult {
@@ -392,4 +484,3 @@ func removeRequired(schema map[string]interface{}, field string) {
 	}
 	schema["required"] = filtered
 }
-

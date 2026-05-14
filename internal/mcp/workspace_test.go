@@ -61,7 +61,7 @@ func TestCalendarFreeBusyReturnsPerParticipantSlots(t *testing.T) {
 	s.newCalendarProvider = func(context.Context, store.ExternalAccount) (tabcalendar.Provider, error) {
 		return stub, nil
 	}
-	got, err := s.callTool("sloppy_calendar", map[string]interface{}{"action": "freebusy", 
+	got, err := s.callTool("sloppy_calendar", map[string]interface{}{"action": "freebusy",
 		"participants": []string{"alice@example.com", "bob@example.com"},
 		"start":        start.Format(time.RFC3339),
 		"end":          end.Add(2 * time.Hour).Format(time.RFC3339),
@@ -102,7 +102,7 @@ func TestCalendarFreeBusyRejectsEmptyParticipants(t *testing.T) {
 	s.newCalendarProvider = func(context.Context, store.ExternalAccount) (tabcalendar.Provider, error) {
 		return &stubFreeBusyProvider{stubCalendarProvider: &stubCalendarProvider{}}, nil
 	}
-	_, err = s.callTool("sloppy_calendar", map[string]interface{}{"action": "freebusy", 
+	_, err = s.callTool("sloppy_calendar", map[string]interface{}{"action": "freebusy",
 		"participants": []string{},
 		"start":        "2026-04-23T09:00:00Z",
 		"end":          "2026-04-23T10:00:00Z",
@@ -127,7 +127,7 @@ func TestCalendarFreeBusyCapabilityUnsupported(t *testing.T) {
 	s.newCalendarProvider = func(context.Context, store.ExternalAccount) (tabcalendar.Provider, error) {
 		return &stubNoFreeBusyProvider{&stubCalendarProvider{}}, nil
 	}
-	_, err = s.callTool("sloppy_calendar", map[string]interface{}{"action": "freebusy", 
+	_, err = s.callTool("sloppy_calendar", map[string]interface{}{"action": "freebusy",
 		"participants": []string{"alice@example.com"},
 		"start":        "2026-04-23T09:00:00Z",
 		"end":          "2026-04-23T10:00:00Z",
@@ -152,7 +152,7 @@ func TestCalendarFreeBusyRejectsEndBeforeStart(t *testing.T) {
 	s.newCalendarProvider = func(context.Context, store.ExternalAccount) (tabcalendar.Provider, error) {
 		return &stubFreeBusyProvider{stubCalendarProvider: &stubCalendarProvider{}}, nil
 	}
-	_, err = s.callTool("sloppy_calendar", map[string]interface{}{"action": "freebusy", 
+	_, err = s.callTool("sloppy_calendar", map[string]interface{}{"action": "freebusy",
 		"participants": []string{"alice@example.com"},
 		"start":        "2026-04-23T10:00:00Z",
 		"end":          "2026-04-23T09:00:00Z",
@@ -195,7 +195,7 @@ Free prose.
 `)
 
 	s := NewServer(t.TempDir())
-	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "note_parse", 
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "note_parse",
 		"config_path": configPath,
 		"sphere":      "work",
 		"path":        notePath,
@@ -249,7 +249,7 @@ Free prose.
 `)
 
 	s := NewServer(t.TempDir())
-	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "note_parse", 
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "note_parse",
 		"config_path": configPath,
 		"sphere":      "private",
 		"path":        notePath,
@@ -303,7 +303,7 @@ Free prose.
 `)
 
 	s := NewServerWithStoreAndBrainConfig(t.TempDir(), nil, configPath)
-	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "note_parse", 
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "note_parse",
 		"sphere": "work",
 		"path":   notePath,
 	})
@@ -404,7 +404,7 @@ Free prose.
 `)
 
 	s := NewServerWithStoreAndBrainConfig(t.TempDir(), nil, filepath.Join(tmp, "missing.toml"))
-	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "note_parse", 
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "note_parse",
 		"config_path": configPath,
 		"sphere":      "work",
 		"path":        notePath,
@@ -436,7 +436,7 @@ Neoclassical toroidal viscosity.
 `)
 
 	s := NewServer(t.TempDir())
-	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "note_validate", 
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "note_validate",
 		"config_path": configPath,
 		"sphere":      "work",
 		"path":        notePath,

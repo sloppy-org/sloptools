@@ -51,7 +51,7 @@ func TestBrainGTDDedupKeepSeparateDoesNotResurface(t *testing.T) {
 		t.Fatalf("scan: %v", err)
 	}
 	id := first["dedup"].(braingtd.ScanResult).Candidates[0].ID
-	if _, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_dedup_review_apply", 
+	if _, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_dedup_review_apply",
 		"config_path": configPath, "sphere": "work", "id": id, "decision": "keep_separate",
 	}); err != nil {
 		t.Fatalf("dedup_review_apply: %v", err)
@@ -84,7 +84,7 @@ func TestBrainGTDDedupMergePreservesBindings(t *testing.T) {
 		t.Fatalf("scan: %v", err)
 	}
 	id := first["dedup"].(braingtd.ScanResult).Candidates[0].ID
-	if _, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_dedup_review_apply", 
+	if _, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_dedup_review_apply",
 		"config_path": configPath, "sphere": "work", "id": id, "decision": "merge",
 		"winner_path": "brain/gtd/a.md", "outcome": "Send Alpha budget",
 	}); err != nil {
@@ -116,7 +116,7 @@ func TestBrainGTDBindCollapsesCrossSourceCommitments(t *testing.T) {
 	writeDedupCommitment(t, tmp, "work", "brain/gtd/github.md", "Send alpha budget", "github", "org/repo#7")
 
 	s := NewServer(t.TempDir())
-	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_bind", 
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_bind",
 		"config_path": configPath,
 		"sphere":      "work",
 		"winner_path": "brain/gtd/meeting.md",
@@ -157,7 +157,7 @@ func TestBrainGTDBindAttachesNewSourceBinding(t *testing.T) {
 	writeDedupCommitment(t, tmp, "work", "brain/gtd/meeting.md", "Send alpha budget", "meetings", "alpha-standup")
 
 	s := NewServer(t.TempDir())
-	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_bind", 
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_bind",
 		"config_path": configPath,
 		"sphere":      "work",
 		"winner_path": "brain/gtd/meeting.md",
@@ -184,7 +184,7 @@ func TestBrainGTDDedupScanUsesLocalLLMCommand(t *testing.T) {
 	writeDedupCommitment(t, tmp, "work", "brain/gtd/b.md", "Draft presentation slides for W7-X campaign", "github", "org/repo#2")
 
 	s := NewServer(t.TempDir())
-	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_dedup_scan", 
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_dedup_scan",
 		"config_path":   configPath,
 		"sphere":        "work",
 		"llm_threshold": 0.01,
@@ -227,7 +227,7 @@ func TestBrainGTDReviewListMergesMarkdownAndTodoistWithoutDuplicates(t *testing.
 		return provider, nil
 	}
 
-	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_review_list", 
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_review_list",
 		"config_path": configPath,
 		"sphere":      "work",
 		"sources":     []interface{}{"markdown", "tasks"},
@@ -278,7 +278,7 @@ func TestBrainGTDReviewListExposesTaskHierarchyAndFilters(t *testing.T) {
 		return provider, nil
 	}
 
-	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_review_list", 
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_review_list",
 		"sphere":     "work",
 		"sources":    []interface{}{"tasks"},
 		"account_id": account.ID,
@@ -298,7 +298,7 @@ func TestBrainGTDReviewListExposesTaskHierarchyAndFilters(t *testing.T) {
 		t.Fatalf("child item = %#v, want parent_id=parent in %#v", child, items)
 	}
 
-	filtered, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_review_list", 
+	filtered, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_review_list",
 		"sphere":     "work",
 		"sources":    []interface{}{"tasks"},
 		"account_id": account.ID,
@@ -337,7 +337,7 @@ func TestBrainGTDReviewListUsesBulkTaskListingWhenAvailable(t *testing.T) {
 		return provider, nil
 	}
 
-	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_review_list", 
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_review_list",
 		"sphere":     "work",
 		"sources":    []interface{}{"tasks"},
 		"account_id": account.ID,
@@ -396,7 +396,7 @@ func TestBrainGTDReviewListAggregatesMultipleTaskBackendsInSphere(t *testing.T) 
 		}
 	}
 
-	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_review_list", 
+	got, err := s.callTool("sloppy_brain", map[string]interface{}{"action": "gtd_review_list",
 		"sphere":  "work",
 		"sources": []interface{}{"tasks"},
 	})

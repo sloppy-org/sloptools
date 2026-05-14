@@ -105,10 +105,46 @@ func TestToolsListJSONIncludesKnownTools(t *testing.T) {
 		}
 		names[name] = true
 	}
-	for _, want := range []string{"sloppy_mail", "sloppy_calendar", "sloppy_handoff"} {
+	for _, want := range []string{"sloppy_mail", "sloppy_calendar", "sloppy_handoff", "sloppy_source"} {
 		if !names[want] {
 			t.Errorf("expected tool %q in list, got %d entries", want, len(names))
 		}
+	}
+}
+
+func TestToolsCallSloppySourceUsesGHForGitHubEvidence(t *testing.T) {
+	tmp := t.TempDir()
+	scriptDir := filepath.Join(tmp, "bin")
+	if err := os.MkdirAll(scriptDir, 0o755); err != nil {
+		t.Fatalf("mkdir script dir: %v", err)
+	}
+	writeScript(t, scriptDir, "gh", `#!/bin/sh
+case "$*" in
+  *"issue view 12 -R sloppy-org/sloptools"*)
+    printf '%s' '{"number":12,"title":"Fix scout","url":"https://github.com/sloppy-org/sloptools/issues/12","state":"OPEN"}'
+    ;;
+  *)
+    echo unexpected gh call: "$*" >&2
+    exit 1
+    ;;
+esac
+`)
+	t.Setenv("PATH", scriptDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	stdout, stderr, code := captureRun(t, []string{
+		"tools", "call", "sloppy_source",
+		"--data-dir", filepath.Join(tmp, "data"),
+		"--project-dir", filepath.Join(tmp, "project"),
+		"--args", `{"action":"github_issue_view","repo":"sloppy-org/sloptools","number":12}`,
+	})
+	if code != 0 {
+		t.Fatalf("exit code = %d, stderr=%q stdout=%q", code, stderr, stdout)
+	}
+	if stderr != "" {
+		t.Fatalf("unexpected stderr: %q", stderr)
+	}
+	if !strings.Contains(stdout, `"provider": "github"`) || !strings.Contains(stdout, `"title": "Fix scout"`) {
+		t.Fatalf("stdout missing GitHub source payload: %s", stdout)
 	}
 }
 

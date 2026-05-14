@@ -23,7 +23,7 @@ import (
 // with the self-resolve stage. Returns the new body so the caller can
 // re-classify it. Non-fatal errors are returned so the caller can decide
 // whether to fall through to paid escalation.
-func selfResolveOne(ctx context.Context, opts RunOpts, p Pick, originalPacket, bulkReport, reason, reportPath string, passNum int, resolvePick routing.Pick) (string, stageRecord, error) {
+func selfResolveOne(ctx context.Context, opts RunOpts, p Pick, originalPacket, bulkReport, reason, reportPath string, passNum int, resolvePick routing.Pick, broken *backend.BrokenTools) (string, stageRecord, error) {
 	var rec stageRecord
 	pick := resolvePick
 	be := backendForPick(pick)
@@ -48,6 +48,8 @@ func selfResolveOne(ctx context.Context, opts RunOpts, p Pick, originalPacket, b
 		Reasoning:        pick.Reasoning,
 		AllowEdits:       false,
 		MCPAllowList:     pick.MCPTools,
+		MCPToolQuotas:    pick.MCPQuotas,
+		MCPBrokenTools:   broken,
 		Affinity:         backend.AffinityForPick(opts.RunID, p.Path, "scout-resolve"),
 		Sandbox:          sb,
 	})

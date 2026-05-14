@@ -80,8 +80,16 @@ var MCPTools = []Tool{
 	{Name: "sloppy_handoff", Description: "Handoffs and temp files. Action: create, peek, consume, revoke, status, temp_create, temp_remove.", Required: []string{"action"}, Properties: map[string]ToolProperty{
 		"action": {Type: "string", Description: "Handoff/temp operation."},
 	}},
+	{Name: "sloppy_source", Description: "Read-only GitHub source evidence via gh. Actions: github_issue_view, github_pr_view, github_issue_search, github_pr_search, github_code_search.", Required: []string{"action"}, Properties: map[string]ToolProperty{
+		"action": {Type: "string", Description: "Source operation.", Enum: []string{"github_issue_view", "github_pr_view", "github_issue_search", "github_pr_search", "github_code_search"}},
+		"repo":   {Type: "string", Description: "GitHub repo as owner/name. Required so scout searches the intended project."},
+		"number": {Type: "integer", Description: "Issue or pull request number for *_view actions."},
+		"query":  {Type: "string", Description: "Search query for *_search actions."},
+		"limit":  {Type: "integer", Description: "Maximum search results. Defaults to 5, capped at 20."},
+		"state":  {Type: "string", Description: "Issue/PR state for search: open, closed, merged, all.", Enum: []string{"open", "closed", "merged", "all"}},
+	}},
 	{Name: "sloppy_tool_help", Description: "List actions for a sloppy tool family.", Required: []string{"tool"}, Properties: map[string]ToolProperty{
-		"tool": {Type: "string", Description: "Tool family: mail, calendar, tasks, contacts, brain, workspace, evernote, inbox, meeting, canvas, handoff.", Enum: []string{"mail", "calendar", "tasks", "contacts", "brain", "workspace", "evernote", "inbox", "meeting", "canvas", "handoff"}},
+		"tool": {Type: "string", Description: "Tool family: mail, calendar, tasks, contacts, brain, workspace, evernote, inbox, meeting, canvas, handoff, source.", Enum: []string{"mail", "calendar", "tasks", "contacts", "brain", "workspace", "evernote", "inbox", "meeting", "canvas", "handoff", "source"}},
 	}},
 }
 

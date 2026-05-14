@@ -142,7 +142,7 @@ func TestCalendarEventUpdatePropagatesChanges(t *testing.T) {
 	s.newCalendarProvider = func(context.Context, store.ExternalAccount) (tabcalendar.Provider, error) {
 		return stub, nil
 	}
-	got, err := s.callTool("sloppy_calendar", map[string]interface{}{"action": "event_update", 
+	got, err := s.callTool("sloppy_calendar", map[string]interface{}{"action": "event_update",
 		"event_id": "evt-1", "summary": "Updated Title", "start": "2026-04-20T10:00:00Z", "duration_minutes": 30,
 	})
 	if err != nil {
@@ -180,7 +180,7 @@ func TestCalendarEventUpdateCapabilityUnsupported(t *testing.T) {
 	s.newCalendarProvider = func(context.Context, store.ExternalAccount) (tabcalendar.Provider, error) {
 		return readOnly, nil
 	}
-	_, err = s.callTool("sloppy_calendar", map[string]interface{}{"action": "event_update", 
+	_, err = s.callTool("sloppy_calendar", map[string]interface{}{"action": "event_update",
 		"event_id": "evt-1", "summary": "Updated", "start": "2026-04-20T10:00:00Z",
 	})
 	if err == nil {
@@ -300,7 +300,7 @@ func TestCalendarEventUpdateMissingEventID(t *testing.T) {
 	s.newCalendarProvider = func(context.Context, store.ExternalAccount) (tabcalendar.Provider, error) {
 		return &stubCalendarProvider{}, nil
 	}
-	_, err = s.callTool("sloppy_calendar", map[string]interface{}{"action": "event_update", 
+	_, err = s.callTool("sloppy_calendar", map[string]interface{}{"action": "event_update",
 		"summary": "No ID", "start": "2026-04-20T10:00:00Z",
 	})
 	if err == nil {

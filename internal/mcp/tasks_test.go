@@ -245,7 +245,7 @@ email: ada@example.com
 	sourcesPath := writeMeetingsSummarySources(t, tmp, meetingsRoot, map[string]string{"Charles Babbage": "babbage@example.com"}, "")
 
 	server := NewServer(t.TempDir())
-	got, err := server.callTool("sloppy_meeting", map[string]interface{}{"action": "summary_draft", 
+	got, err := server.callTool("sloppy_meeting", map[string]interface{}{"action": "summary_draft",
 		"config_path":    configPath,
 		"sources_config": sourcesPath,
 		"sphere":         "work",
@@ -312,7 +312,7 @@ email: brain@example.com
 	sourcesPath := writeMeetingsSummarySources(t, tmp, meetingsRoot, map[string]string{"Ada Lovelace": "override@example.com"}, "")
 
 	server := NewServer(t.TempDir())
-	got, err := server.callTool("sloppy_meeting", map[string]interface{}{"action": "summary_draft", 
+	got, err := server.callTool("sloppy_meeting", map[string]interface{}{"action": "summary_draft",
 		"config_path":    configPath,
 		"sources_config": sourcesPath,
 		"sphere":         "work",
@@ -345,7 +345,7 @@ func TestMeetingSummaryDraftEmitsNeedsRecipientWhenEmailMissing(t *testing.T) {
 	sourcesPath := writeMeetingsSummarySources(t, tmp, meetingsRoot, nil, "")
 
 	server := NewServer(t.TempDir())
-	got, err := server.callTool("sloppy_meeting", map[string]interface{}{"action": "summary_draft", 
+	got, err := server.callTool("sloppy_meeting", map[string]interface{}{"action": "summary_draft",
 		"config_path":    configPath,
 		"sources_config": sourcesPath,
 		"sphere":         "work",
@@ -392,7 +392,7 @@ email: ada@example.com
 	sourcesPath := writeMeetingsSummarySources(t, tmp, meetingsRoot, nil, "https://cloud.example/s/{vault_relative_path}")
 
 	server := NewServer(t.TempDir())
-	got, err := server.callTool("sloppy_meeting", map[string]interface{}{"action": "summary_draft", 
+	got, err := server.callTool("sloppy_meeting", map[string]interface{}{"action": "summary_draft",
 		"config_path":    configPath,
 		"sources_config": sourcesPath,
 		"sphere":         "work",
@@ -423,7 +423,7 @@ func TestMeetingShareCreateAndRevokeRoundTrip(t *testing.T) {
 	sourcesPath := writeMeetingsSummarySources(t, tmp, meetingsRoot, nil, "")
 
 	server := NewServer(t.TempDir())
-	created, err := server.callTool("sloppy_meeting", map[string]interface{}{"action": "share_create", 
+	created, err := server.callTool("sloppy_meeting", map[string]interface{}{"action": "share_create",
 		"config_path":    configPath,
 		"sources_config": sourcesPath,
 		"sphere":         "work",
@@ -454,7 +454,7 @@ func TestMeetingShareCreateAndRevokeRoundTrip(t *testing.T) {
 	if state.URL != "https://cloud.example/s/AAA" || state.Permissions != "edit" {
 		t.Fatalf("state = %#v", state)
 	}
-	if _, err := server.callTool("sloppy_meeting", map[string]interface{}{"action": "share_revoke", 
+	if _, err := server.callTool("sloppy_meeting", map[string]interface{}{"action": "share_revoke",
 		"config_path":    configPath,
 		"sources_config": sourcesPath,
 		"sphere":         "work",

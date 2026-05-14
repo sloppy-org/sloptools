@@ -301,7 +301,7 @@ func runOnePick(ctx context.Context, opts RunOpts, reportsDir, stagePrompt strin
 					break
 				}
 				resolveTrigger := d.Reason
-				newBody, rec, err := selfResolveOne(ctx, opts, p, packet, body, d.Reason, rpath, i+1, resolvePick)
+				newBody, rec, err := selfResolveOne(ctx, opts, p, packet, body, d.Reason, rpath, i+1, resolvePick, broken)
 				if err != nil {
 					// Self-resolve failed: leave bulk body in place and fall
 					// through to paid escalation below.
