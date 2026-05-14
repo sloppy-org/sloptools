@@ -29,6 +29,7 @@ type Sandbox struct {
 	WorkDir        string
 	SystemPromptIn string // copied per-call from Request.SystemPromptPath
 	MCPConfigPath  string
+	EnvOverrides   map[string]string
 }
 
 // NewSandbox builds a scratch tree under /tmp/sloptools-brain-<runID>/.
@@ -72,6 +73,7 @@ func NewSandbox(runID, stage, stagePromptPath string, mcpServers MCPConfig) (*Sa
 		XDGConfigHome: xdgConfig,
 		XDGCacheHome:  xdgCache,
 		WorkDir:       workDir,
+		EnvOverrides:  map[string]string{},
 	}
 	if stagePromptPath != "" {
 		dst := filepath.Join(root, "system.md")
@@ -142,6 +144,25 @@ func (sb *Sandbox) Cleanup() error {
 	return os.RemoveAll(sb.Root)
 }
 
+// ConfigureBrainFileRoots lets MCP tools resolve brain-relative file
+// references against the active sphere's content root. For a brain root
+// /home/ert/Dropbox/brain, folders/proj/x.pdf resolves below
+// /home/ert/Dropbox, never another sphere.
+func (sb *Sandbox) ConfigureBrainFileRoots(brainRoot string) {
+	if sb == nil {
+		return
+	}
+	brainRoot = strings.TrimSpace(brainRoot)
+	if brainRoot == "" {
+		return
+	}
+	cleanBrain := filepath.Clean(brainRoot)
+	contentRoot := filepath.Dir(cleanBrain)
+	sb.EnvOverrides["HELPY_BRAIN_ROOT"] = cleanBrain
+	sb.EnvOverrides["HELPY_RELATIVE_FILE_ROOT"] = contentRoot
+	sb.EnvOverrides["HELPY_RELATIVE_FILE_ROOTS"] = contentRoot
+}
+
 // Env returns the environment overrides every backend sets when exec'ing
 // its CLI. The slice extends os.Environ() and merges helpy's mcp.env so
 // HELPY_SEARXNG_BASE_URL, BW_SESSION, and similar runtime secrets reach
@@ -177,6 +198,9 @@ func (sb *Sandbox) Env() []string {
 				}
 			}
 		}
+	}
+	for k, v := range sb.EnvOverrides {
+		overrides[k] = v
 	}
 	keep := os.Environ()
 	out := make([]string, 0, len(keep)+len(overrides))

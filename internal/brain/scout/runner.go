@@ -215,6 +215,7 @@ func runOnePick(ctx context.Context, opts RunOpts, reportsDir, stagePrompt strin
 		entry.Reason = err.Error()
 		return entry
 	}
+	sb.ConfigureBrainFileRoots(opts.BrainRoot)
 	defer sb.Cleanup()
 	packet := buildScoutPacket(opts.BrainRoot, p)
 	req := backend.Request{

@@ -37,6 +37,7 @@ func selfResolveOne(ctx context.Context, opts RunOpts, p Pick, originalPacket, b
 	if err != nil {
 		return "", rec, fmt.Errorf("sandbox: %w", err)
 	}
+	sb.ConfigureBrainFileRoots(opts.BrainRoot)
 	defer sb.Cleanup()
 	packet := buildSelfResolvePacket(p, originalPacket, bulkReport, reason)
 	startedAt := time.Now().UTC()

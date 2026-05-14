@@ -36,6 +36,7 @@ func escalateOne(ctx context.Context, opts RunOpts, entry *ReportEntry, p Pick, 
 	if err != nil {
 		return rec, fmt.Errorf("sandbox: %w", err)
 	}
+	sb.ConfigureBrainFileRoots(opts.BrainRoot)
 	defer sb.Cleanup()
 	packet := buildEscalatePacket(p, originalPacket, bulkReport, reason)
 	startedAt := time.Now().UTC()

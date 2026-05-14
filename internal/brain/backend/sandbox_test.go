@@ -89,6 +89,28 @@ func TestSandboxEnvOverridesHOMEAndCODEXHOME(t *testing.T) {
 	}
 }
 
+func TestSandboxEnvConfiguresActiveBrainFileRoots(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "vault")
+	brainRoot := filepath.Join(root, "brain")
+	sb, err := NewSandbox("test-file-roots", "stage", "", DefaultMCPConfig())
+	if err != nil {
+		t.Fatalf("NewSandbox: %v", err)
+	}
+	t.Cleanup(func() { _ = sb.Cleanup() })
+	sb.ConfigureBrainFileRoots(brainRoot)
+
+	have := envMap(sb.Env())
+	if have["HELPY_BRAIN_ROOT"] != brainRoot {
+		t.Fatalf("HELPY_BRAIN_ROOT = %q, want %q", have["HELPY_BRAIN_ROOT"], brainRoot)
+	}
+	if have["HELPY_RELATIVE_FILE_ROOT"] != root {
+		t.Fatalf("HELPY_RELATIVE_FILE_ROOT = %q, want %q", have["HELPY_RELATIVE_FILE_ROOT"], root)
+	}
+	if have["HELPY_RELATIVE_FILE_ROOTS"] != root {
+		t.Fatalf("HELPY_RELATIVE_FILE_ROOTS = %q, want %q", have["HELPY_RELATIVE_FILE_ROOTS"], root)
+	}
+}
+
 func TestSandboxPreservesHelpyCache(t *testing.T) {
 	realHome := t.TempDir()
 	t.Setenv("HOME", realHome)
@@ -122,6 +144,18 @@ func TestSandboxPreservesHelpyCache(t *testing.T) {
 	if string(body) != `{"version":1,"hosts":{}}` {
 		t.Fatalf("cookie jar body = %q", string(body))
 	}
+}
+
+func envMap(env []string) map[string]string {
+	have := map[string]string{}
+	for _, kv := range env {
+		i := strings.Index(kv, "=")
+		if i < 0 {
+			continue
+		}
+		have[kv[:i]] = kv[i+1:]
+	}
+	return have
 }
 
 func TestSandboxEnvPointsHelpyZoteroAtRealHome(t *testing.T) {

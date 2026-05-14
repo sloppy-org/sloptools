@@ -3,6 +3,7 @@ package sleep
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/sloppy-org/sloptools/internal/brain/audit"
@@ -81,6 +82,7 @@ func RunJudge(ctx context.Context, opts JudgeOpts) (*JudgeResult, error) {
 	}
 	startedAt := opts.Now
 	stages := []audit.StageRecord{}
+	fmt.Fprintln(os.Stderr, "brain night: Judge checks sleep packet size.")
 	preflight := classifySleepJudgeOutput("", len(opts.Packet))
 	var (
 		body       string
@@ -88,16 +90,19 @@ func RunJudge(ctx context.Context, opts JudgeOpts) (*JudgeResult, error) {
 		bulkReason string
 	)
 	if !preflight.Escalate {
+		fmt.Fprintln(os.Stderr, "brain night: Judge asks Qwen for the bulk editorial pass.")
 		rec, cleaned, err := runBulk(ctx, opts)
 		if err != nil {
 			return nil, fmt.Errorf("sleep bulk: %w", err)
 		}
 		body = cleaned
 		bulkRec = rec
+		fmt.Fprintln(os.Stderr, "brain night: Judge checks Qwen's draft for escalation signals.")
 		d := classifySleepJudgeOutput(cleaned, len(opts.Packet))
 		bulkRec.ReasonAfter = d.Reason
 		stages = append(stages, *bulkRec)
 		if !d.Escalate {
+			fmt.Fprintln(os.Stderr, "brain night: Judge accepts Qwen's draft.")
 			_ = audit.WriteFile(opts.ReportPath, audit.File{
 				Path: opts.ReportPath, ReportPath: opts.ReportPath,
 				RunID: opts.RunID, Sphere: opts.Sphere,
@@ -109,7 +114,9 @@ func RunJudge(ctx context.Context, opts JudgeOpts) (*JudgeResult, error) {
 		bulkReason = d.Reason
 	} else {
 		bulkReason = preflight.Reason
+		fmt.Fprintf(os.Stderr, "brain night: Judge skips Qwen bulk pass: %s\n", bulkReason)
 	}
+	fmt.Fprintf(os.Stderr, "brain night: Judge escalates to Codex: %s\n", bulkReason)
 	escRec, escBody, err := runEscalate(ctx, opts, bulkReason)
 	if err != nil {
 		// Bulk body is the safest fallback; if even bulk did not run
@@ -120,6 +127,7 @@ func RunJudge(ctx context.Context, opts JudgeOpts) (*JudgeResult, error) {
 		}
 		return &JudgeResult{Body: body, BulkSkipped: preflight.Escalate, EscalationReason: "attempted: " + bulkReason + "; failed: " + err.Error()}, nil
 	}
+	fmt.Fprintln(os.Stderr, "brain night: Judge accepts Codex escalation output.")
 	escRec.TriggerReason = bulkReason
 	stages = append(stages, *escRec)
 	finalStage := escRec.Stage
@@ -161,6 +169,7 @@ func runBulk(ctx context.Context, opts JudgeOpts) (*audit.StageRecord, string, e
 	if err != nil {
 		return nil, "", fmt.Errorf("sandbox: %w", err)
 	}
+	sb.ConfigureBrainFileRoots(opts.BrainRoot)
 	defer sb.Cleanup()
 	req := backend.Request{
 		Stage:            stage,
@@ -228,6 +237,7 @@ func runEscalate(ctx context.Context, opts JudgeOpts, reason string) (*audit.Sta
 	if err != nil {
 		return nil, "", fmt.Errorf("sandbox: %w", err)
 	}
+	sb.ConfigureBrainFileRoots(opts.BrainRoot)
 	defer sb.Cleanup()
 	req := backend.Request{
 		Stage:            stage,

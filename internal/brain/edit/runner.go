@@ -109,6 +109,7 @@ func runOne(ctx context.Context, opts Opts, item triage.Item) Result {
 		res.Reason = "sandbox: " + err.Error()
 		return res
 	}
+	sb.ConfigureBrainFileRoots(opts.BrainRoot)
 	defer sb.Cleanup()
 
 	allowList := []string{"sloppy_brain"} // no web_search — that was scout's job
@@ -199,6 +200,7 @@ func escalateOne(ctx context.Context, opts Opts, item triage.Item, packet, promp
 	if err != nil {
 		return false, fmt.Errorf("sandbox: %w", err)
 	}
+	sb.ConfigureBrainFileRoots(opts.BrainRoot)
 	defer sb.Cleanup()
 
 	resp, err := be.Run(ctx, backend.Request{
