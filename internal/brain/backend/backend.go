@@ -14,9 +14,8 @@ import (
 type Provider string
 
 const (
-	ProviderOpenAI    Provider = "openai"
-	ProviderAnthropic Provider = "anthropic"
-	ProviderLocal     Provider = "local"
+	ProviderOpenAI Provider = "openai"
+	ProviderLocal  Provider = "local"
 )
 
 // Reasoning is a CLI-level reasoning effort hint. Values map to:

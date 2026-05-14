@@ -42,26 +42,22 @@ type Entry struct {
 // calls. The ledger enforces both gates (whichever fires first):
 //
 //   - share-of-weekly-tokens — relative to a placeholder weekly token
-//     budget (Anthropic and OpenAI publish no real token quotas for
-//     consumer Pro Max plans, so the budget number is a guess; see
-//     brain.toml comments).
+//     budget. OpenAI publishes no real token quota for consumer Pro Max
+//     plans, so the budget number is a guess; see brain.toml comments.
 //   - count-of-paid-calls per night — deterministic, observable, does
 //     not depend on the placeholder budget. This is the primary gate
 //     in practice.
 type PlanCaps struct {
-	AnthropicWeeklyShareMax float64 // fraction of weekly cap allowed per night, e.g. 0.05
-	OpenAIWeeklyShareMax    float64
+	OpenAIWeeklyShareMax float64 // fraction of weekly cap allowed per night, e.g. 0.05
 	// Approximate tokens-per-week budgets used to translate observed
 	// counts into a percentage. These are coarse; the user pays by plan
 	// share, not by token, so the share estimate is informational.
-	AnthropicTokensPerWeek int64
-	OpenAITokensPerWeek    int64
+	OpenAITokensPerWeek int64
 	// Per-night paid-call counts. Zero means unlimited (gate disabled);
 	// positive value means refuse the (N+1)th call to that provider in
 	// this nightly session. Deterministic; survives over- or under-count
 	// in the token scraper.
-	AnthropicMaxCallsPerNight int
-	OpenAIMaxCallsPerNight    int
+	OpenAIMaxCallsPerNight int
 }
 
 // DefaultPlanCaps returns sensible defaults. OpenAI (codex) is the primary
@@ -71,12 +67,9 @@ type PlanCaps struct {
 // in brain.toml.
 func DefaultPlanCaps() PlanCaps {
 	return PlanCaps{
-		AnthropicWeeklyShareMax:   0.05,
-		OpenAIWeeklyShareMax:      0.05,
-		AnthropicTokensPerWeek:    20_000_000, // coarse placeholder
-		OpenAITokensPerWeek:       20_000_000,
-		AnthropicMaxCallsPerNight: 30,
-		OpenAIMaxCallsPerNight:    300,
+		OpenAIWeeklyShareMax:   0.05,
+		OpenAITokensPerWeek:    20_000_000,
+		OpenAIMaxCallsPerNight: 30,
 	}
 }
 
@@ -242,8 +235,6 @@ func (l *Ledger) scan(visit func(Entry)) error {
 
 func (l *Ledger) providerCallCap(p backend.Provider) int {
 	switch p {
-	case backend.ProviderAnthropic:
-		return l.caps.AnthropicMaxCallsPerNight
 	case backend.ProviderOpenAI:
 		return l.caps.OpenAIMaxCallsPerNight
 	}
@@ -252,8 +243,6 @@ func (l *Ledger) providerCallCap(p backend.Provider) int {
 
 func (l *Ledger) providerCap(p backend.Provider) int64 {
 	switch p {
-	case backend.ProviderAnthropic:
-		return l.caps.AnthropicTokensPerWeek
 	case backend.ProviderOpenAI:
 		return l.caps.OpenAITokensPerWeek
 	}
@@ -262,8 +251,6 @@ func (l *Ledger) providerCap(p backend.Provider) int64 {
 
 func (l *Ledger) providerShareMax(p backend.Provider) float64 {
 	switch p {
-	case backend.ProviderAnthropic:
-		return l.caps.AnthropicWeeklyShareMax
 	case backend.ProviderOpenAI:
 		return l.caps.OpenAIWeeklyShareMax
 	}

@@ -13,10 +13,8 @@ import (
 func TestLedgerAppendAndShare(t *testing.T) {
 	dir := t.TempDir()
 	caps := PlanCaps{
-		AnthropicWeeklyShareMax: 0.05,
-		OpenAIWeeklyShareMax:    0.05,
-		AnthropicTokensPerWeek:  1000,
-		OpenAITokensPerWeek:     1000,
+		OpenAIWeeklyShareMax: 0.05,
+		OpenAITokensPerWeek:  1000,
 	}
 	l, err := New(dir, caps)
 	if err != nil {
@@ -28,16 +26,16 @@ func TestLedgerAppendAndShare(t *testing.T) {
 			TS:        now.Add(-time.Hour * time.Duration(i)),
 			Sphere:    "work",
 			Stage:     "sleep-judge",
-			Provider:  backend.ProviderAnthropic,
-			Backend:   "claude",
-			Model:     "claude-haiku-4-5",
+			Provider:  backend.ProviderOpenAI,
+			Backend:   "codex",
+			Model:     "gpt-5.5",
 			TokensIn:  50,
 			TokensOut: 50,
 		}); err != nil {
 			t.Fatalf("append: %v", err)
 		}
 	}
-	share, err := l.WeeklyShare(backend.ProviderAnthropic, now)
+	share, err := l.WeeklyShare(backend.ProviderOpenAI, now)
 	if err != nil {
 		t.Fatalf("WeeklyShare: %v", err)
 	}
@@ -45,12 +43,12 @@ func TestLedgerAppendAndShare(t *testing.T) {
 	if abs(share-want) > 0.001 {
 		t.Fatalf("share got %.4f want %.4f", share, want)
 	}
-	openai, err := l.WeeklyShare(backend.ProviderOpenAI, now)
+	local, err := l.WeeklyShare(backend.ProviderLocal, now)
 	if err != nil {
-		t.Fatalf("WeeklyShare openai: %v", err)
+		t.Fatalf("WeeklyShare local: %v", err)
 	}
-	if openai != 0 {
-		t.Fatalf("openai share should be zero, got %.3f", openai)
+	if local != 0 {
+		t.Fatalf("local share should be zero, got %.3f", local)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "data", "llm-ledger.jsonl")); err != nil {
 		t.Fatalf("ledger file missing: %v", err)
@@ -59,11 +57,9 @@ func TestLedgerAppendAndShare(t *testing.T) {
 
 func TestLedgerGuardRejectsOverCap(t *testing.T) {
 	dir := t.TempDir()
-	caps := PlanCaps{
-		AnthropicWeeklyShareMax: 0.05, // 5% per night => 35% weekly headroom
-		OpenAIWeeklyShareMax:    0.05,
-		AnthropicTokensPerWeek:  1000,
-		OpenAITokensPerWeek:     1000,
+	caps := PlanCaps{ // 5% per night => 35% weekly headroom
+		OpenAIWeeklyShareMax: 0.05,
+		OpenAITokensPerWeek:  1000,
 	}
 	l, err := New(dir, caps)
 	if err != nil {
@@ -72,16 +68,16 @@ func TestLedgerGuardRejectsOverCap(t *testing.T) {
 	// 400 tokens consumed -> 40% share; threshold = 35%. Should reject.
 	_ = l.Append(Entry{
 		TS:        time.Now().UTC().Add(-time.Hour),
-		Provider:  backend.ProviderAnthropic,
+		Provider:  backend.ProviderOpenAI,
 		TokensIn:  200,
 		TokensOut: 200,
 	})
 	// No session start -> only weekly ceiling applies; 40% > 35% so reject.
-	if err := l.Guard(backend.ProviderAnthropic, time.Time{}, time.Now()); !errors.Is(err, ErrCapExceeded) {
+	if err := l.Guard(backend.ProviderOpenAI, time.Time{}, time.Now()); !errors.Is(err, ErrCapExceeded) {
 		t.Fatalf("expected ErrCapExceeded, got %v", err)
 	}
-	if err := l.Guard(backend.ProviderOpenAI, time.Time{}, time.Now()); err != nil {
-		t.Fatalf("openai guard should pass, got %v", err)
+	if err := l.Guard(backend.ProviderLocal, time.Time{}, time.Now()); err != nil {
+		t.Fatalf("local guard should pass, got %v", err)
 	}
 }
 
@@ -90,10 +86,8 @@ func TestLedgerGuardRejectsOverCap(t *testing.T) {
 func TestLedgerGuardRejectsOverNightlyCap(t *testing.T) {
 	dir := t.TempDir()
 	caps := PlanCaps{
-		AnthropicWeeklyShareMax: 0.05,
-		OpenAIWeeklyShareMax:    0.05,
-		AnthropicTokensPerWeek:  10_000,
-		OpenAITokensPerWeek:     10_000,
+		OpenAIWeeklyShareMax: 0.05,
+		OpenAITokensPerWeek:  10_000,
 	}
 	l, err := New(dir, caps)
 	if err != nil {
@@ -103,15 +97,15 @@ func TestLedgerGuardRejectsOverNightlyCap(t *testing.T) {
 	// 600 tokens this session -> 6% share; per-night cap = 5%. Reject.
 	_ = l.Append(Entry{
 		TS:        sessionStart.Add(time.Minute),
-		Provider:  backend.ProviderAnthropic,
+		Provider:  backend.ProviderOpenAI,
 		TokensIn:  300,
 		TokensOut: 300,
 	})
-	if err := l.Guard(backend.ProviderAnthropic, sessionStart, time.Now()); !errors.Is(err, ErrCapExceeded) {
+	if err := l.Guard(backend.ProviderOpenAI, sessionStart, time.Now()); !errors.Is(err, ErrCapExceeded) {
 		t.Fatalf("expected ErrCapExceeded for per-night, got %v", err)
 	}
 	// A different session start that excludes the spend -> pass.
-	if err := l.Guard(backend.ProviderAnthropic, time.Now().UTC(), time.Now()); err != nil {
+	if err := l.Guard(backend.ProviderOpenAI, time.Now().UTC(), time.Now()); err != nil {
 		t.Fatalf("fresh session should pass, got %v", err)
 	}
 }
@@ -121,10 +115,8 @@ func TestLedgerGuardRejectsOverNightlyCap(t *testing.T) {
 func TestLedgerGuardIgnoresPreSessionSpend(t *testing.T) {
 	dir := t.TempDir()
 	caps := PlanCaps{
-		AnthropicWeeklyShareMax: 0.05,
-		OpenAIWeeklyShareMax:    0.05,
-		AnthropicTokensPerWeek:  10_000,
-		OpenAITokensPerWeek:     10_000,
+		OpenAIWeeklyShareMax: 0.05,
+		OpenAITokensPerWeek:  10_000,
 	}
 	l, err := New(dir, caps)
 	if err != nil {
@@ -135,11 +127,11 @@ func TestLedgerGuardIgnoresPreSessionSpend(t *testing.T) {
 	// under 35%. A new session must not be blocked by yesterday's spend.
 	_ = l.Append(Entry{
 		TS:        now.Add(-24 * time.Hour),
-		Provider:  backend.ProviderAnthropic,
+		Provider:  backend.ProviderOpenAI,
 		TokensIn:  300,
 		TokensOut: 300,
 	})
-	if err := l.Guard(backend.ProviderAnthropic, now, now); err != nil {
+	if err := l.Guard(backend.ProviderOpenAI, now, now); err != nil {
 		t.Fatalf("fresh session must not see yesterday's spend, got %v", err)
 	}
 }
@@ -149,12 +141,9 @@ func TestLedgerGuardIgnoresPreSessionSpend(t *testing.T) {
 func TestLedgerGuardRejectsOverCallCount(t *testing.T) {
 	dir := t.TempDir()
 	caps := PlanCaps{
-		AnthropicWeeklyShareMax:   0.05,
-		OpenAIWeeklyShareMax:      0.05,
-		AnthropicTokensPerWeek:    1_000_000_000, // big enough that token gate never fires
-		OpenAITokensPerWeek:       1_000_000_000,
-		AnthropicMaxCallsPerNight: 3,
-		OpenAIMaxCallsPerNight:    3,
+		OpenAIWeeklyShareMax:   0.05, // big enough that token gate never fires
+		OpenAITokensPerWeek:    1_000_000_000,
+		OpenAIMaxCallsPerNight: 3,
 	}
 	l, err := New(dir, caps)
 	if err != nil {
@@ -164,16 +153,16 @@ func TestLedgerGuardRejectsOverCallCount(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		_ = l.Append(Entry{
 			TS:        sessionStart.Add(time.Duration(i) * time.Minute),
-			Provider:  backend.ProviderAnthropic,
+			Provider:  backend.ProviderOpenAI,
 			TokensIn:  10,
 			TokensOut: 10,
 		})
 	}
-	if err := l.Guard(backend.ProviderAnthropic, sessionStart, time.Now()); !errors.Is(err, ErrCapExceeded) {
+	if err := l.Guard(backend.ProviderOpenAI, sessionStart, time.Now()); !errors.Is(err, ErrCapExceeded) {
 		t.Fatalf("expected ErrCapExceeded after 3rd call, got %v", err)
 	}
-	if err := l.Guard(backend.ProviderOpenAI, sessionStart, time.Now()); err != nil {
-		t.Fatalf("openai cap fresh; should pass, got %v", err)
+	if err := l.Guard(backend.ProviderLocal, sessionStart, time.Now()); err != nil {
+		t.Fatalf("local cap fresh; should pass, got %v", err)
 	}
 }
 
@@ -181,11 +170,9 @@ func TestLedgerGuardRejectsOverCallCount(t *testing.T) {
 func TestLedgerGuardCallCountIgnoresPreSession(t *testing.T) {
 	dir := t.TempDir()
 	caps := PlanCaps{
-		AnthropicWeeklyShareMax:   0.05,
-		OpenAIWeeklyShareMax:      0.05,
-		AnthropicTokensPerWeek:    1_000_000_000,
-		OpenAITokensPerWeek:       1_000_000_000,
-		AnthropicMaxCallsPerNight: 3,
+		OpenAIWeeklyShareMax:   0.05,
+		OpenAITokensPerWeek:    1_000_000_000,
+		OpenAIMaxCallsPerNight: 3,
 	}
 	l, err := New(dir, caps)
 	if err != nil {
@@ -195,10 +182,10 @@ func TestLedgerGuardCallCountIgnoresPreSession(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		_ = l.Append(Entry{
 			TS:       now.Add(-24 * time.Hour),
-			Provider: backend.ProviderAnthropic,
+			Provider: backend.ProviderOpenAI,
 		})
 	}
-	if err := l.Guard(backend.ProviderAnthropic, now, now); err != nil {
+	if err := l.Guard(backend.ProviderOpenAI, now, now); err != nil {
 		t.Fatalf("yesterday's calls must not count toward today; got %v", err)
 	}
 }
@@ -207,11 +194,9 @@ func TestLedgerGuardCallCountIgnoresPreSession(t *testing.T) {
 func TestLedgerGuardCallCountZeroDisables(t *testing.T) {
 	dir := t.TempDir()
 	caps := PlanCaps{
-		AnthropicWeeklyShareMax:   0.05,
-		OpenAIWeeklyShareMax:      0.05,
-		AnthropicTokensPerWeek:    1_000_000_000,
-		OpenAITokensPerWeek:       1_000_000_000,
-		AnthropicMaxCallsPerNight: 0,
+		OpenAIWeeklyShareMax:   0.05,
+		OpenAITokensPerWeek:    1_000_000_000,
+		OpenAIMaxCallsPerNight: 0,
 	}
 	l, err := New(dir, caps)
 	if err != nil {
@@ -221,12 +206,12 @@ func TestLedgerGuardCallCountZeroDisables(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		_ = l.Append(Entry{
 			TS:        sessionStart.Add(time.Duration(i) * time.Second),
-			Provider:  backend.ProviderAnthropic,
+			Provider:  backend.ProviderOpenAI,
 			TokensIn:  1,
 			TokensOut: 1,
 		})
 	}
-	if err := l.Guard(backend.ProviderAnthropic, sessionStart, time.Now()); err != nil {
+	if err := l.Guard(backend.ProviderOpenAI, sessionStart, time.Now()); err != nil {
 		t.Fatalf("call gate should be disabled when cap=0; got %v", err)
 	}
 }
