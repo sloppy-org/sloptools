@@ -168,10 +168,13 @@ func runLlamacppAgentLoop(ctx context.Context, model, modelHeader, affinity stri
 	deadline := start.Add(llamacppAgentBudget)
 	tracker := newToolFailureTracker()
 	usage := newToolUsage(quotas)
+	round := 0
 	for {
 		if time.Now().After(deadline) {
 			break
 		}
+		round++
+		fmt.Fprintf(os.Stderr, "brain night: model round=%d backend=llamacpp model=%s messages=%d\n", round, model, len(messages))
 		body, err := llamacppPost(ctx, model, modelHeader, affinity, messages, toolDefs)
 		if err != nil {
 			return Response{}, err
@@ -190,10 +193,14 @@ func runLlamacppAgentLoop(ctx context.Context, model, modelHeader, affinity stri
 		}
 		if c, ok := msg["content"].(string); ok {
 			lastContent = c
+			logVisibleModelText(round, c)
 		}
 
 		toolCalls, _ := msg["tool_calls"].([]interface{})
 		xmlCalls := parseQwenXMLCalls(lastContent)
+		if len(toolCalls) > 0 || len(xmlCalls) > 0 {
+			fmt.Fprintf(os.Stderr, "brain night: model round=%d tool_calls=%d xml_tool_calls=%d\n", round, len(toolCalls), len(xmlCalls))
+		}
 
 		if len(toolCalls) == 0 && len(xmlCalls) == 0 {
 			// No tool calls: model produced its final answer.
@@ -234,8 +241,6 @@ func runLlamacppAgentLoop(ctx context.Context, model, modelHeader, affinity stri
 	}, nil
 }
 
-// executeOpenAIToolCalls runs standard OpenAI tool_calls entries through MCPClient
-// and appends role=tool messages to messages.
 func executeOpenAIToolCalls(toolCalls []interface{}, toolMap map[string]*MCPClient, messages *[]map[string]interface{}, tracker *toolFailureTracker, usage *toolUsage, broken *BrokenTools) {
 	for _, rawTC := range toolCalls {
 		tc, _ := rawTC.(map[string]interface{})
@@ -262,8 +267,6 @@ func executeOpenAIToolCalls(toolCalls []interface{}, toolMap map[string]*MCPClie
 	}
 }
 
-// executeQwenXMLToolCalls runs parsed qwen XML tool calls and appends a single
-// role=user message containing all <tool_response> blocks.
 func executeQwenXMLToolCalls(xmlCalls []qwenXMLCall, toolMap map[string]*MCPClient, messages *[]map[string]interface{}, tracker *toolFailureTracker, usage *toolUsage, broken *BrokenTools) {
 	var sb strings.Builder
 	for _, tc := range xmlCalls {
@@ -276,27 +279,19 @@ func executeQwenXMLToolCalls(xmlCalls []qwenXMLCall, toolMap map[string]*MCPClie
 	})
 }
 
-// toolResultCap is the maximum byte length of a single tool result appended
-// to the messages history. Brain actions (gtd_list, projects_render, search)
-// return hundreds of KB of vault content; without a cap the accumulated
-// messages array overflows the model context window across rounds.
 const toolResultCap = 8 * 1024
 
-// callToolSafe invokes the named tool; returns an error string on failure so
-// the model sees what went wrong without aborting the agent loop. Results
-// are capped at toolResultCap bytes so the messages array stays bounded.
-// tracker accumulates consecutive identical failures; when the per-tool
-// threshold is reached the circuit opens and the tool is refused without
-// calling the MCP client again. usage enforces per-tool call caps so a
-// single agent loop cannot drain the slopgate/searxng budget. broken is the
-// session-shared registry: a tool whose per-loop circuit opens here gets
-// promoted to broken so subsequent loops never see it again.
 func callToolSafe(toolMap map[string]*MCPClient, name string, args map[string]interface{}, tracker *toolFailureTracker, usage *toolUsage, broken *BrokenTools) string {
+	fmt.Fprintf(os.Stderr, "brain night: tool start name=%s args=%s\n", name, traceJSON(args, 600))
 	if usage != nil && usage.exceeded(name) {
-		return fmt.Sprintf("tool error (quota exceeded): %q has hit its per-run cap of %d; pick a different tool or finish", name, usage.cap(name))
+		result := fmt.Sprintf("tool error (quota exceeded): %q has hit its per-run cap of %d; pick a different tool or finish", name, usage.cap(name))
+		fmt.Fprintf(os.Stderr, "brain night: tool quota name=%s cap=%d\n", name, usage.cap(name))
+		return result
 	}
 	if tracker != nil && tracker.consecutive[name] >= perToolBreakThreshold {
-		return fmt.Sprintf("tool error (circuit open): %q has failed with %q %d times in a row; do not call it again this run, try a different approach or finish", name, tracker.lastClass[name], tracker.consecutive[name])
+		result := fmt.Sprintf("tool error (circuit open): %q has failed with %q %d times in a row; do not call it again this run, try a different approach or finish", name, tracker.lastClass[name], tracker.consecutive[name])
+		fmt.Fprintf(os.Stderr, "brain night: tool circuit-open name=%s class=%q count=%d\n", name, tracker.lastClass[name], tracker.consecutive[name])
+		return result
 	}
 	// Every attempt (success or failure, known tool or not) counts against
 	// the per-tool quota — otherwise a model that hammers a non-existent
@@ -311,8 +306,11 @@ func callToolSafe(toolMap map[string]*MCPClient, name string, args map[string]in
 			if broken != nil {
 				broken.Report(name, class)
 			}
-			return fmt.Sprintf("tool error (circuit open): %q has returned %q %d times in a row; do not call it again this run, try a different approach or finish", name, class, tracker.consecutive[name])
+			result := fmt.Sprintf("tool error (circuit open): %q has returned %q %d times in a row; do not call it again this run, try a different approach or finish", name, class, tracker.consecutive[name])
+			fmt.Fprintf(os.Stderr, "brain night: tool circuit-open name=%s class=%q count=%d\n", name, class, tracker.consecutive[name])
+			return result
 		}
+		fmt.Fprintf(os.Stderr, "brain night: tool error name=%s class=%q\n", name, class)
 		return fmt.Sprintf("error: unknown tool %q", name)
 	}
 	result, err := client.Call(name, args)
@@ -322,16 +320,21 @@ func callToolSafe(toolMap map[string]*MCPClient, name string, args map[string]in
 			if broken != nil {
 				broken.Report(name, class)
 			}
-			return fmt.Sprintf("tool error (circuit open): %q has returned %q %d times in a row; do not call it again this run, try a different approach or finish", name, class, tracker.consecutive[name])
+			result := fmt.Sprintf("tool error (circuit open): %q has returned %q %d times in a row; do not call it again this run, try a different approach or finish", name, class, tracker.consecutive[name])
+			fmt.Fprintf(os.Stderr, "brain night: tool circuit-open name=%s class=%q count=%d\n", name, class, tracker.consecutive[name])
+			return result
 		}
+		fmt.Fprintf(os.Stderr, "brain night: tool error name=%s class=%q detail=%s\n", name, class, traceText(err.Error(), 300))
 		return fmt.Sprintf("tool error: %v", err)
 	}
 	if tracker != nil {
 		tracker.recordSuccess(name)
 	}
+	originalLen := len(result)
 	if len(result) > toolResultCap {
 		result = result[:toolResultCap] + fmt.Sprintf("\n[truncated: %d bytes omitted]", len(result)-toolResultCap)
 	}
+	fmt.Fprintf(os.Stderr, "brain night: tool done name=%s bytes=%d preview=%s\n", name, originalLen, traceText(result, 500))
 	return result
 }
 

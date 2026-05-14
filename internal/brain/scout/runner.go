@@ -141,8 +141,14 @@ func Run(ctx context.Context, opts RunOpts) (*RunReport, error) {
 	// allowlist, so we never pay the 3-retry tax on the same broken tool
 	// 350 times.
 	broken := backend.NewBrokenTools(1)
-	for _, p := range opts.Picks {
+	for i, p := range opts.Picks {
+		fmt.Fprintf(os.Stderr, "brain night: scout %d/%d start path=%s score=%.1f\n", i+1, len(opts.Picks), p.Path, p.Score)
 		entry := runOnePick(ctx, opts, dir, stagePrompt, p, broken)
+		if entry.Skipped {
+			fmt.Fprintf(os.Stderr, "brain night: scout %d/%d skip path=%s reason=%s\n", i+1, len(opts.Picks), p.Path, entry.Reason)
+		} else {
+			fmt.Fprintf(os.Stderr, "brain night: scout %d/%d done path=%s backend=%s report=%s wall_ms=%d\n", i+1, len(opts.Picks), p.Path, entry.Backend, entry.ReportPath, entry.WallMS)
+		}
 		if entry.Skipped {
 			report.Skipped++
 		}

@@ -157,37 +157,57 @@ func cmdBrainNight(args []string) int {
 		OnlyStage: stage,
 		DryRun:    *dryRun,
 	}
+	nightLog("start sphere=%s run=%s stage=%s dry_run=%t", *sphere, runID, stageLabel(stage), *dryRun)
 
 	if stage == "" || stage == "sync" || stage == "sweep" {
+		nightLog("sync: collecting calendar, mail, and brain git activity")
 		runSyncStage(vault, brain.Sphere(*sphere), report.StartedAt, runID, report)
+		nightLog("sync: done digest_bytes=%d", len(report.ActivityDigest))
 	}
 
 	if stage == "" || stage == "sweep" {
+		nightLog("sweep: deterministic folder coverage, link pruning, NREM replay")
 		if err := runSweepStage(cfg, brain.Sphere(*sphere), *coverageBudget, *dryRun, report); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
 		}
+		nightLog("sweep: done")
+		nightLog("textbook: scanning vault prose")
 		if err := runTextbookScan(vault, report); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
 		}
+		if report.Textbook != nil {
+			nightLog("textbook: done files=%d reject=%d compress=%d", report.Textbook.Total, report.Textbook.Reject, report.Textbook.Compress)
+		}
 	}
 
 	if stage == "" || stage == "scout" {
+		nightLog("scout: picking stale or uncertain canonical entities")
 		if err := runScoutStage(vault, ldg, router, runID, *dryRun, *escalateOnConflict, *selfResolvePasses, *maxScoutItems, string(*sphere), report); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
 		}
+		if report.Scout != nil {
+			nightLog("scout: done status=%s candidates=%d written=%d skipped=%d self_resolved=%d escalated=%d", report.Scout.Status, report.Scout.Candidates, report.Scout.Written, report.Scout.Skipped, report.Scout.SelfResolved, report.Scout.Escalated)
+		}
 	}
 
 	if stage == "" || stage == "triage" || stage == "edit" || stage == "propose" || stage == "feedback" {
+		nightLog("triage/edit: ranking evidence and applying focused entity edits")
 		if err := runTriageEditStages(context.Background(), vault, ldg, router, runID, string(*sphere), *dryRun, report); err != nil {
 			fmt.Fprintln(os.Stderr, "triage/edit:", err)
 			// Non-fatal: judge can still run.
 		}
+		if report.Edit != nil {
+			nightLog("triage/edit: done triage=%d edited=%d skipped=%d escalated=%d", len(report.Triage), report.Edit.Edited, report.Edit.Skipped, report.Edit.Escalated)
+		} else {
+			nightLog("triage/edit: done triage=%d", len(report.Triage))
+		}
 	}
 
 	if stage == "" || stage == "judge" {
+		nightLog("judge: editorial pass over sweep, scout, triage, activity digest")
 		// Load the activity sync state so the judge's git window matches
 		// the same [since, until) window as the activity digest.
 		actState := activity.LoadState(string(*sphere))
@@ -208,6 +228,7 @@ func cmdBrainNight(args []string) int {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
 		}
+		nightLog("judge: done report=%s", report.JudgeReport)
 	}
 
 	report.EndedAt = time.Now().UTC()
@@ -216,6 +237,7 @@ func cmdBrainNight(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
+	nightLog("done sphere=%s run=%s elapsed=%s", *sphere, runID, report.EndedAt.Sub(report.StartedAt).Round(time.Second))
 	return printBrainJSON(report)
 }
 

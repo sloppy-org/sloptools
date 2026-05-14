@@ -154,6 +154,24 @@ func (sb *Sandbox) Env() []string {
 		for k, v := range readDotEnv(filepath.Join(realHome, ".config", "helpy", "mcp.env")) {
 			overrides[k] = v
 		}
+		if _, ok := overrides["HELPY_ZOTERO_DB"]; !ok {
+			if db := strings.TrimSpace(os.Getenv("HELPY_ZOTERO_DB")); db != "" {
+				overrides["HELPY_ZOTERO_DB"] = db
+			} else if db := findDefaultZoteroDB(realHome); db != "" {
+				overrides["HELPY_ZOTERO_DB"] = db
+			}
+		}
+		if _, ok := overrides["HELPY_ZOTERO_STORAGE"]; !ok {
+			if storage := strings.TrimSpace(os.Getenv("HELPY_ZOTERO_STORAGE")); storage != "" {
+				overrides["HELPY_ZOTERO_STORAGE"] = storage
+			} else {
+				db := overrides["HELPY_ZOTERO_DB"]
+				storage := filepath.Join(filepath.Dir(db), "storage")
+				if info, err := os.Stat(storage); err == nil && info.IsDir() {
+					overrides["HELPY_ZOTERO_STORAGE"] = storage
+				}
+			}
+		}
 	}
 	keep := os.Environ()
 	out := make([]string, 0, len(keep)+len(overrides))
@@ -173,6 +191,19 @@ func (sb *Sandbox) Env() []string {
 		out = append(out, k+"="+v)
 	}
 	return out
+}
+
+func findDefaultZoteroDB(home string) string {
+	candidates := []string{filepath.Join(home, "Zotero", "zotero.sqlite")}
+	if matches, err := filepath.Glob(filepath.Join(home, ".zotero", "zotero", "*", "zotero.sqlite")); err == nil {
+		candidates = append(candidates, matches...)
+	}
+	for _, candidate := range candidates {
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate
+		}
+	}
+	return ""
 }
 
 // readDotEnv parses a `KEY=VALUE` env file. Comments (`#`) and blank

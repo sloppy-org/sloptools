@@ -78,8 +78,8 @@ func buildScoutPacket(brainRoot string, p Pick) string {
 	b.WriteString("## Your task\n\n")
 	b.WriteString(strings.Join([]string{
 		"Verify this entity against external evidence.",
-		"Use helpy `web_search`, `web_fetch`, `web_fetch_packet`, `zotero_packets`, `tugonline_*`, `tu4u_*`, `pdf_read` for external lookups; helpy `pdf_read` is the only sanctioned PDF reader (modes: metadata | text with `pages` and `max_bytes` | outline; image-only PDFs return status:image_only). Per-run caps: web_search ≤ 5, web_fetch ≤ 8, zotero ≤ 4, tugonline ≤ 3, tu4u ≤ 3, pdf_read ≤ 6 — a quota-exceeded message means stop, not retry. Use `helpy_tool_help tool_family=<family>` or `action=help` on any helpy_* tool to discover real action names.",
-		"Use sloppy `brain_search`, `brain_backlinks`, `contact_search`, `calendar_events` for vault and groupware cross-checks.",
+		"Use helpy `web_search`, `web_fetch`, `web_fetch_packet`, `helpy_zotero` with `action=packets` and query fields under `args`, `tugonline_*`, `tu4u_*`, `pdf_read` for external lookups; helpy `pdf_read` is the only sanctioned PDF reader (modes: metadata | text with `pages` and `max_bytes` | outline; image-only PDFs return status:image_only). Per-run caps: web_search ≤ 2, web_fetch ≤ 4, zotero ≤ 4, tugonline ≤ 3, tu4u ≤ 3, pdf_read ≤ 6 — a quota-exceeded message means stop, not retry. Use `helpy_tool_help tool_family=<family>` or `action=help` on any helpy_* tool to discover real action names.",
+		"Use sloppy `sloppy_brain`, `sloppy_contacts`, `sloppy_calendar`, and `sloppy_mail` for vault and groupware cross-checks before public web.",
 		"Read-only bash is allowed for harmless local file inspection: `ls`, `head`, `tail`, `wc`, `file`, `find`, `rg --files`, `stat`, `pwd`. Everything else (`cat`, `pdftotext`, `curl`, `awk`, etc.) is denied — use the helpy MCP equivalent.",
 		"Never edit canonical Markdown. Write only an evidence report.",
 		"Never invent facts; if a claim has no source, say so explicitly.",

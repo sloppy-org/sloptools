@@ -274,7 +274,7 @@ func (r *Router) applyOpenAIOverride(cfg StageConfig) (Choice, bool) {
 // scoutDefaultMCPTools is the curated tool allowlist for the scout stage.
 // Tool names must match what sloppy and helpy expose (flat names, no prefix).
 var scoutDefaultMCPTools = []string{
-	"sloppy_brain",
+	"sloppy_brain", "sloppy_contacts", "sloppy_calendar", "sloppy_mail",
 	"web_search", "web_fetch", "pdf_read",
 	"helpy_zotero", "helpy_tugonline", "helpy_tu4u", "helpy_ics",
 }
@@ -286,8 +286,12 @@ var scoutDefaultMCPTools = []string{
 // dozens of probes per minute. Tight defaults; relax in brain.toml only
 // when a stage demonstrates it needs more.
 var scoutDefaultMCPQuotas = map[string]int{
-	"web_search":      5,
-	"web_fetch":       8,
+	"sloppy_brain":    6,
+	"sloppy_contacts": 3,
+	"sloppy_calendar": 3,
+	"sloppy_mail":     3,
+	"web_search":      2,
+	"web_fetch":       4,
 	"pdf_read":        6,
 	"helpy_zotero":    4,
 	"helpy_tugonline": 3,

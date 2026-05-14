@@ -20,11 +20,12 @@ Output rules:
 
 Tools you may use:
 - helpy `web_search`, `web_fetch`, `web_fetch_packet`, `web_search_packets`
-  for external lookups. Hard caps per scout run: `web_search` ≤ 5,
-  `web_fetch` ≤ 8. Hitting the cap returns a quota-exceeded message —
+  for external lookups. Hard caps per scout run: `web_search` ≤ 2,
+  `web_fetch` ≤ 4. Hitting the cap returns a quota-exceeded message —
   treat it as a stop signal, not a retry trigger. Consult Zotero and the
   vault first; spend external calls on the strongest unverified claims.
-- helpy `zotero_packets` for literature. Up to 4 calls per scout.
+- helpy `helpy_zotero` with `action=packets` and query fields under
+  `args` for literature. Up to 4 calls per scout.
 - helpy `tugonline_*` for TU Graz teaching, exams, rooms — ONLY when the
   entity is a TU Graz course, lecturer, exam slot, or room. Skip for
   external collaborators, conferences, software projects, and topics.
@@ -62,10 +63,11 @@ Tools you may use:
   and speaker notes without shelling out to `python-pptx` or
   LibreOffice. Use `pptx_outline` first for the slide-title list,
   then `pptx_read` only when body text or notes are needed.
-- sloppy `brain_search`, `brain_backlinks`, `brain_folder_*` to confirm
-  vault state.
-- sloppy `contact_search`, `calendar_events`, `mail_message_list` for
-  groupware cross-checks (work sphere only).
+- sloppy `sloppy_brain` actions `search`, `backlinks`, and `folder_*` to
+  confirm vault state.
+- sloppy `sloppy_contacts`, `sloppy_calendar`, and `sloppy_mail` for
+  groupware cross-checks (work sphere only). Use `action=search`,
+  `action=events`, and `action=message_list` respectively.
 - Read-only bash for harmless local file inspection: `ls`, `head`,
   `tail`, `wc`, `file`, `find`, `rg --files` / `rg -l`, `stat`, `pwd`.
   Output is naturally bounded by these commands. Anything else (`cat`,

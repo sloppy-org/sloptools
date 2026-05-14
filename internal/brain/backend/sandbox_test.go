@@ -86,6 +86,76 @@ func TestSandboxEnvOverridesHOMEAndCODEXHOME(t *testing.T) {
 	}
 }
 
+func TestSandboxEnvPointsHelpyZoteroAtRealHome(t *testing.T) {
+	realHome := t.TempDir()
+	t.Setenv("HOME", realHome)
+	zoteroDir := filepath.Join(realHome, "Zotero")
+	if err := os.MkdirAll(filepath.Join(zoteroDir, "storage"), 0o700); err != nil {
+		t.Fatalf("mkdir Zotero storage: %v", err)
+	}
+	dbPath := filepath.Join(zoteroDir, "zotero.sqlite")
+	if err := os.WriteFile(dbPath, []byte("fixture"), 0o600); err != nil {
+		t.Fatalf("write zotero db: %v", err)
+	}
+
+	sb, err := NewSandbox("test-zotero", "stage", "", DefaultMCPConfig())
+	if err != nil {
+		t.Fatalf("NewSandbox: %v", err)
+	}
+	t.Cleanup(func() { _ = sb.Cleanup() })
+
+	env := sb.Env()
+	have := map[string]string{}
+	for _, kv := range env {
+		i := strings.Index(kv, "=")
+		if i < 0 {
+			continue
+		}
+		have[kv[:i]] = kv[i+1:]
+	}
+	if have["HELPY_ZOTERO_DB"] != dbPath {
+		t.Fatalf("HELPY_ZOTERO_DB = %q, want %q", have["HELPY_ZOTERO_DB"], dbPath)
+	}
+	if have["HELPY_ZOTERO_STORAGE"] != filepath.Join(zoteroDir, "storage") {
+		t.Fatalf("HELPY_ZOTERO_STORAGE = %q", have["HELPY_ZOTERO_STORAGE"])
+	}
+}
+
+func TestSandboxEnvFindsLinuxZoteroProfile(t *testing.T) {
+	realHome := t.TempDir()
+	t.Setenv("HOME", realHome)
+	profileDir := filepath.Join(realHome, ".zotero", "zotero", "abc.default")
+	if err := os.MkdirAll(filepath.Join(profileDir, "storage"), 0o700); err != nil {
+		t.Fatalf("mkdir Zotero profile storage: %v", err)
+	}
+	dbPath := filepath.Join(profileDir, "zotero.sqlite")
+	if err := os.WriteFile(dbPath, []byte("fixture"), 0o600); err != nil {
+		t.Fatalf("write zotero db: %v", err)
+	}
+
+	sb, err := NewSandbox("test-zotero-linux", "stage", "", DefaultMCPConfig())
+	if err != nil {
+		t.Fatalf("NewSandbox: %v", err)
+	}
+	t.Cleanup(func() { _ = sb.Cleanup() })
+
+	env := sb.Env()
+	have := map[string]string{}
+	for _, kv := range env {
+		i := strings.Index(kv, "=")
+		if i < 0 {
+			continue
+		}
+		have[kv[:i]] = kv[i+1:]
+	}
+	if have["HELPY_ZOTERO_DB"] != dbPath {
+		t.Fatalf("HELPY_ZOTERO_DB = %q, want %q", have["HELPY_ZOTERO_DB"], dbPath)
+	}
+	if have["HELPY_ZOTERO_STORAGE"] != filepath.Join(profileDir, "storage") {
+		t.Fatalf("HELPY_ZOTERO_STORAGE = %q", have["HELPY_ZOTERO_STORAGE"])
+	}
+}
+
 func TestSandboxRootIsUniqueForSameRunAndStage(t *testing.T) {
 	first, err := NewSandbox("same-run", "sleep/judge", "", DefaultMCPConfig())
 	if err != nil {
