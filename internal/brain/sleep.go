@@ -30,13 +30,11 @@ const SleepAutonomyFull = "full"
 // SleepAutonomyPlanOnly keeps Codex in read-only mode and writes its report.
 const SleepAutonomyPlanOnly = "plan-only"
 
-// SleepDefaultModel is the Codex model used when --model is not given.
-// The sleep judge edits a small rendered Markdown packet; this is an
-// editorial pass, not canonical Markdown authorship, so the cheaper
-// gpt-5.4-mini is sufficient. Canonical entity-note writes (graph apply
-// in #122) keep gpt-5.5 separately. Claude is never a default; the
-// opt-in escalation flag lives in #123.
-const SleepDefaultModel = "gpt-5.4-mini"
+// SleepDefaultModel is the Codex model used by the legacy direct-Codex sleep
+// path when --model is not given. Brain-night uses routing instead: qwen122b
+// first, gpt-5.5@high only when the integrity classifier rejects the local
+// pass.
+const SleepDefaultModel = "gpt-5.5"
 
 // SleepDefaultBudget is the picker budget used when budget <= 0.
 const SleepDefaultBudget = 20
@@ -307,7 +305,7 @@ func runSleepCodex(opts SleepOpts, backendName, model, autonomy string, prep *pr
 // runSleepWithRouter routes the sleep-judge editorial pass through the
 // new sleep.RunJudge pipeline: pre-flight packet-size gate → bulk
 // (local OpenCode Qwen) → deterministic classifier → paid escalation
-// (codex/gpt-5.4-mini) when the classifier flags the bulk output.
+// (codex/gpt-5.5@high) when the classifier flags the local output.
 //
 // Mirrors internal/brain/scout's bulk → resolve → escalate shape so
 // audit sidecars (.bulk.md / .escalate.<backend>.md / .audit.json)

@@ -1,7 +1,9 @@
 // Package routing picks a Backend + Model + Reasoning per stage of the
-// brain night. It enforces three rules:
+// brain night. It enforces these rules:
 //
-//   - paid pools: medium and hard tiers use configured paid providers;
+//   - bulk stages use the fast local qwen alias;
+//   - medium review/edit stages use the stronger local qwen122b alias;
+//   - paid pools are reserved for native-web fallback and hard escalation;
 //   - ledger gate: a saturated provider is skipped (and the stage falls
 //     back to the unsaturated peer; if both are saturated, the stage
 //     downgrades to opencode/local);
@@ -29,13 +31,13 @@ type Stage string
 const (
 	// StageFolderNote authors strict folder notes from a packet. Bulk.
 	StageFolderNote Stage = "folder-note"
-	// StageTriage promotes/maybes/rejects candidate entities. Medium.
+	// StageTriage escalates scout reports when helpy search was insufficient.
 	StageTriage Stage = "triage"
 	// StageSleepJudge runs the editorial pass over a sleep packet. Medium.
 	StageSleepJudge Stage = "sleep-judge"
 	// StageScout runs bounded helpy MCP web/Zotero/TUGonline lookup. Bulk.
 	StageScout Stage = "scout"
-	// StageCompress shrinks textbook prose while keeping local anchors. Medium.
+	// StageCompress shrinks textbook prose while keeping local anchors. Hard.
 	StageCompress Stage = "compress"
 	// StageEntityWrite authors canonical entity Markdown. Hard.
 	StageEntityWrite Stage = "entity-write"
@@ -78,8 +80,8 @@ type StageConfig struct {
 	Tier       Tier
 	Bulk       Choice         // local primary
 	ValueLocal Choice         // resolve-pass local model; zero means reuse Bulk
-	Medium     []Choice       // paid medium pool
-	Hard       []Choice       // paid hard pool
+	Medium     []Choice       // medium review pool
+	Hard       []Choice       // hard escalation pool
 	Fallback   Choice         // when all paid providers are saturated
 	MCPTools   []string       // default MCP tool allowlist; overridable by brain.toml
 	MCPQuotas  map[string]int // per-tool call cap inside the agent loop; absent = unbounded
@@ -99,7 +101,7 @@ type Router struct {
 
 // Overrides are session-level routing overrides set by CLI flags.
 type Overrides struct {
-	OpenAITier string // "mini"  | "full"  | "pro"   — force OpenAI    + tier
+	OpenAITier string // "mini" | "mini-native-web" | "full" — force OpenAI tier
 	ForceLocal bool   // pin every stage to LlamacppMoEModel
 }
 
@@ -218,8 +220,8 @@ func choiceToPick(s Stage, t Tier, c Choice, tools []string, quotas map[string]i
 
 func (r *Router) applyOpenAIOverride(cfg StageConfig) (Choice, bool) {
 	switch r.overrides.OpenAITier {
-	case "mini":
-		return CodexMiniMedium(), true
+	case "mini", "mini-native-web":
+		return CodexMiniNativeWeb(), true
 	case "full":
 		return CodexFullHigh(), true
 	}
@@ -228,49 +230,22 @@ func (r *Router) applyOpenAIOverride(cfg StageConfig) (Choice, bool) {
 
 // DefaultStageConfigs returns the stage→tier map. Evidence and rationale:
 //
-//   - folder-note (bulk): text-only synthesis from attached files; no
-//     external evidence needed; deterministic from inputs. LlamacppMoE.
-//   - scout (bulk): live web + Zotero + TUGonline + vault verification.
-//     The 2026-05-07 first nightly proved llamacpp/qwen3-MoE with helpy +
-//     sloppy MCP produces research-grade evidence reports. Bulk only,
-//     with `--escalate-on-conflict` (default true) routing flagged
-//     reports through a free self-resolve pass and then a paid medium
-//     pass when the deterministic classifier still flags the body.
-//   - triage (medium): the routing name "triage" here is the escalation
-//     POOL used by scout when the classifier flags content. It is NOT
-//     a separate triage worker stage — there is no production call site
-//     that picks `StageTriage` outside escalation. Tier stays medium;
-//     the pool is codex/gpt-5.4-mini@medium only. Anthropic backends
-//     were removed 2026-05-08 because the `claude` CLI subprocess
-//     pattern (consumer-OAuth tokens, sibling-process refresh races
-//     that log the user out of their interactive session) is not the
-//     right shape for unattended batch escalations. Re-add only with
-//     ANTHROPIC_API_KEY-based auth, never via the Pro/Max OAuth flow.
-//     Renaming this stage to `StageEscalate` is a follow-up cleanup.
-//   - sleep-judge (medium): editorial pass over a rendered sleep packet.
-//     The packet bakes in citations; the model needs taste, not
-//     retrieval. STAYS medium today; the bulk-first / paid-on-doubt
-//     migration here needs a deterministic classifier of integrity-
-//     gate output (expected sections retained, no forbidden sections
-//     reintroduced, no code-fenced wrapper). Tracked as follow-up;
-//     the shared cleanup package (internal/brain/cleanup) is in place
-//     so the migration is a small refactor away.
+//   - folder-note (bulk): text-only synthesis from attached files; the
+//     fast local qwen alias is enough.
+//   - scout (bulk): live helpy/sloppy MCP evidence gathering starts on
+//     fast local qwen. Self-resolve uses qwen122b. If the classifier
+//     still sees unresolved web/search gaps, StageTriage sends the same
+//     packet to gpt-5.4-mini so Codex can use native web search from the
+//     prompt instead of retrying capped helpy web_search calls.
+//   - sleep-judge (medium): local qwen122b review/edit pass over the
+//     rendered sleep packet. If the deterministic integrity classifier
+//     rejects the output, the runner escalates through StageEntityWrite
+//     to gpt-5.5@high.
 //   - compress (hard): shrink textbook prose while preserving local
-//     anchors. STAYS hard until the v1 fx-neort re-grade observation
-//     ("medium tier on technical packets at risk of fabricating jargon")
-//     is overturned by live evidence. No production call site today
-//     either; the bench task exercises it but no nightly stage routes
-//     through it yet.
+//     anchors.
 //   - entity-write (hard): writes canonical entity notes. Highest stakes.
-//     Hard tier uses gpt-5.5. STAYS hard until a structural-integrity gate
-//     exists for canonical Markdown writes; that gate is its own project.
+//     Hard tier uses gpt-5.5@high.
 //
-// The --escalate-on-conflict flag (scout today) is the proven pattern
-// for "bulk first, paid only on classifier doubt". The shared
-// internal/brain/cleanup package and the audit-sidecar layer in
-// internal/brain/scout/artifacts.go are the foundation for extending
-// this to sleep-judge, compress, and entity-write once each stage has
-// a deterministic classifier.
 // scoutDefaultMCPTools is the curated tool allowlist for the scout stage.
 // Tool names must match what sloppy and helpy expose (flat names, no prefix).
 var scoutDefaultMCPTools = []string{
@@ -331,8 +306,8 @@ func DefaultStageConfigs() map[Stage]StageConfig {
 	return map[Stage]StageConfig{
 		StageFolderNote:  bulkStage(StageFolderNote, folderNoteDefaultMCPTools, folderNoteDefaultMCPQuotas),
 		StageScout:       bulkStage(StageScout, scoutDefaultMCPTools, scoutDefaultMCPQuotas),
-		StageTriage:      mediumStage(StageTriage, nil, nil),
-		StageSleepJudge:  mediumStage(StageSleepJudge, sleepJudgeFullAutonomyTools, sleepJudgeDefaultMCPQuotas),
+		StageTriage:      nativeWebFallbackStage(StageTriage, nil, nil),
+		StageSleepJudge:  mediumLocalStage(StageSleepJudge, sleepJudgeFullAutonomyTools, sleepJudgeDefaultMCPQuotas),
 		StageCompress:    hardStage(StageCompress, nil, nil),
 		StageEntityWrite: hardStage(StageEntityWrite, nil, nil),
 	}
@@ -344,20 +319,33 @@ func bulkStage(s Stage, tools []string, quotas map[string]int) StageConfig {
 		Stage:      s,
 		Tier:       TierBulk,
 		Bulk:       bulk,
-		ValueLocal: LlamacppMoEBulk(),
+		ValueLocal: LlamacppQwen122B(),
 		Fallback:   bulk,
 		MCPTools:   tools,
 		MCPQuotas:  quotas,
 	}
 }
 
-func mediumStage(s Stage, tools []string, quotas map[string]int) StageConfig {
+func mediumLocalStage(s Stage, tools []string, quotas map[string]int) StageConfig {
 	bulk := LlamacppMoEBulk()
 	return StageConfig{
 		Stage:     s,
 		Tier:      TierMedium,
 		Bulk:      bulk,
-		Medium:    []Choice{CodexMiniMedium()},
+		Medium:    []Choice{LlamacppQwen122B()},
+		Fallback:  bulk,
+		MCPTools:  tools,
+		MCPQuotas: quotas,
+	}
+}
+
+func nativeWebFallbackStage(s Stage, tools []string, quotas map[string]int) StageConfig {
+	bulk := LlamacppMoEBulk()
+	return StageConfig{
+		Stage:     s,
+		Tier:      TierMedium,
+		Bulk:      bulk,
+		Medium:    []Choice{CodexMiniNativeWeb()},
 		Fallback:  bulk,
 		MCPTools:  tools,
 		MCPQuotas: quotas,
@@ -394,6 +382,12 @@ const (
 	LlamacppMoEModel     = "llamacpp-moe/qwen"
 	LlamacppMoELabel     = "llamacpp/qwen3-MoE"
 	LlamacppMoEBackendID = "llamacpp"
+
+	// LlamacppQwen122BModel routes to slopgate's stronger qwen122b alias.
+	// Used for local review and direct edit work that does not justify paid
+	// GPT-5.5 escalation.
+	LlamacppQwen122BModel = "llamacpp-moe/qwen122b"
+	LlamacppQwen122BLabel = "llamacpp/qwen122b"
 )
 
 // LlamacppMoEBulk returns a Choice for the fast MoE bulk pass via direct
@@ -408,13 +402,23 @@ func LlamacppMoEBulk() Choice {
 	}
 }
 
-func CodexMiniMedium() Choice {
+func LlamacppQwen122B() Choice {
+	return Choice{
+		BackendID: LlamacppMoEBackendID,
+		Provider:  backend.ProviderLocal,
+		Model:     LlamacppQwen122BModel,
+		Reasoning: backend.ReasoningHigh,
+		Label:     LlamacppQwen122BLabel,
+	}
+}
+
+func CodexMiniNativeWeb() Choice {
 	return Choice{
 		BackendID: "codex",
 		Provider:  backend.ProviderOpenAI,
 		Model:     "gpt-5.4-mini",
 		Reasoning: backend.ReasoningMedium,
-		Label:     "codex/gpt-5.4-mini@medium",
+		Label:     "codex/gpt-5.4-mini@medium-native-web",
 	}
 }
 

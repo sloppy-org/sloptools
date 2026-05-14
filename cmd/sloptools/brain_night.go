@@ -79,15 +79,16 @@ func encodeIndentJSON(v any) ([]byte, error) {
 
 // cmdBrainNight dispatches `sloptools brain night`, the unified
 // sweep → scout → judge orchestrator. Each stage is independently
-// invokable via --only-stage. Routing uses OpenAI for paid medium / hard
-// tiers; bulk is local llamacpp qwen.
+// invokable via --only-stage. Routing uses local qwen for bulk, local
+// qwen122b for review/edit, gpt-5.4-mini for native-web scout fallback,
+// and gpt-5.5 for hard escalation.
 // brain.toml at ~/.config/sloptools/brain.toml overrides the defaults.
 func cmdBrainNight(args []string) int {
 	fs := flag.NewFlagSet("brain night", flag.ContinueOnError)
 	configPath := fs.String("config", "", "vault config path")
 	sphere := fs.String("sphere", "", "vault sphere: work or private")
 	onlyStage := fs.String("only-stage", "", "sweep | scout | judge (default: all)")
-	openaiTier := fs.String("openai-tier", "", "force OpenAI at tier: mini | full")
+	openaiTier := fs.String("openai-tier", "", "force OpenAI at tier: mini-native-web | full")
 	forceLocal := fs.Bool("force-local", false, "pin every stage to the configured local llamacpp model")
 	autonomy := fs.String("autonomy", brain.SleepDefaultAutonomy, "full or plan-only")
 	budget := fs.Int("budget", brain.SleepDefaultBudget, "REM notes to dream over (judge stage)")
@@ -263,11 +264,9 @@ type nightReport struct {
 // units of weekly-cap fraction. Per-night cap is 0.05 (5%) per provider
 // by default; numbers above that mean the gate failed somewhere.
 type spendSummary struct {
-	AnthropicSessionShare float64 `json:"anthropic_session_share"`
-	OpenAISessionShare    float64 `json:"openai_session_share"`
-	AnthropicWeeklyShare  float64 `json:"anthropic_weekly_share"`
-	OpenAIWeeklyShare     float64 `json:"openai_weekly_share"`
-	SessionStart          string  `json:"session_start"`
+	OpenAISessionShare float64 `json:"openai_session_share"`
+	OpenAIWeeklyShare  float64 `json:"openai_weekly_share"`
+	SessionStart       string  `json:"session_start"`
 }
 
 type scoutSummary struct {
@@ -447,7 +446,7 @@ func runScoutStage(vault brain.Vault, ldg *ledger.Ledger, router *routing.Router
 // edits are committed and pushed to the brain repo on success. Without
 // this wrapping the judge writes files but leaves the working tree
 // dirty, breaking the "git history is the activity log" rule from
-// CLAUDE.md.
+// vault instructions.
 func runJudgeStage(cfg *brain.Config, sphere brain.Sphere, opts brain.SleepOpts, report *nightReport) error {
 	if opts.DryRun {
 		res, err := brain.RunSleep(cfg, opts)

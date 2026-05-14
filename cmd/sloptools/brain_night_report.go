@@ -13,14 +13,8 @@ import (
 
 func computeSpend(ldg *ledger.Ledger, sessionStart, now time.Time) *spendSummary {
 	out := &spendSummary{SessionStart: sessionStart.Format(time.RFC3339)}
-	if v, err := ldg.RollingShare(backend.ProviderAnthropic, sessionStart, now); err == nil {
-		out.AnthropicSessionShare = v
-	}
 	if v, err := ldg.RollingShare(backend.ProviderOpenAI, sessionStart, now); err == nil {
 		out.OpenAISessionShare = v
-	}
-	if v, err := ldg.WeeklyShare(backend.ProviderAnthropic, now); err == nil {
-		out.AnthropicWeeklyShare = v
 	}
 	if v, err := ldg.WeeklyShare(backend.ProviderOpenAI, now); err == nil {
 		out.OpenAIWeeklyShare = v

@@ -46,8 +46,8 @@ type JudgeResult struct {
 	EscalationModel   string
 }
 
-// RunJudge runs the sleep-judge editorial pass with bulk → classifier
-// → paid-escalation routing.
+// RunJudge runs the sleep-judge editorial pass with local → classifier
+// → paid hard-escalation routing.
 //
 // Pipeline:
 //
@@ -56,15 +56,15 @@ type JudgeResult struct {
 //     directly. The 167 KB qwen context-window collapse that motivated
 //     this gate is non-recoverable — the bulk model returns trigram
 //     spam, not a report.
-//  2. Bulk pass: local llamacpp qwen with the sleep-judge system prompt and
-//     the packet on stdin. Output goes through cleanup.CleanReport.
+//  2. Local pass: local llamacpp qwen122b with the sleep-judge system prompt
+//     and the packet on stdin. Output goes through cleanup.CleanReport.
 //  3. Classifier: classifySleepJudgeOutput inspects the cleaned body
 //     and returns a Decision. Signals: parse-error wrapper, leaked
 //     <think>, non-printable ratio over 5%, or any 3-gram repeating
 //     more than 30 times.
 //  4. Paid escalation: when the classifier flags or the pre-flight
-//     gate fires, route through routing.StageSleepJudge (codex/gpt-
-//     5.4-mini) with the same packet on stdin. The paid output
+//     gate fires, route through routing.StageEntityWrite (gpt-5.5@high)
+//     with the same packet on stdin. The paid output
 //     replaces the bulk body.
 //
 // Audit sidecars are written next to the canonical report path under
@@ -90,19 +90,19 @@ func RunJudge(ctx context.Context, opts JudgeOpts) (*JudgeResult, error) {
 		bulkReason string
 	)
 	if !preflight.Escalate {
-		fmt.Fprintln(os.Stderr, "brain night: Judge asks Qwen for the bulk editorial pass.")
+		fmt.Fprintln(os.Stderr, "brain night: Judge asks qwen122b for the local editorial pass.")
 		rec, cleaned, err := runBulk(ctx, opts)
 		if err != nil {
 			return nil, fmt.Errorf("sleep bulk: %w", err)
 		}
 		body = cleaned
 		bulkRec = rec
-		fmt.Fprintln(os.Stderr, "brain night: Judge checks Qwen's draft for escalation signals.")
+		fmt.Fprintln(os.Stderr, "brain night: Judge checks qwen122b's draft for escalation signals.")
 		d := classifySleepJudgeOutput(cleaned, len(opts.Packet))
 		bulkRec.ReasonAfter = d.Reason
 		stages = append(stages, *bulkRec)
 		if !d.Escalate {
-			fmt.Fprintln(os.Stderr, "brain night: Judge accepts Qwen's draft.")
+			fmt.Fprintln(os.Stderr, "brain night: Judge accepts qwen122b's draft.")
 			_ = audit.WriteFile(opts.ReportPath, audit.File{
 				Path: opts.ReportPath, ReportPath: opts.ReportPath,
 				RunID: opts.RunID, Sphere: opts.Sphere,
@@ -114,7 +114,7 @@ func RunJudge(ctx context.Context, opts JudgeOpts) (*JudgeResult, error) {
 		bulkReason = d.Reason
 	} else {
 		bulkReason = preflight.Reason
-		fmt.Fprintf(os.Stderr, "brain night: Judge skips Qwen bulk pass: %s\n", bulkReason)
+		fmt.Fprintf(os.Stderr, "brain night: Judge skips local qwen122b pass: %s\n", bulkReason)
 	}
 	fmt.Fprintf(os.Stderr, "brain night: Judge escalates to Codex: %s\n", bulkReason)
 	escRec, escBody, err := runEscalate(ctx, opts, bulkReason)
@@ -147,17 +147,17 @@ func RunJudge(ctx context.Context, opts JudgeOpts) (*JudgeResult, error) {
 	}, nil
 }
 
-// runBulk runs the bulk editorial pass and returns the StageRecord plus the
+// runBulk runs the local editorial pass and returns the StageRecord plus the
 // cleaned body. Both autonomy modes use LlamacppBackend (direct HTTP to
-// slopgate, no subprocess). Plan-only uses MoE with no tools; full-autonomy
-// uses MoE with the curated sleep-judge allowlist so sloppy_brain
-// action=note_write can edit vault files. Paid escalation via runEscalate
-// goes through Router.Pick(StageSleepJudge) → codex.
+// slopgate, no subprocess). Plan-only uses fast qwen with no tools; full
+// autonomy uses qwen122b with the curated sleep-judge allowlist so
+// sloppy_brain action=note_write can edit vault files. Paid escalation via
+// runEscalate goes through Router.Pick(StageEntityWrite) → gpt-5.5@high.
 func runBulk(ctx context.Context, opts JudgeOpts) (*audit.StageRecord, string, error) {
 	var bulkPick routing.Choice
 	var allowList []string
 	if opts.AllowEdits {
-		bulkPick = routing.LlamacppMoEBulk()
+		bulkPick = routing.LlamacppQwen122B()
 		allowList = opts.Router.MCPToolsFor(routing.StageSleepJudge)
 	} else {
 		bulkPick = routing.LlamacppMoEBulk()
@@ -218,10 +218,9 @@ func runBulk(ctx context.Context, opts JudgeOpts) (*audit.StageRecord, string, e
 	return rec, body, nil
 }
 
-// runEscalate routes the same packet to the paid tier. The router pick
-// uses StageSleepJudge so codex/gpt-5.4-mini@medium is the default.
+// runEscalate routes the same packet to the hard paid tier.
 func runEscalate(ctx context.Context, opts JudgeOpts, reason string) (*audit.StageRecord, string, error) {
-	pick, err := opts.Router.Pick(routing.StageSleepJudge)
+	pick, err := opts.Router.Pick(routing.StageEntityWrite)
 	if err != nil {
 		return nil, "", fmt.Errorf("router pick: %w", err)
 	}

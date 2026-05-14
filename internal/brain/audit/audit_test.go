@@ -58,7 +58,7 @@ func TestWriteStageArtifact_RawWhenTrimmed(t *testing.T) {
 func TestWriteStageArtifact_SuffixSlugsAreSafe(t *testing.T) {
 	dir := t.TempDir()
 	rpath := filepath.Join(dir, "x.md")
-	for _, suffix := range []string{"bulk", "resolve.1", "escalate.codex", "escalate.claude"} {
+	for _, suffix := range []string{"bulk", "resolve.1", "escalate.codex", "escalate.native-web"} {
 		_, p, err := WriteStageArtifact(rpath, suffix, "body", "body")
 		if err != nil {
 			t.Fatalf("suffix %q: %v", suffix, err)
@@ -103,8 +103,8 @@ func TestWriteFile_RoundTrip(t *testing.T) {
 				Stage:         "sleep-judge-escalate",
 				Backend:       "codex",
 				Provider:      "openai",
-				Model:         "gpt-5.4-mini",
-				Tier:          "medium",
+				Model:         "gpt-5.5",
+				Tier:          "hard",
 				StartedAt:     now.Add(time.Minute),
 				WallMS:        90_000,
 				TokensIn:      80,

@@ -29,14 +29,13 @@ type ModelSpec struct {
 }
 
 // DefaultModelMatrix is the v1 cell list. Every cell carries an
-// explicit Reasoning value: medium for the medium tier (cheap, fast,
-// the GPT-5.5 documented "balanced starting point"), high for the
-// hard-tier paid models. Never xhigh by default — that is
-// for the hardest asynchronous agentic evals, not the brain night.
+// explicit Reasoning value. The default matrix keeps fast qwen, stronger
+// local qwen122b, and the hard paid fallback. Never xhigh by default:
+// that is for the hardest asynchronous agentic evals, not brain night.
 func DefaultModelMatrix() []ModelSpec {
 	return []ModelSpec{
 		{ProviderLocal(), "llamacpp", routing.LlamacppMoEModel, backend.ReasoningHigh, routing.LlamacppMoELabel},
-		{ProviderOpenAI(), "codex", "gpt-5.4-mini", backend.ReasoningMedium, "codex/gpt-5.4-mini@medium"},
+		{ProviderLocal(), "llamacpp", routing.LlamacppQwen122BModel, backend.ReasoningHigh, routing.LlamacppQwen122BLabel},
 		{ProviderOpenAI(), "codex", "gpt-5.5", backend.ReasoningHigh, "codex/gpt-5.5@high"},
 	}
 }

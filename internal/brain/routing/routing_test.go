@@ -13,10 +13,8 @@ func newTestRouter(t *testing.T, ov Overrides) (*Router, *ledger.Ledger, string)
 	t.Helper()
 	dir := t.TempDir()
 	caps := ledger.PlanCaps{
-		AnthropicWeeklyShareMax: 0.05,
-		OpenAIWeeklyShareMax:    0.05,
-		AnthropicTokensPerWeek:  1000,
-		OpenAITokensPerWeek:     1000,
+		OpenAIWeeklyShareMax: 0.05,
+		OpenAITokensPerWeek:  1000,
 	}
 	l, err := ledger.New(dir, caps)
 	if err != nil {
@@ -60,7 +58,7 @@ func TestDefaultBulkUsesLlamacppMoE(t *testing.T) {
 	}
 }
 
-func TestPickValueLocal_ScoutReturnsMoE(t *testing.T) {
+func TestPickValueLocal_ScoutReturnsQwen122B(t *testing.T) {
 	r, _, _ := newTestRouter(t, Overrides{})
 	p, err := r.PickValueLocal(StageScout)
 	if err != nil {
@@ -69,30 +67,26 @@ func TestPickValueLocal_ScoutReturnsMoE(t *testing.T) {
 	if p.BackendID != LlamacppMoEBackendID {
 		t.Fatalf("value-local backendID wanted %s, got %s", LlamacppMoEBackendID, p.BackendID)
 	}
-	if p.Model != LlamacppMoEModel {
-		t.Fatalf("value-local model wanted %s, got %s", LlamacppMoEModel, p.Model)
+	if p.Model != LlamacppQwen122BModel {
+		t.Fatalf("value-local model wanted %s, got %s", LlamacppQwen122BModel, p.Model)
 	}
 }
 
-// TestPickMediumStage_CodexOnly pins the post-2026-05-08 single-provider
-// medium pool. Anthropic was removed because the `claude` CLI subprocess
-// pattern uses consumer-OAuth tokens and sibling refresh races logged
-// the user out of their interactive session.
-func TestPickMediumStage_CodexOnly(t *testing.T) {
+func TestPickMediumStage_Qwen122BLocal(t *testing.T) {
 	r, _, _ := newTestRouter(t, Overrides{})
 	for i := 0; i < 4; i++ {
 		p, err := r.Pick(StageSleepJudge)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if p.BackendID != "codex" {
-			t.Fatalf("medium pick %d wanted codex, got %s", i, p.BackendID)
+		if p.BackendID != LlamacppMoEBackendID {
+			t.Fatalf("medium pick %d wanted %s, got %s", i, LlamacppMoEBackendID, p.BackendID)
 		}
-		if p.Provider != backend.ProviderOpenAI {
-			t.Fatalf("medium pick %d wanted openai, got %s", i, p.Provider)
+		if p.Provider != backend.ProviderLocal {
+			t.Fatalf("medium pick %d wanted local, got %s", i, p.Provider)
 		}
-		if p.Model != "gpt-5.4-mini" {
-			t.Fatalf("medium pick %d wanted gpt-5.4-mini, got %s", i, p.Model)
+		if p.Model != LlamacppQwen122BModel {
+			t.Fatalf("medium pick %d wanted %s, got %s", i, LlamacppQwen122BModel, p.Model)
 		}
 		if p.Reasoning == "" {
 			t.Fatalf("missing reasoning: %+v", p)
@@ -100,8 +94,26 @@ func TestPickMediumStage_CodexOnly(t *testing.T) {
 	}
 }
 
-// TestPickHardStage_CodexOnly pins the post-2026-05-08 single-provider
-// hard pool (same Anthropic OAuth concern).
+func TestPickTriage_UsesCodexMiniNativeWebFallback(t *testing.T) {
+	r, _, _ := newTestRouter(t, Overrides{})
+	p, err := r.Pick(StageTriage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.BackendID != "codex" {
+		t.Fatalf("triage wanted codex, got %s", p.BackendID)
+	}
+	if p.Provider != backend.ProviderOpenAI {
+		t.Fatalf("triage wanted openai, got %s", p.Provider)
+	}
+	if p.Model != "gpt-5.4-mini" {
+		t.Fatalf("triage wanted gpt-5.4-mini, got %s", p.Model)
+	}
+	if p.Label != "codex/gpt-5.4-mini@medium-native-web" {
+		t.Fatalf("triage label = %q", p.Label)
+	}
+}
+
 func TestPickHardStage_CodexOnly(t *testing.T) {
 	r, _, _ := newTestRouter(t, Overrides{})
 	for i := 0; i < 4; i++ {
@@ -121,7 +133,7 @@ func TestPickHardStage_CodexOnly(t *testing.T) {
 	}
 }
 
-func TestLedgerGuard_FallsBackWhenOpenAISaturated(t *testing.T) {
+func TestLedgerGuard_NativeWebFallbackFallsBackWhenOpenAISaturated(t *testing.T) {
 	r, l, _ := newTestRouter(t, Overrides{})
 	now := time.Now().UTC()
 	r.now = func() time.Time { return now }
@@ -131,7 +143,7 @@ func TestLedgerGuard_FallsBackWhenOpenAISaturated(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	p, err := r.Pick(StageSleepJudge)
+	p, err := r.Pick(StageTriage)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +161,7 @@ func TestLedgerGuard_FallsBackToBulkWhenPaidProviderSaturated(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	pick, err := r.Pick(StageSleepJudge)
+	pick, err := r.Pick(StageEntityWrite)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,6 +183,17 @@ func TestOverride_OpenAITier(t *testing.T) {
 		t.Fatal(err)
 	}
 	if p.Model != "gpt-5.5" || p.Provider != backend.ProviderOpenAI {
+		t.Fatalf("override failed: %+v", p)
+	}
+}
+
+func TestOverride_OpenAITierMiniNativeWeb(t *testing.T) {
+	r, _, _ := newTestRouter(t, Overrides{OpenAITier: "mini-native-web"})
+	p, err := r.Pick(StageSleepJudge)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Model != "gpt-5.4-mini" || p.Label != "codex/gpt-5.4-mini@medium-native-web" {
 		t.Fatalf("override failed: %+v", p)
 	}
 }
@@ -197,16 +220,16 @@ func TestLoadFile_MissingReturnsNilNoError(t *testing.T) {
 	}
 }
 
-func TestApplyStages_RejectsClaudePool(t *testing.T) {
+func TestApplyStages_RejectsUnknownProvider(t *testing.T) {
 	cfg := &FileConfig{Stages: map[string]StageFile{
 		"sleep-judge": {
 			Tier: "medium",
 			Medium: []ChoiceFile{
-				{Backend: "claude", Provider: "anthropic", Model: "claude-sonnet-4-6", Reasoning: "medium"},
+				{Backend: "external", Provider: "unknown", Model: "external-model", Reasoning: "medium"},
 			},
 		},
 	}}
 	if _, err := cfg.ApplyStages(DefaultStageConfigs()); err == nil {
-		t.Fatal("expected claude backend override to be rejected")
+		t.Fatal("expected unknown provider override to be rejected")
 	}
 }

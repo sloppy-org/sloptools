@@ -30,12 +30,9 @@ type LlamacppFile struct {
 
 // PlanFile carries weekly cap overrides per provider.
 type PlanFile struct {
-	AnthropicShareMax         float64 `toml:"anthropic_weekly_share_max"`
-	OpenAIShareMax            float64 `toml:"openai_weekly_share_max"`
-	AnthropicTokensPerWeek    int64   `toml:"anthropic_tokens_per_week"`
-	OpenAITokensPerWeek       int64   `toml:"openai_tokens_per_week"`
-	AnthropicMaxCallsPerNight int     `toml:"anthropic_max_calls_per_night"`
-	OpenAIMaxCallsPerNight    int     `toml:"openai_max_calls_per_night"`
+	OpenAIShareMax         float64 `toml:"openai_weekly_share_max"`
+	OpenAITokensPerWeek    int64   `toml:"openai_tokens_per_week"`
+	OpenAIMaxCallsPerNight int     `toml:"openai_max_calls_per_night"`
 }
 
 // StageFile overrides one stage's tier and pool.
@@ -89,20 +86,11 @@ func (c *FileConfig) PlanCaps() ledger.PlanCaps {
 	if c == nil {
 		return d
 	}
-	if c.Plan.AnthropicShareMax > 0 {
-		d.AnthropicWeeklyShareMax = c.Plan.AnthropicShareMax
-	}
 	if c.Plan.OpenAIShareMax > 0 {
 		d.OpenAIWeeklyShareMax = c.Plan.OpenAIShareMax
 	}
-	if c.Plan.AnthropicTokensPerWeek > 0 {
-		d.AnthropicTokensPerWeek = c.Plan.AnthropicTokensPerWeek
-	}
 	if c.Plan.OpenAITokensPerWeek > 0 {
 		d.OpenAITokensPerWeek = c.Plan.OpenAITokensPerWeek
-	}
-	if c.Plan.AnthropicMaxCallsPerNight > 0 {
-		d.AnthropicMaxCallsPerNight = c.Plan.AnthropicMaxCallsPerNight
 	}
 	if c.Plan.OpenAIMaxCallsPerNight > 0 {
 		d.OpenAIMaxCallsPerNight = c.Plan.OpenAIMaxCallsPerNight
@@ -180,15 +168,9 @@ func toPool(in []ChoiceFile) ([]Choice, error) {
 
 func (c ChoiceFile) toChoice() (Choice, error) {
 	backendID := strings.ToLower(c.Backend)
-	if backendID == "claude" {
-		return Choice{}, fmt.Errorf("claude backend is disabled for programmatic routing")
-	}
 	prov, err := parseProvider(c.Provider)
 	if err != nil {
 		return Choice{}, err
-	}
-	if prov == backend.ProviderAnthropic {
-		return Choice{}, fmt.Errorf("anthropic provider is disabled for programmatic routing")
 	}
 	r, err := parseReasoning(c.Reasoning)
 	if err != nil {
@@ -217,8 +199,6 @@ func parseProvider(p string) (backend.Provider, error) {
 	switch strings.ToLower(p) {
 	case "openai":
 		return backend.ProviderOpenAI, nil
-	case "anthropic":
-		return backend.ProviderAnthropic, nil
 	case "local", "":
 		return backend.ProviderLocal, nil
 	}

@@ -125,14 +125,14 @@ func printBrainHelp() {
 	fmt.Println("  --coverage-budget N folder coverage changes before NREM (default 40)")
 	fmt.Println("  --autonomy NAME full (default) or plan-only")
 	fmt.Println("  --backend NAME  codex (default) or none")
-	fmt.Println("  --model NAME    codex model (default gpt-5.4-mini)")
+	fmt.Println("  --model NAME    codex model (default gpt-5.5)")
 	fmt.Println("  --dry-run       skip LLM, do not apply prune-links, do not write report file")
 	fmt.Println()
 	fmt.Println("night flags:")
 	fmt.Println("  --config PATH       vault config path")
 	fmt.Println("  --sphere NAME       vault sphere: work or private")
 	fmt.Println("  --only-stage NAME   sweep | scout | judge (default: all)")
-	fmt.Println("  --openai-tier NAME  force OpenAI at tier: mini | full")
+	fmt.Println("  --openai-tier NAME  force OpenAI at tier: mini-native-web | full")
 	fmt.Println("  --force-local       pin every stage to the configured local llamacpp model")
 	fmt.Println("  --autonomy NAME     full (default) or plan-only")
 	fmt.Println("  --brain-toml PATH   override brain.toml path")
@@ -145,7 +145,7 @@ func printBrainHelp() {
 	fmt.Println("  --models LIST    comma-separated model labels (default: full v1 matrix)")
 	fmt.Println("  --out-dir PATH   override output directory")
 	fmt.Println("  --post-comment N post rendered report.md as a comment on sloptools issue N")
-	fmt.Println("  --llm-judge LABEL run a second-pass LLM judge per cell (e.g. codex/gpt-5.4-mini)")
+	fmt.Println("  --llm-judge LABEL run a second-pass LLM judge per cell (e.g. codex/gpt-5.5)")
 }
 
 func cmdBrainSearch(args []string) int {

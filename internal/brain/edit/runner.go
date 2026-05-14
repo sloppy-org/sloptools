@@ -1,9 +1,9 @@
 // Package edit runs focused per-entity editorial passes. For each triaged
 // entity it builds a tight 4-6KB packet (canonical note + tonight's
-// evidence entries + activity mentions + top backlinks) and runs the MoE
-// bulk pass with sloppy_brain note_write capability. The model edits the
+// evidence entries + activity mentions + top backlinks) and runs the local
+// qwen122b pass with sloppy_brain note_write capability. The model edits the
 // vault directly. Each successful edit is committed and the evidence entries
-// marked applied. When the bulk pass fails, escalateOne retries via codex.
+// marked applied. When the local pass fails, escalateOne retries via codex.
 package edit
 
 import (
@@ -99,8 +99,8 @@ func runOne(ctx context.Context, opts Opts, item triage.Item) Result {
 	}
 	defer cleanup()
 
-	// Run MoE bulk pass with sloppy_brain; codex escalation follows via Router.Pick.
-	pick := routing.LlamacppMoEBulk()
+	// Run qwen122b with sloppy_brain; codex escalation follows via Router.Pick.
+	pick := routing.LlamacppQwen122B()
 	be := backend.LlamacppBackend{}
 	stage := "edit-" + sanitize(item.Entity)
 	sb, err := backend.NewSandbox(opts.RunID, stage, promptPath, backend.DefaultMCPConfig())
@@ -142,12 +142,12 @@ func runOne(ctx context.Context, opts Opts, item triage.Item) Result {
 	resp, err := be.Run(ctx, req)
 	res.WallMS = resp.WallMS
 	if err != nil || strings.TrimSpace(resp.Output) == "" {
-		// Escalate to codex when MoE bulk pass fails.
+		// Escalate to codex when the local qwen122b pass fails.
 		escalated, escErr := escalateOne(ctx, opts, item, packet, promptPath)
 		res.Escalated = escalated
 		if escErr != nil {
 			res.Skipped = true
-			res.Reason = fmt.Sprintf("MoE failed (%v), escalation failed (%v)", err, escErr)
+			res.Reason = fmt.Sprintf("qwen122b failed (%v), escalation failed (%v)", err, escErr)
 		} else {
 			res.Edited = escalated
 		}
@@ -184,12 +184,12 @@ func escalateOne(ctx context.Context, opts Opts, item triage.Item, packet, promp
 	if opts.Router == nil {
 		return false, fmt.Errorf("no router for escalation")
 	}
-	pick, err := opts.Router.Pick(routing.StageSleepJudge)
+	pick, err := opts.Router.Pick(routing.StageEntityWrite)
 	if err != nil {
 		return false, fmt.Errorf("router: %w", err)
 	}
 	if pick.Provider == backend.ProviderLocal {
-		return false, fmt.Errorf("paid tier saturated")
+		return false, fmt.Errorf("paid edit escalation unavailable")
 	}
 	be, err := backendForID(pick.BackendID)
 	if err != nil {
