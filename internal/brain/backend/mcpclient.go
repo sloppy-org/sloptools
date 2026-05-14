@@ -173,8 +173,8 @@ func (c *MCPClient) ListTools() ([]MCPToolDef, error) {
 }
 
 // Call sends tools/call for the named tool and returns the text content.
-// MCP-level errors are returned as (errorMessage, nil) so the model can
-// see what failed without aborting the agent loop.
+// Tool-level isError results are returned as errors so the agent loop's
+// breaker can stop repeated failing calls.
 func (c *MCPClient) Call(name string, args map[string]interface{}) (string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -206,22 +206,33 @@ func (c *MCPClient) Call(name string, args map[string]interface{}) (string, erro
 	// MCP error object.
 	if errObj, ok := resp["error"].(map[string]interface{}); ok {
 		if m, ok := errObj["message"].(string); ok {
-			return m, nil
+			return "", fmt.Errorf("%s", m)
 		}
-		return fmt.Sprintf("%v", errObj), nil
+		return "", fmt.Errorf("%v", errObj)
 	}
 
 	result, ok := resp["result"].(map[string]interface{})
 	if !ok {
 		return fmt.Sprintf("%v", resp["result"]), nil
 	}
+	text := toolResultText(result)
+	if isErr, _ := result["isError"].(bool); isErr {
+		if text == "" {
+			text = "tool returned isError=true"
+		}
+		return "", fmt.Errorf("%s", text)
+	}
+	return text, nil
+}
+
+func toolResultText(result map[string]interface{}) string {
 	content, _ := result["content"].([]interface{})
 	if len(content) == 0 {
-		return "", nil
+		return ""
 	}
 	first, _ := content[0].(map[string]interface{})
 	text, _ := first["text"].(string)
-	return text, nil
+	return text
 }
 
 // Close kills the subprocess. Errors are ignored.
