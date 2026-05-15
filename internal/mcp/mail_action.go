@@ -385,6 +385,9 @@ func mailSearchOptionsFromArgs(args map[string]interface{}) (email.SearchOptions
 	opts := email.DefaultSearchOptions()
 	opts.Folder = strings.TrimSpace(strArg(args, "folder"))
 	opts.Text = strings.TrimSpace(strArg(args, "text"))
+	if opts.Text == "" {
+		opts.Text = strings.TrimSpace(strArg(args, "query"))
+	}
 	opts.Subject = strings.TrimSpace(strArg(args, "subject"))
 	opts.From = strings.TrimSpace(strArg(args, "from"))
 	opts.To = strings.TrimSpace(strArg(args, "to"))

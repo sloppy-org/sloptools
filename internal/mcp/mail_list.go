@@ -312,8 +312,10 @@ func (s *Server) mailMessageList(args map[string]interface{}) (map[string]interf
 	if err != nil {
 		return nil, err
 	}
-	if _, ok := args["limit"]; !ok || opts.MaxResults <= 0 || opts.MaxResults > 50 {
+	if _, ok := args["limit"]; !ok || opts.MaxResults <= 0 {
 		opts.MaxResults = compactListLimit
+	} else if opts.MaxResults > 50 {
+		opts.MaxResults = 50
 	}
 	ids, nextPageToken, err := listMailMessageIDs(context.Background(), provider, opts, pageToken)
 	if err != nil {

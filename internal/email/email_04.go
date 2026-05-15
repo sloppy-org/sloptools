@@ -287,24 +287,36 @@ func (p *ExchangeEWSMailProvider) ListMessages(ctx context.Context, opts SearchO
 			}
 			continue
 		}
-		page, err := p.client.FindMessages(ctx, folder, 0, maxResults)
-		if err != nil {
-			return nil, err
-		}
-		if len(page.ItemIDs) == 0 {
-			continue
-		}
-		messages, err := p.client.GetMessages(ctx, page.ItemIDs)
-		if err != nil {
-			return nil, err
-		}
-		for _, message := range messages {
-			if matchExchangeEWSMessage(message, opts) {
-				found[message.ID] = struct{}{}
-				if len(found) >= maxResults {
-					return sortedMessageIDs(found), nil
+		offset := 0
+		const scanLimit = 200
+		for len(found) < maxResults {
+			page, err := p.client.FindMessages(ctx, folder, offset, scanLimit)
+			if err != nil {
+				return nil, err
+			}
+			if len(page.ItemIDs) == 0 {
+				break
+			}
+			messages, err := p.client.GetMessages(ctx, page.ItemIDs)
+			if err != nil {
+				return nil, err
+			}
+			for _, message := range messages {
+				if matchExchangeEWSMessage(message, opts) {
+					found[message.ID] = struct{}{}
+					if len(found) >= maxResults {
+						return sortedMessageIDs(found), nil
+					}
 				}
 			}
+			if page.IncludesLastPage {
+				break
+			}
+			nextOffset := page.NextOffset
+			if nextOffset <= offset {
+				nextOffset = offset + len(page.ItemIDs)
+			}
+			offset = nextOffset
 		}
 	}
 	return sortedMessageIDs(found), nil
