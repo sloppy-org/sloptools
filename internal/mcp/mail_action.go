@@ -391,6 +391,7 @@ func mailSearchOptionsFromArgs(args map[string]interface{}) (email.SearchOptions
 	opts.Subject = strings.TrimSpace(strArg(args, "subject"))
 	opts.From = strings.TrimSpace(strArg(args, "from"))
 	opts.To = strings.TrimSpace(strArg(args, "to"))
+	opts.Participants = strings.TrimSpace(strArg(args, "participants"))
 	if raw, ok := optionalStringArg(args, "limit"); ok && raw != nil {
 		value, err := strconv.Atoi(*raw)
 		if err != nil || value <= 0 {

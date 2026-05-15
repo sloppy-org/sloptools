@@ -41,6 +41,15 @@ func matchExchangeEWSMessage(message ews.Message, opts SearchOptions) bool {
 			return false
 		}
 	}
+	if opts.Participants != "" {
+		parts := []string{message.From.Name, message.From.Email}
+		for _, mb := range append([]ews.Mailbox(nil), append(message.To, message.Cc...)...) {
+			parts = append(parts, mb.Name, mb.Email)
+		}
+		if !strings.Contains(strings.ToLower(strings.Join(parts, "\n")), strings.ToLower(strings.TrimSpace(opts.Participants))) {
+			return false
+		}
+	}
 	received := message.ReceivedAt
 	if !opts.After.IsZero() && (received.IsZero() || received.Before(opts.After)) {
 		return false
@@ -58,7 +67,7 @@ func matchExchangeEWSMessage(message ews.Message, opts SearchOptions) bool {
 }
 
 func exchangeEWSNeedsMessageFilter(opts SearchOptions) bool {
-	return opts.IsRead != nil || opts.HasAttachment != nil || opts.IsFlagged != nil || opts.Text != "" || opts.Subject != "" || opts.From != "" || opts.To != "" || !opts.After.IsZero() || !opts.Before.IsZero() || !opts.Since.IsZero() || !opts.Until.IsZero()
+	return opts.IsRead != nil || opts.HasAttachment != nil || opts.IsFlagged != nil || opts.Text != "" || opts.Subject != "" || opts.From != "" || opts.To != "" || opts.Participants != "" || !opts.After.IsZero() || !opts.Before.IsZero() || !opts.Since.IsZero() || !opts.Until.IsZero()
 }
 
 func exchangeEWSBuildRestriction(opts SearchOptions) *ews.FindRestriction {
@@ -85,5 +94,5 @@ func exchangeEWSBuildRestriction(opts SearchOptions) *ews.FindRestriction {
 }
 
 func exchangeEWSNeedsClientFilter(opts SearchOptions) bool {
-	return opts.IsRead != nil || opts.IsFlagged != nil || opts.Text != "" || opts.Subject != "" || opts.To != ""
+	return opts.IsRead != nil || opts.IsFlagged != nil || opts.Text != "" || opts.Subject != "" || opts.To != "" || opts.Participants != ""
 }

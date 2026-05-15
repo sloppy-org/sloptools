@@ -346,6 +346,7 @@ type SearchOptions struct {
 	Subject          string
 	From             string
 	To               string
+	Participants     string
 	After            time.Time
 	Before           time.Time
 	Since            time.Time
