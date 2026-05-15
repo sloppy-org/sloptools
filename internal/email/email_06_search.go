@@ -96,3 +96,48 @@ func exchangeEWSBuildRestriction(opts SearchOptions) *ews.FindRestriction {
 func exchangeEWSNeedsClientFilter(opts SearchOptions) bool {
 	return opts.IsRead != nil || opts.IsFlagged != nil || opts.Text != "" || opts.Subject != "" || opts.To != "" || opts.Participants != ""
 }
+
+// exchangeEWSBuildAQS converts text-shaped search fields into an EWS Advanced
+// Query Syntax string suitable for FindItem's <QueryString>. AQS is the
+// Outlook indexed-search engine and returns hits in milliseconds across the
+// whole mailbox, so this lets us avoid the per-folder GetMessages scan that
+// would otherwise download every message body to filter client-side.
+//
+// Returns "" when no text-shaped field is set; the caller should then fall
+// back to the Restriction (server-side) or full-scan path.
+func exchangeEWSBuildAQS(opts SearchOptions) string {
+	var parts []string
+	if v := strings.TrimSpace(opts.From); v != "" {
+		parts = append(parts, "from:"+aqsQuote(v))
+	}
+	if v := strings.TrimSpace(opts.Subject); v != "" {
+		parts = append(parts, "subject:"+aqsQuote(v))
+	}
+	if v := strings.TrimSpace(opts.To); v != "" {
+		parts = append(parts, "to:"+aqsQuote(v))
+	}
+	if v := strings.TrimSpace(opts.Participants); v != "" {
+		parts = append(parts, "participants:"+aqsQuote(v))
+	}
+	if v := strings.TrimSpace(opts.Text); v != "" {
+		parts = append(parts, aqsQuote(v))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.Join(parts, " AND ")
+}
+
+// aqsQuote wraps a needle in double quotes so multi-word phrases stay together
+// and embedded quotes are stripped (AQS has no escape syntax for quotes
+// inside a quoted phrase).
+func aqsQuote(value string) string {
+	v := strings.ReplaceAll(value, `"`, "")
+	if v == "" {
+		return `""`
+	}
+	if strings.ContainsAny(v, " \t\r\n") {
+		return `"` + v + `"`
+	}
+	return v
+}

@@ -317,7 +317,9 @@ func (s *Server) mailMessageList(args map[string]interface{}) (map[string]interf
 	} else if opts.MaxResults > 50 {
 		opts.MaxResults = 50
 	}
-	ids, nextPageToken, err := listMailMessageIDs(context.Background(), provider, opts, pageToken)
+	listCtx, cancelList := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancelList()
+	ids, nextPageToken, err := listMailMessageIDs(listCtx, provider, opts, pageToken)
 	if err != nil {
 		return nil, err
 	}
@@ -325,7 +327,9 @@ func (s *Server) mailMessageList(args map[string]interface{}) (map[string]interf
 	if boolArg(args, "include_body") {
 		format = "full"
 	}
-	messages, err := provider.GetMessages(context.Background(), ids, format)
+	getCtx, cancelGet := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancelGet()
+	messages, err := provider.GetMessages(getCtx, ids, format)
 	if err != nil {
 		return nil, err
 	}

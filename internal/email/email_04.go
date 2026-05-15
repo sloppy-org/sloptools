@@ -214,13 +214,73 @@ func (p *ExchangeEWSMailProvider) ListMessages(ctx context.Context, opts SearchO
 	if p == nil || p.client == nil {
 		return nil, fmt.Errorf("exchange ews provider is not configured")
 	}
-	candidates, err := p.searchFolders(ctx, opts)
-	if err != nil {
-		return nil, err
-	}
 	maxResults := int(opts.MaxResults)
 	if maxResults <= 0 {
 		maxResults = 100
+	}
+	// Fast path: when any text-shaped field is set (text/subject/to/from/
+	// participants), use the EWS AQS QueryString. The Outlook search index
+	// answers in milliseconds against the whole mailbox, so we can scope to
+	// MsgFolderRoot Deep and skip the per-folder GetMessages scan that
+	// otherwise downloaded every message body to filter client-side.
+	if aqs := exchangeEWSBuildAQS(opts); aqs != "" {
+		folders, err := p.searchFolders(ctx, opts)
+		if err != nil {
+			return nil, err
+		}
+		found := make(map[string]struct{}, maxResults)
+		needsClientPostFilter := opts.IsRead != nil || opts.IsFlagged != nil || opts.HasAttachment != nil || !opts.After.IsZero() || !opts.Before.IsZero() || !opts.Since.IsZero() || !opts.Until.IsZero()
+		for _, folder := range folders {
+			if len(found) >= maxResults {
+				break
+			}
+			offset := 0
+			for len(found) < maxResults {
+				page, err := p.client.FindMessagesByQuery(ctx, folder, offset, maxResults, aqs, false)
+				if err != nil {
+					return nil, err
+				}
+				if len(page.ItemIDs) == 0 {
+					break
+				}
+				if needsClientPostFilter {
+					messages, err := p.client.GetMessages(ctx, page.ItemIDs)
+					if err != nil {
+						return nil, err
+					}
+					for _, message := range messages {
+						if matchExchangeEWSMessage(message, opts) {
+							found[message.ID] = struct{}{}
+							if len(found) >= maxResults {
+								return sortedMessageIDs(found), nil
+							}
+						}
+					}
+				} else {
+					for _, itemID := range page.ItemIDs {
+						if clean := strings.TrimSpace(itemID); clean != "" {
+							found[clean] = struct{}{}
+						}
+						if len(found) >= maxResults {
+							return sortedMessageIDs(found), nil
+						}
+					}
+				}
+				if page.IncludesLastPage {
+					break
+				}
+				nextOffset := page.NextOffset
+				if nextOffset <= offset {
+					nextOffset = offset + len(page.ItemIDs)
+				}
+				offset = nextOffset
+			}
+		}
+		return sortedMessageIDs(found), nil
+	}
+	candidates, err := p.searchFolders(ctx, opts)
+	if err != nil {
+		return nil, err
 	}
 	needsFilter := exchangeEWSNeedsMessageFilter(opts)
 	restriction := exchangeEWSBuildRestriction(opts)

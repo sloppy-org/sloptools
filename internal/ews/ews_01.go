@@ -437,6 +437,43 @@ func (c *Client) FindMessages(ctx context.Context, folderID string, offset, max 
 	return out, nil
 }
 
+// FindMessagesByQuery searches a folder using EWS Advanced Query Syntax
+// (AQS) via the <QueryString> element. AQS is the indexed full-text search
+// engine the Outlook client uses, so this returns hits in milliseconds across
+// arbitrary mailbox sizes — unlike Restriction-based scans it does not require
+// downloading every item to filter client-side. Pass Traversal="Deep" via
+// MsgFolderRoot at the call site if you want a whole-mailbox sweep.
+func (c *Client) FindMessagesByQuery(ctx context.Context, folderID string, offset, max int, queryString string, deep bool) (FindItemsResult, error) {
+	if strings.TrimSpace(folderID) == "" {
+		folderID = "msgfolderroot"
+	}
+	if max <= 0 {
+		max = c.cfg.BatchSize
+	}
+	traversal := "Shallow"
+	if deep {
+		traversal = "Deep"
+	}
+	body := fmt.Sprintf(`<m:FindItem Traversal="%s">
+      <m:ItemShape><t:BaseShape>IdOnly</t:BaseShape></m:ItemShape>
+      <m:IndexedPageItemView MaxEntriesReturned="%d" Offset="%d" BasePoint="Beginning" />
+      <m:ParentFolderIds>%s</m:ParentFolderIds>
+      <m:QueryString>%s</m:QueryString>
+    </m:FindItem>`, traversal, max, maxInt(offset, 0), folderIDXML(folderID), xmlEscapeText(queryString))
+	var resp findItemEnvelope
+	if err := c.call(ctx, "FindItem", body, &resp); err != nil {
+		return FindItemsResult{}, err
+	}
+	root := resp.Body.FindItemResponse.ResponseMessages.Message.Root
+	out := FindItemsResult{NextOffset: root.IndexedPagingOffset, TotalItemsInView: root.TotalItemsInView, IncludesLastPage: root.IncludesLastItemInRange, ItemIDs: make([]string, 0, len(root.Items.Items))}
+	for _, item := range root.Items.Items {
+		if clean := strings.TrimSpace(item.ItemID.ID); clean != "" {
+			out.ItemIDs = append(out.ItemIDs, clean)
+		}
+	}
+	return out, nil
+}
+
 type FindRestriction struct {
 	From          string
 	HasAttachment *bool
