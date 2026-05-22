@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/sloppy-org/sloptools/internal/email"
 	"github.com/sloppy-org/sloptools/internal/mcp"
@@ -41,6 +42,8 @@ func cmdMail(args []string) int {
 		return cmdMailSend(args[1:])
 	case "reply":
 		return cmdMailReply(args[1:])
+	case "recover":
+		return cmdMailRecover(args[1:])
 	case "help", "-h", "--help":
 		printMailHelp()
 		return 0
@@ -52,7 +55,7 @@ func cmdMail(args []string) int {
 }
 
 func printMailHelp() {
-	fmt.Println("sloptools mail <send|reply> [flags]")
+	fmt.Println("sloptools mail <send|reply|recover> [flags]")
 	fmt.Println()
 	fmt.Println("send flags:")
 	fmt.Println("  --account-id N      external account id to send from (required)")
@@ -308,6 +311,134 @@ func loadBody(inline, file string) (string, error) {
 		return "", fmt.Errorf("read body: %w", err)
 	}
 	return string(data), nil
+}
+
+func cmdMailRecover(args []string) int {
+	fs := flag.NewFlagSet("mail recover", flag.ContinueOnError)
+	var (
+		accountID  int64
+		target     string
+		after      string
+		before     string
+		from       string
+		subject    string
+		query      string
+		limit      int
+		dryRun     bool
+		dataDir    string
+		projectDir string
+	)
+	fs.Int64Var(&accountID, "account-id", 0, "external account id (required)")
+	fs.StringVar(&target, "target", "", "destination folder (defaults to Archive/Recovered-<today>); single name lands under Archive")
+	fs.StringVar(&after, "after", "", "include items with date >= RFC3339 timestamp (e.g. 2026-05-01T00:00:00Z)")
+	fs.StringVar(&before, "before", "", "include items with date < RFC3339 timestamp")
+	fs.StringVar(&from, "from", "", "substring filter on sender")
+	fs.StringVar(&subject, "subject", "", "substring filter on subject")
+	fs.StringVar(&query, "query", "", "AQS search query (e.g. \"from:alice@example.com\")")
+	fs.IntVar(&limit, "limit", 1000, "maximum items to list/move per invocation")
+	fs.BoolVar(&dryRun, "dry-run", false, "list matching items, do not move")
+	fs.StringVar(&dataDir, "data-dir", defaultDataDir(), "sloptools data dir")
+	fs.StringVar(&projectDir, "project-dir", ".", "project dir")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if accountID <= 0 {
+		fmt.Fprintln(os.Stderr, "error: --account-id is required")
+		return 2
+	}
+	if strings.TrimSpace(target) == "" {
+		target = "Archive/Recovered-" + time.Now().Format("2006-01-02")
+	}
+	srv, st, err := newMailServer(projectDir, dataDir)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	defer st.Close()
+	ctx := context.Background()
+	_, provider, err := srv.ResolveMailAccount(ctx, accountID)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "resolve account: %v\n", err)
+		return 1
+	}
+	defer provider.Close()
+	recoverer, ok := provider.(email.RecoverProvider)
+	if !ok {
+		fmt.Fprintln(os.Stderr, "error: account does not expose RecoverFromDumpster (Exchange EWS only)")
+		return 1
+	}
+	opts := email.DefaultSearchOptions().WithFolder("recoverableitemsdeletions")
+	if limit > 0 {
+		opts.MaxResults = int64(limit)
+	}
+	if clean := strings.TrimSpace(after); clean != "" {
+		t, err := time.Parse(time.RFC3339, clean)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: --after must be RFC3339: %v\n", err)
+			return 2
+		}
+		opts.After = t
+	}
+	if clean := strings.TrimSpace(before); clean != "" {
+		t, err := time.Parse(time.RFC3339, clean)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: --before must be RFC3339: %v\n", err)
+			return 2
+		}
+		opts.Before = t
+	}
+	if clean := strings.TrimSpace(from); clean != "" {
+		opts.From = clean
+	}
+	if clean := strings.TrimSpace(subject); clean != "" {
+		opts.Subject = clean
+	}
+	if clean := strings.TrimSpace(query); clean != "" {
+		opts.Text = clean
+	}
+	ids, err := provider.ListMessages(ctx, opts)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "list dumpster: %v\n", err)
+		return 1
+	}
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	if dryRun {
+		return dumpRecoverPayload(enc, map[string]interface{}{
+			"dry_run":      true,
+			"target":       target,
+			"count":        len(ids),
+			"message_ids":  ids,
+		})
+	}
+	if len(ids) == 0 {
+		return dumpRecoverPayload(enc, map[string]interface{}{
+			"dry_run":      false,
+			"target":       target,
+			"count":        0,
+			"recovered":    0,
+		})
+	}
+	resolutions, err := recoverer.RecoverFromDumpster(ctx, ids, target)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "recover: %v\n", err)
+		return 1
+	}
+	return dumpRecoverPayload(enc, map[string]interface{}{
+		"dry_run":     false,
+		"target":      target,
+		"count":       len(ids),
+		"recovered":   len(resolutions),
+		"resolutions": resolutions,
+	})
+}
+
+func dumpRecoverPayload(enc *json.Encoder, payload map[string]interface{}) int {
+	if err := enc.Encode(payload); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	return 0
 }
 
 func loadAttachments(paths []string) ([]email.DraftAttachment, error) {

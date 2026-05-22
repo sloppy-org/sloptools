@@ -21,7 +21,7 @@ type RouteSection struct {
 }
 
 var MCPTools = []Tool{
-	{Name: "sloppy_mail", Description: "Mail. Actions: message listing/reading, draft (save to Drafts folder), send (send immediately), draft_send (send pre-saved draft by draft_id), reply, flag, filter, OOF, commitments. Use sloppy_tool_help tool=mail for the full action list.", Required: []string{"action"}, Properties: map[string]ToolProperty{
+	{Name: "sloppy_mail", Description: "Mail. Actions: message listing/reading, draft (save to Drafts folder), send (send immediately), draft_send (send pre-saved draft by draft_id), reply, flag, filter, OOF, commitments, mail_action (incl. recover from server dumpster). Use sloppy_tool_help tool=mail for the full action list.", Required: []string{"action"}, Properties: map[string]ToolProperty{
 		"action":             {Type: "string", Description: "Mail operation."},
 		"account_id":         {Type: "integer", Description: "Optional email account id. Defaults to first enabled account for sphere."},
 		"sphere":             {Type: "string", Description: "work or private sphere when account_id is omitted.", Enum: []string{"work", "private"}},

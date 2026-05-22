@@ -160,7 +160,7 @@ func mcpMailActionTargetFolder(account store.ExternalAccount, action, folder, la
 		return "archive"
 	case "defer":
 		return "snoozed"
-	case "move_to_folder":
+	case "move_to_folder", "recover":
 		return folder
 	case "archive_label":
 		if account.Provider == store.ExternalProviderExchangeEWS {

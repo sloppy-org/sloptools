@@ -243,3 +243,10 @@ type NamedFolderProvider interface {
 type NamedLabelProvider interface {
 	ApplyNamedLabel(context.Context, []string, string, bool) (int, error)
 }
+
+// RecoverProvider is implemented by mail backends that expose the recoverable
+// items dumpster. Recovery moves items from the dumpster (server-side
+// soft-delete pool) into a regular folder of the caller's choice.
+type RecoverProvider interface {
+	RecoverFromDumpster(ctx context.Context, messageIDs []string, targetFolder string) ([]ActionResolution, error)
+}

@@ -79,6 +79,14 @@ func exchangeEWSDistinguishedFolderRef(folder string) (string, bool) {
 		return "deleteditems", true
 	case "junk", "spam", "junkemail", "junk email", "junk-e-mail":
 		return "junkemail", true
+	case "recoverableitemsroot":
+		return "recoverableitemsroot", true
+	case "recoverableitemsdeletions", "dumpster", "recover", "recoverable", "recoverable items", "wiederherstellbare elemente", "gelöschte elemente wiederherstellen", "geloeschte elemente wiederherstellen":
+		return "recoverableitemsdeletions", true
+	case "recoverableitemsversions":
+		return "recoverableitemsversions", true
+	case "recoverableitemspurges":
+		return "recoverableitemspurges", true
 	default:
 		return exchangeEWSArchiveFolderRef(folder)
 	}

@@ -26,6 +26,9 @@ func (s *Server) mailAction(args map[string]interface{}) (map[string]interface{}
 	if action == "" {
 		return nil, fmt.Errorf("mail_action is required")
 	}
+	if action == "recover" {
+		return s.mailActionRecover(context.Background(), st, account, provider, args)
+	}
 	untilAt, untilRaw, err := parseMailActionUntil(args, action)
 	if err != nil {
 		return nil, err
