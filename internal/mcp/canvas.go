@@ -420,6 +420,9 @@ func toolDefinitions() []map[string]interface{} {
 				if len(v.Enum) > 0 {
 					prop["enum"] = v.Enum
 				}
+				if v.Items != nil {
+					prop["items"] = v.Items
+				}
 				props[k] = prop
 			}
 			schema["properties"] = props

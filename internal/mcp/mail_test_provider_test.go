@@ -272,6 +272,32 @@ func TestMailReadToolDefinitionsAllowSphereDefault(t *testing.T) {
 	}
 }
 
+func TestMailToolDefinitionAdvertisesAttachmentsArray(t *testing.T) {
+	defs := toolDefinitions()
+	names := map[string]map[string]interface{}{}
+	for _, def := range defs {
+		name, _ := def["name"].(string)
+		names[name] = def
+	}
+	schema, _ := names["sloppy_mail"]["inputSchema"].(map[string]interface{})
+	props, _ := schema["properties"].(map[string]interface{})
+	attachments, ok := props["attachments"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("sloppy_mail schema lacks attachments property: %#v", props)
+	}
+	if attachments["type"] != "array" {
+		t.Fatalf("attachments type = %v, want array", attachments["type"])
+	}
+	items, ok := attachments["items"].(map[string]interface{})
+	if !ok || items["type"] != "object" {
+		t.Fatalf("attachments items = %#v, want object schema", attachments["items"])
+	}
+	itemProps, _ := items["properties"].(map[string]interface{})
+	if itemProps["path"] == nil || itemProps["content_base64"] == nil {
+		t.Fatalf("attachments item schema lacks path/content_base64: %#v", itemProps)
+	}
+}
+
 func TestToolDefinitionsAdvertiseCompactDefaults(t *testing.T) {
 	defs := toolDefinitions()
 	names := map[string]map[string]interface{}{}

@@ -6,6 +6,8 @@ type ToolProperty struct {
 	Type        string
 	Description string
 	Enum        []string
+	// Items is the JSON Schema for array elements; set only when Type is "array".
+	Items map[string]interface{}
 }
 
 type Tool struct {
@@ -30,6 +32,15 @@ var MCPTools = []Tool{
 		"bcc":                {Type: "string", Description: "BCC address(es), comma-separated. Optional for draft/send/reply."},
 		"subject":            {Type: "string", Description: "For draft/send: subject line. For message_list: substring filter on Subject."},
 		"body":               {Type: "string", Description: "Plain-text body. Required for draft/send/reply."},
+		"attachments": {Type: "array", Description: "Files to attach for draft/send/reply. Each item is an object: {path} or {content_base64, filename}; content_type optional.", Items: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"path":           map[string]interface{}{"type": "string", "description": "Absolute path to the file to attach."},
+				"filename":       map[string]interface{}{"type": "string", "description": "Attachment name; defaults to the file's basename."},
+				"content_base64": map[string]interface{}{"type": "string", "description": "Base64-encoded content, used instead of path."},
+				"content_type":   map[string]interface{}{"type": "string", "description": "MIME type; auto-detected when omitted."},
+			},
+		}},
 		"in_reply_to":        {Type: "string", Description: "Message-ID to thread under. Optional for draft/send."},
 		"draft_only":         {Type: "boolean", Description: "When true on send, saves to Drafts without sending. Prefer action=draft instead."},
 		"draft_id":           {Type: "string", Description: "Draft ID returned by draft/send with draft_only. Required for draft_send."},
