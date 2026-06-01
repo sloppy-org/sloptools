@@ -9,6 +9,7 @@ import (
 const (
 	ExternalAccountCredentialSourceEnv       = externalAccountCredentialSourceEnv
 	ExternalAccountCredentialSourceBitwarden = externalAccountCredentialSourceBitwarden
+	ExternalAccountCredentialSourceFile      = externalAccountCredentialSourceFile
 )
 
 var ErrExternalAccountPasswordUnavailable = errExternalAccountPasswordUnavailable

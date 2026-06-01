@@ -296,6 +296,29 @@ func TestResolveExternalAccountPasswordFallsBackToBitwardenAndCaches(t *testing.
 	}
 }
 
+func TestResolveExternalAccountPasswordReadsFileCredential(t *testing.T) {
+	s := newTestStore(t)
+	credPath := filepath.Join(t.TempDir(), "eduid.json")
+	if err := os.WriteFile(credPath, []byte(`{"username":"ert","password":"file-secret","eduroam":"vpn-pw"}`), 0o600); err != nil {
+		t.Fatalf("write cred file: %v", err)
+	}
+	account, err := s.CreateExternalAccount(SphereWork, ExternalProviderExchangeEWS, "TUG Mail", map[string]any{"username": "ert", "credential_ref": "file://" + credPath})
+	if err != nil {
+		t.Fatalf("CreateExternalAccount() error: %v", err)
+	}
+	s.SetExternalAccountLookupEnv(func(string) (string, bool) { return "", false })
+	password, source, err := s.ResolveExternalAccountPasswordForAccount(context.Background(), account)
+	if err != nil {
+		t.Fatalf("ResolveExternalAccountPasswordForAccount() error: %v", err)
+	}
+	if password != "file-secret" {
+		t.Fatalf("password = %q, want file-secret", password)
+	}
+	if source != ExternalAccountCredentialSourceFile {
+		t.Fatalf("source = %q, want %q", source, ExternalAccountCredentialSourceFile)
+	}
+}
+
 func TestResolveExternalAccountPasswordRejectsMissingOrUnsupportedCredentialConfig(t *testing.T) {
 	s := newTestStore(t)
 	s.SetExternalAccountLookupEnv(func(string) (string, bool) {

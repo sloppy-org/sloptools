@@ -8,6 +8,7 @@ import (
 	"github.com/sloppy-org/sloptools/internal/store/providerkind"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -318,6 +319,7 @@ type WorkspaceWatch struct {
 const (
 	externalAccountCredentialSourceEnv       = "env"
 	externalAccountCredentialSourceBitwarden = "bitwarden"
+	externalAccountCredentialSourceFile      = "file"
 )
 
 var errExternalAccountPasswordUnavailable = errors.New("external account password is not configured")
@@ -437,6 +439,44 @@ func (s *Store) resolveBitwardenPassword(ctx context.Context, credentialRef stri
 	return password, nil
 }
 
+// resolveFilePassword reads a password from a JSON file referenced as
+// file://<path>#<field> (default field "password"). A leading ~ expands to the
+// user's home dir. Used for the shared TU Graz credential file
+// (~/.config/tugraz/eduid.json).
+func (s *Store) resolveFilePassword(credentialRef string) (string, error) {
+	rest := strings.TrimPrefix(credentialRef, "file://")
+	field := "password"
+	if i := strings.LastIndex(rest, "#"); i >= 0 {
+		field = strings.TrimSpace(rest[i+1:])
+		rest = rest[:i]
+	}
+	path := strings.TrimSpace(rest)
+	if path == "" {
+		return "", errors.New("file credential_ref must include a path")
+	}
+	if strings.HasPrefix(path, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		path = filepath.Join(home, path[2:])
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read credential file %s: %w", path, err)
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return "", fmt.Errorf("parse credential file %s: %w", path, err)
+	}
+	value, _ := fields[field].(string)
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", fmt.Errorf("credential file %s: empty field %q", path, field)
+	}
+	return value, nil
+}
+
 func (s *Store) ResolveExternalAccountPassword(ctx context.Context, accountID int64) (string, string, error) {
 	account, err := s.GetExternalAccount(accountID)
 	if err != nil {
@@ -462,6 +502,14 @@ func (s *Store) ResolveExternalAccountPasswordForAccount(ctx context.Context, ac
 	}
 	if credentialRef == "" {
 		return "", "", errExternalAccountPasswordUnavailable
+	}
+	if strings.HasPrefix(strings.ToLower(credentialRef), "file://") {
+		password, err := s.resolveFilePassword(credentialRef)
+		if err != nil {
+			return "", "", err
+		}
+		s.cacheExternalAccountPassword(cacheKey, externalAccountCredentialSourceFile, password)
+		return password, externalAccountCredentialSourceFile, nil
 	}
 	password, err := s.resolveBitwardenPassword(ctx, credentialRef)
 	if err != nil {
