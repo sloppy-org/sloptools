@@ -405,18 +405,18 @@ func cmdMailRecover(args []string) int {
 	enc.SetIndent("", "  ")
 	if dryRun {
 		return dumpRecoverPayload(enc, map[string]interface{}{
-			"dry_run":      true,
-			"target":       target,
-			"count":        len(ids),
-			"message_ids":  ids,
+			"dry_run":     true,
+			"target":      target,
+			"count":       len(ids),
+			"message_ids": ids,
 		})
 	}
 	if len(ids) == 0 {
 		return dumpRecoverPayload(enc, map[string]interface{}{
-			"dry_run":      false,
-			"target":       target,
-			"count":        0,
-			"recovered":    0,
+			"dry_run":   false,
+			"target":    target,
+			"count":     0,
+			"recovered": 0,
 		})
 	}
 	resolutions, err := recoverer.RecoverFromDumpster(ctx, ids, target)

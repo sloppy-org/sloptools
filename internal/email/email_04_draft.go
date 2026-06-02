@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 )
+
 func (p *ExchangeMailProvider) CreateReplyDraft(ctx context.Context, messageID string, input DraftInput) (Draft, error) {
 	if p == nil || p.client == nil {
 		return Draft{}, fmt.Errorf("exchange provider is not configured")
