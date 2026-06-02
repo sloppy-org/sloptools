@@ -262,30 +262,6 @@ func objectArg(args map[string]interface{}, key string) map[string]interface{} {
 	return m
 }
 
-// mergeSubArgs flattens an optional nested "args" sub-function payload into the
-// top-level argument map. This keeps the top-level tool surface small (action,
-// sphere, config_path, args) while letting each action receive its structured
-// parameters under args. Explicit top-level keys win over nested ones, so
-// routing fields (action, sphere) stay authoritative and back-compat callers
-// that pass parameters at the top level keep working.
-func mergeSubArgs(args map[string]interface{}) map[string]interface{} {
-	sub := objectArg(args, "args")
-	if len(sub) == 0 {
-		return args
-	}
-	merged := make(map[string]interface{}, len(sub)+len(args))
-	for k, v := range sub {
-		merged[k] = v
-	}
-	for k, v := range args {
-		if k == "args" {
-			continue
-		}
-		merged[k] = v
-	}
-	return merged
-}
-
 func stringArgFromMap(m map[string]interface{}, key string) (string, bool) {
 	raw, ok := m[key]
 	if !ok {
