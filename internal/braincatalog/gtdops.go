@@ -37,7 +37,11 @@ func BuildGTDDashboardMarkdown(items []GTDListItem, sphere, name string, wip []D
 }
 
 func BuildGTDReviewBatchMarkdown(items []GTDListItem, sphere, query string) string {
-	grouped := groupGTDItems(selectGTDReviewBatchItems(items, query), "")
+	return BuildGTDReviewBatchMarkdownAt(items, sphere, query, time.Now().UTC())
+}
+
+func BuildGTDReviewBatchMarkdownAt(items []GTDListItem, sphere, query string, now time.Time) string {
+	grouped := groupGTDItems(selectGTDReviewBatchItemsAt(items, query, now), "")
 	return buildGTDMarkdown("GTD Review Batch: "+strings.TrimSpace(query), sphere, grouped, nil)
 }
 

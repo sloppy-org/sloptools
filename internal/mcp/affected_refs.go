@@ -302,5 +302,25 @@ func toolHelpHandler(args map[string]interface{}) (map[string]interface{}, error
 	if !ok {
 		return nil, fmt.Errorf("unknown tool family %q", tool)
 	}
-	return map[string]interface{}{"tool": tool, "actions": actions}, nil
+	result := map[string]interface{}{"tool": tool, "actions": actions}
+	if hints, ok := toolArgHints[tool]; ok {
+		result["arg_hints"] = hints
+	}
+	return result, nil
+}
+
+// toolArgHints documents the args payload for mutating or parameterized actions
+// so callers can discover required fields without reading the source. Pass the
+// fields in the args object (e.g. sloppy_brain action=gtd_write args={...}); the
+// keys are also accepted at the top level for back-compat.
+var toolArgHints = map[string]map[string]string{
+	"brain": {
+		"gtd_write":      "path (vault-relative, required), commitment{status,outcome,next_action,context,waiting_for,follow_up,due,project,track,people[],labels[],source_bindings[{provider,ref,url,summary}]}. Creates or updates a commitment note and self-commits to git.",
+		"gtd_set_status": "path (required), status (required: inbox|next|waiting|deferred|someday|maybe_stale|closed), closed_at (optional RFC3339).",
+		"gtd_bind":       "path (required), source_bindings[{provider,ref,url,summary}].",
+		"gtd_bulk_link":  "links[{path, source_bindings[...]}] to bind many commitments to their sources.",
+		"note_write":     "path (required), updates{frontmatter fields and/or named sections}.",
+		"search":         "query (required), sphere, mode.",
+		"backlinks":      "target (required, e.g. people/Name), sphere.",
+	},
 }

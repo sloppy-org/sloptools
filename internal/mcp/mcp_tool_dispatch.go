@@ -135,6 +135,7 @@ func (s *Server) callConsolidatedTool(name string, args map[string]interface{}) 
 			return handledTool(nil, fmt.Errorf("sloppy_contacts: unknown action %q", action))
 		}
 	case "sloppy_brain":
+		args = mergeSubArgs(args)
 		brainMethod := brainActionToMethod(action)
 		if brainMethod == "" {
 			return handledTool(nil, fmt.Errorf("sloppy_brain: unknown action %q", action))

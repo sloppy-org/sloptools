@@ -124,7 +124,7 @@ func TestSelectGTDReviewBatchItemsAppliesQueueingAndOrdering(t *testing.T) {
 			t.Fatalf("got[%d].Status = %q, want %q", i, got[i].Status, tc.status)
 		}
 	}
-	joined := BuildGTDReviewBatchMarkdown(items, "work", "Ada")
+	joined := BuildGTDReviewBatchMarkdownAt(items, "work", "Ada", now)
 	if strings.Contains(joined, "Drop") || strings.Contains(joined, "Close") {
 		t.Fatalf("review batch should exclude done and closed items:\n%s", joined)
 	}

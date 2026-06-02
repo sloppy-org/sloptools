@@ -24,14 +24,14 @@ type RouteSection struct {
 
 var MCPTools = []Tool{
 	{Name: "sloppy_mail", Description: "Mail. Actions: message listing/reading, draft (save to Drafts folder), send (send immediately), draft_send (send pre-saved draft by draft_id), reply, flag, filter, OOF, commitments, mail_action (incl. recover from server dumpster). Use sloppy_tool_help tool=mail for the full action list.", Required: []string{"action"}, Properties: map[string]ToolProperty{
-		"action":             {Type: "string", Description: "Mail operation."},
-		"account_id":         {Type: "integer", Description: "Optional email account id. Defaults to first enabled account for sphere."},
-		"sphere":             {Type: "string", Description: "work or private sphere when account_id is omitted.", Enum: []string{"work", "private"}},
-		"to":                 {Type: "string", Description: "For draft/send/reply: recipient address(es), comma-separated. For message_list: substring filter on To/Cc recipients."},
-		"cc":                 {Type: "string", Description: "CC address(es), comma-separated. Optional for draft/send/reply."},
-		"bcc":                {Type: "string", Description: "BCC address(es), comma-separated. Optional for draft/send/reply."},
-		"subject":            {Type: "string", Description: "For draft/send: subject line. For message_list: substring filter on Subject."},
-		"body":               {Type: "string", Description: "Plain-text body. Required for draft/send/reply."},
+		"action":     {Type: "string", Description: "Mail operation."},
+		"account_id": {Type: "integer", Description: "Optional email account id. Defaults to first enabled account for sphere."},
+		"sphere":     {Type: "string", Description: "work or private sphere when account_id is omitted.", Enum: []string{"work", "private"}},
+		"to":         {Type: "string", Description: "For draft/send/reply: recipient address(es), comma-separated. For message_list: substring filter on To/Cc recipients."},
+		"cc":         {Type: "string", Description: "CC address(es), comma-separated. Optional for draft/send/reply."},
+		"bcc":        {Type: "string", Description: "BCC address(es), comma-separated. Optional for draft/send/reply."},
+		"subject":    {Type: "string", Description: "For draft/send: subject line. For message_list: substring filter on Subject."},
+		"body":       {Type: "string", Description: "Plain-text body. Required for draft/send/reply."},
 		"attachments": {Type: "array", Description: "Files to attach for draft/send/reply. Each item is an object: {path} or {content_base64, filename}; content_type optional.", Items: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -75,10 +75,11 @@ var MCPTools = []Tool{
 		"account_id": {Type: "integer", Description: "Optional contacts account id."},
 		"sphere":     {Type: "string", Description: "work or private sphere.", Enum: []string{"work", "private"}},
 	}},
-	{Name: "sloppy_brain", Description: "Brain/GTD vault. Key actions: note_parse, note_write, gtd_write, gtd_list, gtd_focus, gtd_sync, people_brief, people_render, search. Use sloppy_tool_help tool=brain for the full list.", Required: []string{"action"}, Properties: map[string]ToolProperty{
+	{Name: "sloppy_brain", Description: "Brain/GTD vault. Action plus args, like sloppy_mail. Key actions: note_parse, note_write, gtd_write, gtd_list, gtd_focus, gtd_sync, people_brief, people_render, search. Per-action fields go in args. sloppy_tool_help tool=brain lists them.", Required: []string{"action"}, Properties: map[string]ToolProperty{
 		"action":      {Type: "string", Description: "Brain/GTD operation."},
 		"sphere":      {Type: "string", Description: "work or private vault.", Enum: []string{"work", "private"}},
 		"config_path": {Type: "string", Description: "Optional vault config path."},
+		"args":        {Type: "object", Description: "Sub-function payload: the chosen action's parameters (e.g. gtd_write: path + commitment{...}). Field list: sloppy_tool_help tool=brain arg_hints."},
 	}},
 	{Name: "sloppy_workspace", Description: "Workspace, items, actors. Action: list, activate, get, watch_start, watch_stop, watch_status, item_list, item_get, item_create, item_triage, item_assign, item_update, artifact_get, artifact_list, actor_list, actor_create.", Required: []string{"action"}, Properties: map[string]ToolProperty{
 		"action": {Type: "string", Description: "Workspace/items operation."},
